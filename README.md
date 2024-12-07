@@ -13,3 +13,14 @@ The most advanced AI Agent system for building, deploying, and managing intellig
 
 </div>
 
+## 🌊 What is Voda?
+
+Voda Protocol is a cutting-edge AI Agent system designed to revolutionize how we build and interact with intelligent agents. It provides a comprehensive framework for creating sophisticated AI applications with advanced capabilities.
+
+Key benefits:
+
+- 🚀 **Rapid Development**: Build production-ready AI agents in minutes, not months
+- 🔄 **Flexible Architecture**: Easily customize and extend functionality
+- 🎯 **Production Ready**: Enterprise-grade reliability and scalability
+- 🔒 **Security First**: Built-in security features and best practices
+
