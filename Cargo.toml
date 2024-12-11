@@ -1,0 +1,40 @@
+[profile.release]
+panic = 'unwind'
+opt-level = 3
+
+[profile.bench]
+opt-level = 3
+
+[profile.test]
+opt-level = 1
+
+[workspace]
+members = [
+    "crates/api",
+    "crates/common",
+    "crates/database",
+    "crates/runtime",
+]
+resolver = "2"
+
+[workspace.dependencies]
+tokio = { version = "1.36", features = ["full"] }
+axum = { version = "0.7" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+mongodb = "2.8"
+async-openai = "0.26.0"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+dotenv = "0.15"
+anyhow = "1.0"
+thiserror = "1.0"
+futures = "0.3"
+hex = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+reqwest = { version = "^0.12", default-features = false, features = ["json", "rustls-tls"] }
+xsalsa20poly1305 = "0.9"
+blake3 = "^1"
+base64 = "0.21"
+teloxide = { version = "0.12", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
