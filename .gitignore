@@ -1,1 +1,120 @@
-/target
+# Rust build artifacts
+/target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*.iml
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Debug files
+*.log
+*.log.*
+debug/
+debug.log
+
+# Database files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Binary files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Generated documentation
+/doc/
+/target/doc/
+
+# Test coverage
+coverage/
+*.profraw
+*.profdata
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Node (if using web components)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# Build output
+/dist/
+/build/
+/out/
+
+# Local configuration
+config.local.toml
+*.local.rs
+
+# Secrets
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Large media files
+*.mp4
+*.tiff
+*.avi
+*.flv
+*.mov
+*.wmv
+
+# Compressed files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Dependency directories
+vendor/
+
+# Custom project files
+notes.md
+TODO.md
