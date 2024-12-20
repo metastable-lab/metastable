@@ -1,0 +1,16 @@
+[package]
+name = "voda-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+voda-common = { path = "../common" }
+voda-database = { path = "../database" }
+
+async-openai.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+mongodb.workspace = true
+futures.workspace = true
