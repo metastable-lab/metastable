@@ -1,0 +1,8 @@
+{
+    "scripts": {
+        "start": "./node_modules/.bin/mintlify dev"
+    },
+    "dependencies": {
+        "mintlify": "^4.0.153"
+    }
+}
