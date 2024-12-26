@@ -1,0 +1,74 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Voda Protocol",
+  "logo": {
+    "dark": "/logo/logo-dark.png",
+    "light": "/logo/logo-light.png"
+  },
+  "modeToggle": {
+    "default": "light"
+  },
+  "favicon": "/favicon.png",
+  "colors": {
+    "primary": "#FFB156",
+    "light": "#FFE4B5",
+    "anchors": {
+      "from": "#FFB156",
+      "to": "#2B1810"
+    }
+  },
+  "topbarLinks": [],
+  "topbarCtaButton": {
+    "name": "Home",
+    "url": "https://voda.is"
+  },
+  "tabs": [
+    {
+      "name": "Tech Reference",
+      "url": "reference"
+    }
+  ],  
+  "anchors": [
+    {
+      "name": "Twitter",
+      "icon": "twitter",
+      "url": "https://x.com/voda_is"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Introduction",
+      "pages": [
+        "overview",
+        "introduction/background",
+        "introduction/what-is-voda"
+      ]
+    },
+    {
+      "group": "Features",
+      "pages": [
+        "features/roleplay",
+        "features/tool-calls",
+        "features/built-in-modules"
+      ]
+    },
+    {
+      "group": "Cookbook",
+      "pages": [
+        "cookbook/example"
+      ]
+    },
+    {
+      "group": "Misc",
+      "pages": [
+        "misc/privacy-policy"
+      ]
+    },
+    {
+      "group": "Tech Reference",
+      "pages": [
+        "reference/overview"
+      ]
+    }
+  ]
+}
