@@ -10,7 +10,7 @@ use async_openai::{
 use crate::character::Character;
 use crate::system_config::SystemConfig;
 use crate::user::User;
-use crate::{HistoryMessage, HistoryMessagePair, MessageRole, MessageType, RuntimeClient};
+use crate::core::{HistoryMessage, HistoryMessagePair, MessageRole, MessageType, RuntimeClient};
 
 use super::env::RoleplayEnv;
 use super::message::prepare_chat_messages;

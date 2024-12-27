@@ -12,8 +12,7 @@ use futures::StreamExt;
 use voda_common::{get_current_timestamp, CryptoHash};
 use voda_database::MongoDbObject;
 
-use crate::HistoryMessagePair;
-use crate::Memory;
+use crate::core::{HistoryMessagePair, Memory};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct RoleplayMemory {
@@ -21,8 +20,8 @@ pub struct RoleplayMemory {
     pub id: CryptoHash,
     pub public: bool,
 
-    pub owner_id: CryptoHash,
-    pub character_id: CryptoHash,
+    pub owner: CryptoHash,
+    pub character: CryptoHash,
 
     pub history: Vec<HistoryMessagePair>,
     pub updated_at: u64,
@@ -38,36 +37,16 @@ impl MongoDbObject for RoleplayMemory {
 }
 
 impl RoleplayMemory {
-    pub fn new(is_public: bool, owner_id: CryptoHash, character_id: CryptoHash) -> Self {
+    pub fn new(owner: CryptoHash, character: CryptoHash) -> Self {
         Self { 
             id: CryptoHash::random(), 
-            public: is_public,
-            owner_id,
-            character_id,
+            public: false,
+            owner, character,
 
             history: vec![],
             updated_at: get_current_timestamp(), 
             created_at: get_current_timestamp()
         }
-    }
-
-    pub async fn find_latest_conversations(db: &Database, user_id: &CryptoHash, character_id: &CryptoHash, limit: u64) -> Result<Vec<Self>> {
-        let col = db.collection::<Document>(Self::COLLECTION_NAME);
-        let options = FindOptions::builder()
-            .sort(doc! { "updated_at": -1 })  // Sort by nonce in descending order
-            .limit(limit as i64)
-            .build();
-
-        let filter = doc! { "owner_id": user_id.to_string(), "character_id": character_id.to_string() };
-        let mut docs = col.find(filter, Some(options)).await?;
-
-        let mut conversations = vec![];
-        while let Some(doc) = docs.next().await {
-            let convo = bson::from_document::<Self>(doc?)
-                .map_err(anyhow::Error::from)?;
-            conversations.push(convo);
-        }
-        Ok(conversations)
     }
 
     pub async fn find_latest_conversations_id_only(db: &Database, user_id: &CryptoHash, character_id: &CryptoHash, limit: u64) -> Result<Vec<CryptoHash>> {
@@ -88,37 +67,50 @@ impl RoleplayMemory {
         }
         Ok(conversations)
     }
+}
 
-    // get character list of user, with the number of conversations
-    pub async fn find_character_list_of_user(db: &Database, user_id: &CryptoHash) -> Result<HashMap<CryptoHash, usize>> {
+impl Memory<Database> for RoleplayMemory {
+    async fn save_memory(db: &Database, messages: Self) -> Result<()> {
+        messages.save(db).await
+    }
+
+    async fn load_memory_by_id(db: &Database, id: &CryptoHash) -> Result<Option<Self>> {
+        RoleplayMemory::select_one_by_index(db, id).await
+    }
+
+    async fn load_memory_by_character_and_owner(
+        db: &Database, character: &CryptoHash, owner: &CryptoHash,
+        limit: Option<usize>
+    ) -> Result<Vec<Self>> {
         let col = db.collection::<Document>(Self::COLLECTION_NAME);
-        let filter = doc! { "owner_id": user_id.to_string() };
+        let options = FindOptions::builder()
+            .sort(doc! { "updated_at": -1 })  // Sort by nonce in descending order
+            .limit(limit.unwrap_or(10) as i64)
+            .build();
+
+        let filter = doc! { "owner": owner.to_string(), "character": character.to_string() };
+        let mut docs = col.find(filter, Some(options)).await?;
+
+        let mut conversations = vec![];
+        while let Some(doc) = docs.next().await {
+            let convo = bson::from_document::<Self>(doc?)
+                .map_err(anyhow::Error::from)?;
+            conversations.push(convo);
+        }
+        Ok(conversations)
+    }
+
+    async fn load_character_list_of_user(db: &Database, owner: &CryptoHash) -> Result<HashMap<CryptoHash, usize>> {
+        let col = db.collection::<Document>(Self::COLLECTION_NAME);
+        let filter = doc! { "owner": owner.to_string() };
         let mut docs = col.find(filter, None).await?;
 
         let mut conversations = HashMap::new();
         while let Some(doc) = docs.next().await {
             let convo = bson::from_document::<Self>(doc?)
                 .map_err(anyhow::Error::from)?;
-            conversations.entry(convo.character_id).and_modify(|count| *count += 1).or_insert(1);
+            conversations.entry(convo.character).and_modify(|count| *count += 1).or_insert(1);
         }
         Ok(conversations)
-    }
-}
-
-impl Memory<Database> for RoleplayMemory {
-    async fn save_memory(db: Database, messages: Self) -> Result<()> {
-        RoleplayMemory::save(messages, &db).await
-    }
-
-    async fn load_memory_by_id(db: Database, id: &CryptoHash) -> Result<()> {
-        todo!()
-    }
-
-    async fn load_memory_by_owner(db: Database, owner: &CryptoHash) -> Result<()> {
-        todo!()
-    }
-
-    async fn load_memory_by_character_and_owner(db: Database, character: &CryptoHash, owner: &CryptoHash) -> Result<()> {
-        todo!()
     }
 }

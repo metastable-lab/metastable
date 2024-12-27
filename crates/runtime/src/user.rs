@@ -10,6 +10,7 @@ use voda_database::MongoDbObject;
 pub struct User {
     #[serde(rename = "_id")]
     pub id: CryptoHash,
+    pub user_id: String,
 
     pub profile: UserProfile,
     pub points: UserPoints,
@@ -161,9 +162,10 @@ impl UserPoints {
 }
 
 impl User {
-    pub fn new(profile: UserProfile) -> Self {
+    pub fn new(profile: UserProfile, user_id: String) -> Self {
         Self {
             id: profile.id.clone(),
+            user_id,
             profile,
             points: UserPoints::default(),
             usage: Vec::new(),

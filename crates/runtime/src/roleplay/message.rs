@@ -1,7 +1,12 @@
 use anyhow::Result;
 use async_openai::types::{ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs};
 
-use crate::{character::Character, system_config::SystemConfig, user::User, HistoryMessage, HistoryMessagePair};
+use crate::{
+    character::Character, 
+    system_config::SystemConfig, 
+    user::User, 
+    core::{HistoryMessage, HistoryMessagePair}
+};
 
 pub fn replace_placeholders(
     text: &str, character_name: &str, user_name: &str,
