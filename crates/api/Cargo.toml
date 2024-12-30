@@ -1,0 +1,26 @@
+[package]
+name = "voda-service-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+voda-common = { path = "../common" }
+voda-database = { path = "../database" }
+voda-runtime = { path = "../runtime" }
+
+axum.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+futures.workspace = true
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true 
+
+async-openai.workspace = true
+reqwest.workspace = true
+base64.workspace = true
+rand.workspace = true
+hex.workspace = true
