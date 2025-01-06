@@ -3,3 +3,5 @@ mod middleware;
 mod response;
 mod utils;
 mod global_state;
+
+mod routes;
