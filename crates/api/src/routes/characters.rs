@@ -22,6 +22,10 @@ pub fn character_routes() -> Router<GlobalState> {
             get(list_characters_with_filters)
             .route_layer(middleware::from_fn(admin_only))
         )
+        .route("/characters/with_filters/count", 
+            get(list_characters_with_filters_count)
+            .route_layer(middleware::from_fn(admin_only))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,3 +109,32 @@ async fn list_characters_with_filters(
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(characters)))
 }
+
+async fn list_characters_with_filters_count(
+    State(state): State<GlobalState>,
+    Query(query): Query<ListCharactersWithFiltersQuery>,
+) -> Result<AppSuccess, AppError> {
+    let mut filter = doc! {};
+
+    if let Some(has_image) = query.has_image {
+        filter.insert("$and", vec![
+            doc! { "background_image_url": { "$exists": has_image, "$ne": null } },
+            doc! { "avatar_image_url": { "$exists": has_image, "$ne": null } }
+        ]);
+    }
+
+    if let Some(true) = query.has_roleplay_enabled {
+        filter.insert("metadata.enable_roleplay", true);
+    }
+
+    if let Some(true) = query.has_chatroom_enabled {
+        filter.insert("metadata.enable_chatroom", true);
+    }
+
+    let count = Character::total_count(&state.db, filter).await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
+        "count": count
+    })))
+}
+
