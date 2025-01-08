@@ -28,6 +28,9 @@ pub fn character_routes() -> Router<GlobalState> {
         )
         .route("/characters/count", get(list_characters_count))
         .route("/character/:id", get(get_character))
+        .route("/character", post(create_character)
+            .route_layer(middleware::from_fn(admin_only))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -179,5 +182,23 @@ async fn get_character(
         StatusCode::OK, 
         "Character fetched successfully", 
         json!(character)
+    ))
+}
+
+async fn create_character(
+    State(state): State<GlobalState>,
+    Json(mut payload): Json<Character>,
+) -> Result<AppSuccess, AppError> {
+    payload.clean()?;
+    payload.published_at = get_current_timestamp();
+    payload.created_at = get_current_timestamp();
+    payload.updated_at = get_current_timestamp();
+
+    payload.clone().save(&state.db).await?;
+
+    Ok(AppSuccess::new(
+        StatusCode::CREATED,
+        "Character created successfully",
+        json!(payload.id)
     ))
 }
