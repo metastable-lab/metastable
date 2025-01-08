@@ -27,6 +27,7 @@ pub fn character_routes() -> Router<GlobalState> {
             .route_layer(middleware::from_fn(admin_only))
         )
         .route("/characters/count", get(list_characters_count))
+        .route("/character/:id", get(get_character))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -165,4 +166,18 @@ async fn list_characters_count(
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
         "count": count
     })))
+}
+
+async fn get_character(
+    State(state): State<GlobalState>,
+    Path(id): Path<CryptoHash>,
+) -> Result<AppSuccess, AppError> {
+    let character = Character::select_one_by_index(&state.db, &id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+
+    Ok(AppSuccess::new(
+        StatusCode::OK, 
+        "Character fetched successfully", 
+        json!(character)
+    ))
 }
