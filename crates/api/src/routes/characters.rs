@@ -26,6 +26,7 @@ pub fn character_routes() -> Router<GlobalState> {
             get(list_characters_with_filters_count)
             .route_layer(middleware::from_fn(admin_only))
         )
+        .route("/characters/count", get(list_characters_count))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -138,3 +139,30 @@ async fn list_characters_with_filters_count(
     })))
 }
 
+
+async fn list_characters_count(
+    State(state): State<GlobalState>,
+    Query(query): Query<ListCharactersQuery>,
+) -> Result<AppSuccess, AppError> {
+    let mut filter = doc! {};
+
+    if query.only_roleplay.unwrap_or(false) || query.only_chatroom.unwrap_or(false) {
+        let mut or_conditions = Vec::new();
+        
+        if query.only_roleplay.unwrap_or(false) {
+            or_conditions.push(doc! { "metadata.enable_roleplay": true });
+        }
+        
+        if query.only_chatroom.unwrap_or(false) {
+            or_conditions.push(doc! { "metadata.enable_chatroom": true });
+        }
+        
+        filter.insert("$or", or_conditions);
+    }
+
+    let count = Character::total_count(&state.db, filter).await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
+        "count": count
+    })))
+}
