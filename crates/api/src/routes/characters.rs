@@ -37,6 +37,10 @@ pub fn character_routes() -> Router<GlobalState> {
         .route("/character/:id", delete(delete_character)
             .route_layer(middleware::from_fn(admin_only))
         )
+
+        .route("/character/status/:id", post(set_character_status)
+            .route_layer(middleware::from_fn(admin_only))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -240,4 +244,26 @@ async fn delete_character(
         "Character deleted successfully", 
         json!({ "id": id })
     ))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetCharacterStatusPayload {
+    roleplay_status: Option<bool>,
+    chatroom_status: Option<bool>,
+}
+
+async fn set_character_status(
+    State(state): State<GlobalState>,
+    Path(id): Path<CryptoHash>,
+    Json(payload): Json<SetCharacterStatusPayload>,
+) -> Result<AppSuccess, AppError> {
+    let mut character = Character::select_one_by_index(&state.db, &id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+
+    character.metadata.enable_roleplay = payload.roleplay_status.unwrap_or(character.metadata.enable_roleplay);
+    character.metadata.enable_chatroom = payload.chatroom_status.unwrap_or(character.metadata.enable_chatroom);
+    character.updated_at = get_current_timestamp();
+    character.update(&state.db).await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character status updated successfully", json!(())))
 }
