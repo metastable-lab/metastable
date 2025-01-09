@@ -34,6 +34,9 @@ pub fn character_routes() -> Router<GlobalState> {
         .route("/character/:id", put(update_character)
             .route_layer(middleware::from_fn(admin_only))
         )
+        .route("/character/:id", delete(delete_character)
+            .route_layer(middleware::from_fn(admin_only))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -220,5 +223,21 @@ async fn update_character(
         StatusCode::OK,
         "Character updated successfully",
         json!({ "id": payload.id })
+    ))
+}
+
+async fn delete_character(
+    State(state): State<GlobalState>,
+    Path(id): Path<CryptoHash>,
+) -> Result<AppSuccess, AppError> {
+    let character = Character::select_one_by_index(&state.db, &id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+
+    character.delete(&state.db).await?;
+
+    Ok(AppSuccess::new(
+        StatusCode::OK, 
+        "Character deleted successfully", 
+        json!({ "id": id })
     ))
 }
