@@ -31,6 +31,9 @@ pub fn character_routes() -> Router<GlobalState> {
         .route("/character", post(create_character)
             .route_layer(middleware::from_fn(admin_only))
         )
+        .route("/character/:id", put(update_character)
+            .route_layer(middleware::from_fn(admin_only))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -200,5 +203,22 @@ async fn create_character(
         StatusCode::CREATED,
         "Character created successfully",
         json!(payload.id)
+    ))
+}
+
+async fn update_character(
+    State(state): State<GlobalState>,
+    Path(id): Path<CryptoHash>,
+    Json(mut payload): Json<Character>,
+) -> Result<AppSuccess, AppError> {
+    payload.clean()?;
+    payload.id = id;
+    payload.updated_at = get_current_timestamp();
+    payload.update(&state.db).await?;
+
+    Ok(AppSuccess::new(
+        StatusCode::OK,
+        "Character updated successfully",
+        json!({ "id": payload.id })
     ))
 }
