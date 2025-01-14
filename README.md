@@ -71,7 +71,7 @@ Ready-to-use components including:
 
 ## 📚 Documentation
 
-Visit our comprehensive documentation at [docs.vodaprotocol.xyz](https://docs.vodaprotocol.xyz) for:
+Visit our comprehensive documentation at [docs.voda.is](https://docs.voda.is) for:
 
 - Detailed API Reference
 - Tutorial Guides
