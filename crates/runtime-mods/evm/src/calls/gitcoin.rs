@@ -1,4 +1,4 @@
-use alloy_core::primitives::{address, bytes, Address, Bytes, U256};
+use alloy_core::primitives::{bytes, Address, Bytes, U256};
 use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
 use alloy_rpc_types::TransactionRequest;
@@ -37,7 +37,7 @@ fn build_data(recepient_id: Address, amount: U256) -> Vec<u8> {
 }
 
 pub async fn send_donation(
-    pk: &[u8; 32], recepient_id: Address, amount: U256
+    pk: &[u8; 32], gitcoin_address: Address, recepient_id: Address, amount: U256
 ) -> Result<CryptoHash> {
     let local_wallet = LocalWallet::from_private_key(pk);
     let data = build_data(recepient_id, amount);
@@ -48,7 +48,7 @@ pub async fn send_donation(
     };
 
     let tx = TransactionRequest::default()
-        .to(address!("1E18cdce56B3754c4Dca34CB3a7439C24E8363de"))
+        .to(gitcoin_address)
         .value(amount)
         .input(calldata.abi_encode().into());
 

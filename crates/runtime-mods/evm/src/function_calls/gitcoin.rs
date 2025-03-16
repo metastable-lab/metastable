@@ -7,7 +7,9 @@ use voda_common::{blake3_hash, EnvVars};
 use serde::{Deserialize, Serialize};
 use voda_runtime::ExecutableFunctionCall;
 
-use crate::{send_donation, to_wei};
+use crate::addresses::sei::GITCOIN_ADDRESS;
+use crate::to_wei;
+use crate::calls::gitcoin::send_donation;
 
 pub struct GitcoinEnv {
     pub private_key_salt: String,
@@ -25,7 +27,6 @@ impl EnvVars for GitcoinEnv {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitcoinFunctionCall {
@@ -56,7 +57,7 @@ impl ExecutableFunctionCall for GitcoinFunctionCall {
         let pk = blake3_hash(pk_salt.as_bytes());
 
         let recepient_id = Address::from_str(&self.recepient_id)?;
-        let tx_hash = send_donation(&pk.hash(), recepient_id, to_wei(100)).await?;
+        let tx_hash = send_donation(&pk.hash(), GITCOIN_ADDRESS, recepient_id, to_wei(100)).await?;
         Ok(tx_hash.to_string())
     }
 }

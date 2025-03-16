@@ -1,6 +1,7 @@
 mod wallet;
 mod env;
 mod client;
+pub mod addresses;
 
 mod function_calls;
 mod calls;
@@ -9,8 +10,7 @@ use alloy_core::primitives::U256;
 pub use env::EvmEnv;
 pub use client::{send_transaction, get_code, eth_call, get_balance, transfer, send_transaction_with_retry};
 pub use wallet::LocalWallet;
-pub use calls::gitcoin::send_donation;
-pub use calls::takara_lend::{deposit, withdraw, approve_to_takara_lend, lend_to_takara_lend};
+pub use calls::*;
 
 pub use function_calls::gitcoin::{GitcoinEnv, GitcoinFunctionCall};
 
