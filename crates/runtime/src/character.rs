@@ -9,7 +9,6 @@ pub struct CharacterMetadata {
     pub version: String,
 
     pub enable_voice: bool,
-    pub enable_chatroom: bool,
     pub enable_roleplay: bool,
 }
 
@@ -78,11 +77,11 @@ impl Character {
         // make sure the tag list contains either "male" or "female" or "multiple"
         // make sure it's the first tag
         // if not, move it to the front
-        let gender_tags = ["male", "female", "multiple"];
+        let gender_tags = ["male", "female", "multiple", "others"];
         let has_gender = self.tags.iter().any(|tag| gender_tags.contains(&tag.as_str()));
 
         if !has_gender {
-            bail!("Character must have a gender tag (male/female/multiple)");
+            bail!("Character must have a gender tag (male/female/multiple/others)");
         }
 
         // Find the gender tag and move it to front if it's not already there

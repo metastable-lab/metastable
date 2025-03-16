@@ -1,11 +1,13 @@
 use anyhow::Result;
-use async_openai::types::{ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs};
+use async_openai::types::{
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, 
+    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, 
+    ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessageArgs
+};
 
-use crate::{
-    character::Character, 
-    system_config::SystemConfig, 
-    user::User, 
-    core::{HistoryMessage, HistoryMessagePair}
+use voda_runtime::{
+    Character, SystemConfig, User, 
+    HistoryMessage, HistoryMessagePair
 };
 
 pub fn replace_placeholders(
@@ -100,6 +102,24 @@ pub fn prepare_chat_messages(
                         .expect("Message should build")
                 )
             );
+
+
+            for (_, response) in assistant_message
+                .function_call_request
+                .iter()
+                .zip(assistant_message.function_call_response.iter()) 
+            {
+                messages.push(
+                    ChatCompletionRequestMessage::Tool(
+                        ChatCompletionRequestToolMessageArgs::default()
+                            .content(
+                                ChatCompletionRequestToolMessageContent::Text(response.to_string())
+                            )
+                            .build()
+                            .expect("Message should build")
+                    )
+                );
+            }
         });
 
     messages.push(ChatCompletionRequestMessage::User(

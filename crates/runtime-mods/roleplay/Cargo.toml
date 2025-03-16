@@ -1,0 +1,17 @@
+[package]
+name = "voda-runtime-roleplay"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+voda-runtime = { path = "../../runtime" }
+voda-common = { path = "../../common" }
+voda-database = { path = "../../database" }
+
+serde.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true 
+async-openai.workspace = true
+reqwest.workspace = true
+tracing.workspace = true

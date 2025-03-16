@@ -1,3 +1,4 @@
+use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 
 use voda_common::{blake3_hash, CryptoHash};
@@ -18,6 +19,7 @@ pub struct SystemConfig {
     pub openai_temperature: f32,
     pub openai_max_tokens: u16,
 
+    pub functions: Vec<FunctionObject>,
     pub updated_at: u64,
 }
 

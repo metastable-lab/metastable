@@ -10,7 +10,6 @@ voda-database = { path = "../database" }
 async-openai.workspace = true
 serde.workspace = true
 anyhow.workspace = true
-reqwest.workspace = true
 tracing.workspace = true
 mongodb.workspace = true
 futures.workspace = true

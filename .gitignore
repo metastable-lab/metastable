@@ -118,3 +118,7 @@ vendor/
 # Custom project files
 notes.md
 TODO.md
+
+# Exclude all files in scripts/src/bin except placeholder.rs
+/scripts/src/bin/*
+!/scripts/src/bin/placeholder.rs

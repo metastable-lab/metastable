@@ -1,98 +1,99 @@
 use anyhow::anyhow;
 use axum::{
-    extract::{Path, Query, State}, 
-    http::StatusCode, middleware,
-    routing::{delete, get, post, put}, 
-    Json, Router
+    extract::{Path, Query, State}, http::StatusCode, middleware, routing::{delete, get, post, put}, Extension, Json, Router
 };
 use voda_common::{get_current_timestamp, CryptoHash};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use voda_database::{doc, MongoDbObject};
-use voda_runtime::character::Character;
+use voda_runtime::{Character, ExecutableFunctionCall, RuntimeClient, User, UserRole};
 
-use crate::middleware::admin_only;
-use crate::global_state::GlobalState;
+use crate::middleware::{admin_only, authenticate};
 use crate::response::{AppError, AppSuccess};
 
-pub fn character_routes() -> Router<GlobalState> {
+pub fn character_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
     Router::new()
-        .route("/characters", get(list_characters))
+        .route("/characters", get(list_characters::<S, F>))
+        .route("/characters/count", get(list_characters_count::<S, F>))
+        .route("/character/{id}", get(get_character::<S, F>))
+
         .route("/characters/with_filters", 
-            get(list_characters_with_filters)
+            get(list_characters_with_filters::<S, F>)
             .route_layer(middleware::from_fn(admin_only))
         )
         .route("/characters/with_filters/count", 
-            get(list_characters_with_filters_count)
-            .route_layer(middleware::from_fn(admin_only))
-        )
-        .route("/characters/count", get(list_characters_count))
-        .route("/character/:id", get(get_character))
-        .route("/character", post(create_character)
-            .route_layer(middleware::from_fn(admin_only))
-        )
-        .route("/character/:id", put(update_character)
-            .route_layer(middleware::from_fn(admin_only))
-        )
-        .route("/character/:id", delete(delete_character)
+            get(list_characters_with_filters_count::<S, F>)
             .route_layer(middleware::from_fn(admin_only))
         )
 
-        .route("/character/status/:id", post(set_character_status)
-            .route_layer(middleware::from_fn(admin_only))
+        .route("/character", post(create_character::<S, F>)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/character/{id}", put(update_character::<S, F>)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+        .route("/character/{id}", delete(delete_character::<S, F>)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+        
+        .route("/character/status/{id}", post(set_character_status::<S, F>)
+            .route_layer(middleware::from_fn(authenticate))
         )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListCharactersQuery {
-    only_roleplay: Option<bool>,
-    only_chatroom: Option<bool>,
-    limit: Option<u64>,
-    offset: Option<u64>,
+    limit: Option<u64>, offset: Option<u64>,
 }
-
-async fn list_characters(
-    State(state): State<GlobalState>,
+async fn list_characters<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
     Query(query): Query<ListCharactersQuery>,
 ) -> Result<AppSuccess, AppError> {
     let limit = query.limit.unwrap_or(10);
     let offset = query.offset.unwrap_or(0);
 
-    let mut filter = doc! {};
-
-    if query.only_roleplay.unwrap_or(false) || query.only_chatroom.unwrap_or(false) {
-        let mut or_conditions = Vec::new();
-        
-        if query.only_roleplay.unwrap_or(false) {
-            or_conditions.push(doc! { "metadata.enable_roleplay": true });
-        }
-        
-        if query.only_chatroom.unwrap_or(false) {
-            or_conditions.push(doc! { "metadata.enable_chatroom": true });
-        }
-        
-        filter.insert("$or", or_conditions);
-    }
-
+    let filter = doc! { "metadata.enable_roleplay": true };
     let chars = Character::select_many(
-        &state.db, filter, Some(limit as i64), Some(offset)
+        &state.get_db(), filter, Some(limit as i64), Some(offset)
     ).await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(chars)))
+}
+async fn list_characters_count<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+) -> Result<AppSuccess, AppError> {
+    let filter = doc! { "metadata.enable_roleplay": true };
+    let count = Character::total_count(&state.get_db(), filter).await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
+        "count": count
+    })))
+}
+async fn get_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+    Path(id): Path<CryptoHash>,
+) -> Result<AppSuccess, AppError> {
+    let character = Character::select_one_by_index(&state.get_db(), &id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+
+    Ok(AppSuccess::new(
+        StatusCode::OK, 
+        "Character fetched successfully", 
+        json!(character)
+    ))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListCharactersWithFiltersQuery {
     has_image: Option<bool>,
     has_roleplay_enabled: Option<bool>,
-    has_chatroom_enabled: Option<bool>,
 
     limit: Option<u64>,
     offset: Option<u64>,
 }
-
-async fn list_characters_with_filters(
-    State(state): State<GlobalState>,
+async fn list_characters_with_filters<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
 ) -> Result<AppSuccess, AppError> {
     let limit = query.limit.unwrap_or(10);
@@ -111,22 +112,14 @@ async fn list_characters_with_filters(
         filter.insert("metadata.enable_roleplay", has_roleplay_enabled);
     }
 
-    if let Some(has_chatroom_enabled) = query.has_chatroom_enabled {
-        filter.insert("metadata.enable_chatroom", has_chatroom_enabled);
-    }
-
     let characters = Character::select_many(
-        &state.db, 
-        filter, 
-        Some(limit as i64), 
-        Some(offset)
+        &state.get_db(),  filter, Some(limit as i64), Some(offset)
     ).await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(characters)))
 }
-
-async fn list_characters_with_filters_count(
-    State(state): State<GlobalState>,
+async fn list_characters_with_filters_count<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
 ) -> Result<AppSuccess, AppError> {
     let mut filter = doc! {};
@@ -142,69 +135,37 @@ async fn list_characters_with_filters_count(
         filter.insert("metadata.enable_roleplay", true);
     }
 
-    if let Some(true) = query.has_chatroom_enabled {
-        filter.insert("metadata.enable_chatroom", true);
-    }
-
-    let count = Character::total_count(&state.db, filter).await?;
-
+    let count = Character::total_count(&state.get_db(), filter).await?;
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
         "count": count
     })))
 }
 
-
-async fn list_characters_count(
-    State(state): State<GlobalState>,
-    Query(query): Query<ListCharactersQuery>,
-) -> Result<AppSuccess, AppError> {
-    let mut filter = doc! {};
-
-    if query.only_roleplay.unwrap_or(false) || query.only_chatroom.unwrap_or(false) {
-        let mut or_conditions = Vec::new();
-        
-        if query.only_roleplay.unwrap_or(false) {
-            or_conditions.push(doc! { "metadata.enable_roleplay": true });
-        }
-        
-        if query.only_chatroom.unwrap_or(false) {
-            or_conditions.push(doc! { "metadata.enable_chatroom": true });
-        }
-        
-        filter.insert("$or", or_conditions);
-    }
-
-    let count = Character::total_count(&state.db, filter).await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
-        "count": count
-    })))
-}
-
-async fn get_character(
-    State(state): State<GlobalState>,
-    Path(id): Path<CryptoHash>,
-) -> Result<AppSuccess, AppError> {
-    let character = Character::select_one_by_index(&state.db, &id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
-
-    Ok(AppSuccess::new(
-        StatusCode::OK, 
-        "Character fetched successfully", 
-        json!(character)
-    ))
-}
-
-async fn create_character(
-    State(state): State<GlobalState>,
+async fn create_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+    Extension(user_id): Extension<CryptoHash>,
     Json(mut payload): Json<Character>,
 ) -> Result<AppSuccess, AppError> {
-    payload.clean()?;
-    payload.published_at = get_current_timestamp();
-    payload.created_at = get_current_timestamp();
-    payload.updated_at = get_current_timestamp();
+    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
 
-    payload.clone().save(&state.db).await?;
+    if user.role == UserRole::Admin || payload.metadata.creator == user_id.to_string() {
+        if user.role != UserRole::Admin {
+            User::pay_and_update(&state.get_db(), &user_id, 100).await?;
+        }
+
+        payload.clean()?;
+        payload.published_at = get_current_timestamp();
+        payload.created_at = get_current_timestamp();
+        payload.updated_at = get_current_timestamp();
+
+        payload.clone().save(&state.get_db()).await?;
+    } else {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN, 
+            anyhow!("You are not authorized to create a character")
+        ));
+    }
 
     Ok(AppSuccess::new(
         StatusCode::CREATED,
@@ -213,15 +174,29 @@ async fn create_character(
     ))
 }
 
-async fn update_character(
-    State(state): State<GlobalState>,
+async fn update_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+    Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
     Json(mut payload): Json<Character>,
 ) -> Result<AppSuccess, AppError> {
-    payload.clean()?;
-    payload.id = id;
-    payload.updated_at = get_current_timestamp();
-    payload.update(&state.db).await?;
+    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+
+    let character = Character::select_one_by_index(&state.get_db(), &id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+
+    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+        payload.clean()?;
+        payload.id = id;
+        payload.updated_at = get_current_timestamp();
+        payload.update(&state.get_db()).await?;
+    } else {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN, 
+            anyhow!("You are not authorized to update this character")
+        ));
+    }
 
     Ok(AppSuccess::new(
         StatusCode::OK,
@@ -230,15 +205,25 @@ async fn update_character(
     ))
 }
 
-async fn delete_character(
-    State(state): State<GlobalState>,
+async fn delete_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+    Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    let character = Character::select_one_by_index(&state.db, &id).await?
+    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+
+    let character = Character::select_one_by_index(&state.get_db(), &id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
-    character.delete(&state.db).await?;
-
+    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+        character.delete(&state.get_db()).await?;
+    } else {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN, 
+            anyhow!("You are not authorized to delete this character")
+        ));
+    }
     Ok(AppSuccess::new(
         StatusCode::OK, 
         "Character deleted successfully", 
@@ -249,21 +234,29 @@ async fn delete_character(
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SetCharacterStatusPayload {
     roleplay_status: Option<bool>,
-    chatroom_status: Option<bool>,
 }
-
-async fn set_character_status(
-    State(state): State<GlobalState>,
+async fn set_character_status<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+    State(state): State<S>,
+    Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
     Json(payload): Json<SetCharacterStatusPayload>,
 ) -> Result<AppSuccess, AppError> {
-    let mut character = Character::select_one_by_index(&state.db, &id).await?
+    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+
+    let mut character = Character::select_one_by_index(&state.get_db(), &id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
-    character.metadata.enable_roleplay = payload.roleplay_status.unwrap_or(character.metadata.enable_roleplay);
-    character.metadata.enable_chatroom = payload.chatroom_status.unwrap_or(character.metadata.enable_chatroom);
-    character.updated_at = get_current_timestamp();
-    character.update(&state.db).await?;
+    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+        character.metadata.enable_roleplay = payload.roleplay_status.unwrap_or(character.metadata.enable_roleplay);
+        character.updated_at = get_current_timestamp();
+        character.update(&state.get_db()).await?;
+    } else {
+        return Err(AppError::new(
+            StatusCode::FORBIDDEN, 
+            anyhow!("You are not authorized to update this character")
+        ));
+    }
 
     Ok(AppSuccess::new(StatusCode::OK, "Character status updated successfully", json!(())))
 }

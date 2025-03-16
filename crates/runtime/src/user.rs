@@ -1,10 +1,29 @@
-use std::collections::HashMap;
-
 use anyhow::{anyhow, Result};
 use async_openai::types::CompletionUsage;
+use mongodb::Database;
 use serde::{Deserialize, Serialize};
 use voda_common::{get_current_timestamp, CryptoHash};
 use voda_database::MongoDbObject;
+
+pub const BALANCE_CAP: u64 = 500;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum UserRole {
+    Admin,
+    #[default]
+    User,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UserProvider {
+    #[default]
+    Telegram,
+    Google,
+    X,
+    CryptoWallet,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
@@ -12,17 +31,29 @@ pub struct User {
     pub id: CryptoHash,
     pub user_id: String,
 
+    pub role: UserRole,
+    pub provider: UserProvider,
+    pub network_name: Option<String>,
+
     pub profile: UserProfile,
     pub points: UserPoints,
     pub usage: Vec<UserUsage>,
+
+    pub last_active: u64,
+    pub created_at: u64,
+}
+
+impl MongoDbObject for User {
+    const COLLECTION_NAME: &'static str = "users";
+    type Error = anyhow::Error;
+    
+    fn get_id(&self) -> CryptoHash { self.id.clone() }
+    fn populate_id(&mut self) { self.id = self.profile.id.clone(); }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserProfile {
     pub id: CryptoHash,
-
-    pub created_at: u64,
-    pub updated_at: u64,
 
     pub user_personality: Vec<String>,
 
@@ -35,25 +66,21 @@ pub struct UserProfile {
     pub bio: Option<String>,
 }
 
+
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UserPoints {
-    pub paid_avaliable_balance: u64,
-    pub paid_pending_balance: u64, // balance pending confirmation
+    #[serde(rename = "_id")]
+    pub id: CryptoHash,
+    
+    pub running_claimed_balance: u64,
+    pub running_purchased_balance: u64,
+    pub running_misc_balance: u64,
 
-    pub free_claimed_balance: u64, // balance from FREE rewards or campaigns
-    pub redeemed_balance: HashMap<CryptoHash, u64>, // balance redeemed for a specific campaign
+    pub balance_usage: u64,
 
-    // NOTE: to better keep track of balance source, 
-    // we broke down the avaliable balance into three parts:
-    // paid_avaliable_balance + free_claimed_balance + SUM(redeemed_balance)
-
-    pub paid_balance_updated_at: u64,
-    pub free_claimed_balance_updated_at: u64,
-    pub redeemed_balance_updated_at: u64,
-
-    pub total_burnt_balance: u64,
+    pub free_balance_claimed_at: u64,
+    pub last_balance_deduction_at: u64,
 }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserUsage {
     pub created_at: u64,
@@ -72,40 +99,49 @@ impl UserUsage {
 }
 
 impl UserPoints {
+    pub fn new(user_id: CryptoHash) -> Self {
+        let mut default_user_points = Self::default();
+        default_user_points.id = user_id;
+        default_user_points
+    }
+
     /* BALANCE ADDITION */
     // Rate limit: ONE Claim per day
+    // running balance sum should be <= BALANCE_CAP
+    // if over BALANCE_CAP, reduce free balance first
+    // don't reduce paid balance
     pub fn try_claim_free_balance(&mut self, amount: u64) -> Result<()> {
         let current_timestamp = get_current_timestamp();
         // ONE Claim per day
-        if current_timestamp - self.free_claimed_balance_updated_at < 24 * 60 * 60 {
+        if current_timestamp - self.free_balance_claimed_at < 24 * 60 * 60 {
             return Err(anyhow!("Too frequent to claim free balance"));
         }
 
-        self.free_claimed_balance += amount;
-        self.free_claimed_balance_updated_at = current_timestamp;
+        self.running_claimed_balance += amount;
+        self.free_balance_claimed_at = current_timestamp;
+
+        // capping logic - no errors
+            if amount + 
+            self.running_claimed_balance + 
+            self.running_purchased_balance + 
+            self.running_misc_balance > BALANCE_CAP 
+        {
+            if self.running_purchased_balance + self.running_misc_balance < BALANCE_CAP {
+                self.running_claimed_balance = BALANCE_CAP - self.running_purchased_balance - self.running_misc_balance;
+            } else {
+                // noop
+            }
+        }
+
         Ok(())
     }
 
-    // No Rate Limit
-    pub fn redeem_balance(&mut self, campaign_id: &CryptoHash, amount: u64) {
-        if !self.redeemed_balance.contains_key(campaign_id) {
-            self.redeemed_balance.insert(campaign_id.clone(), amount);
-        } else {
-            *self.redeemed_balance.get_mut(campaign_id).unwrap() += amount;
-        }
-
-        self.redeemed_balance_updated_at = get_current_timestamp();
+    pub fn purchase_balance(&mut self, amount: u64) {
+        self.running_purchased_balance += amount;
     }
 
-    pub fn record_paid_balance_update(&mut self, amount: u64) {
-        self.paid_pending_balance += amount;
-        self.paid_balance_updated_at = get_current_timestamp();
-    }
-
-    pub fn record_paid_balance_confirmation(&mut self, amount: u64) {
-        self.paid_pending_balance -= amount;
-        self.paid_avaliable_balance += amount;
-        self.paid_balance_updated_at = get_current_timestamp();
+    pub fn add_misc_balance(&mut self, amount: u64) {
+        self.running_misc_balance += amount;
     }
 
     /* BALANCE SUBTRACTION */
@@ -115,33 +151,25 @@ impl UserPoints {
         let current_timestamp = get_current_timestamp();
 
         // Try free_claimed_balance first
-        if self.free_claimed_balance > 0 {
-            let deduct = remaining.min(self.free_claimed_balance);
-            self.free_claimed_balance -= deduct;
-            self.free_claimed_balance_updated_at = current_timestamp;
+        if self.running_claimed_balance > 0 {
+            let deduct = remaining.min(self.running_claimed_balance);
+            self.running_claimed_balance -= deduct;
+            self.last_balance_deduction_at = current_timestamp;
             remaining -= deduct;
         }
 
-        // Try redeemed_balance next
+        // Try misc_balance next
         if remaining > 0 {
-            let mut redeemed_modified = false;
-            for balance in self.redeemed_balance.values_mut() {
-                if remaining == 0 { break; }
-                let deduct = remaining.min(*balance);
-                *balance -= deduct;
-                remaining -= deduct;
-                redeemed_modified = true;
-            }
-            if redeemed_modified {
-                self.redeemed_balance_updated_at = current_timestamp;
-            }
+            let deduct = remaining.min(self.running_misc_balance);
+            self.running_misc_balance -= deduct;
+            remaining -= deduct;
         }
 
         // Finally try paid_avaliable_balance
         if remaining > 0 {
-            if self.paid_avaliable_balance >= remaining {
-                self.paid_avaliable_balance -= remaining;
-                self.paid_balance_updated_at = current_timestamp;
+            if self.running_purchased_balance >= remaining {
+                self.running_purchased_balance -= remaining;
+                self.last_balance_deduction_at = current_timestamp;
                 remaining = 0;
             }
         }
@@ -151,13 +179,13 @@ impl UserPoints {
             *self = self_clone;
             false
         } else {
-            self.total_burnt_balance += amount;
+            self.balance_usage += amount;
             true
         }
     }
 
     pub fn get_available_balance(&self) -> u64 {
-        self.paid_avaliable_balance + self.free_claimed_balance + self.redeemed_balance.values().sum::<u64>()
+        self.running_purchased_balance + self.running_claimed_balance + self.running_misc_balance
     }
 }
 
@@ -166,17 +194,55 @@ impl User {
         Self {
             id: profile.id.clone(),
             user_id,
+            role: UserRole::default(),
+            provider: UserProvider::default(),
+            network_name: None,
+
             profile,
             points: UserPoints::default(),
             usage: Vec::new(),
+
+            last_active: get_current_timestamp(),
+            created_at: get_current_timestamp(),
         }
     }
-}
 
-impl MongoDbObject for User {
-    const COLLECTION_NAME: &'static str = "users";
-    type Error = anyhow::Error;
-    
-    fn get_id(&self) -> CryptoHash { self.id.clone() }
-    fn populate_id(&mut self) { self.id = self.profile.id.clone(); }
+    // High Level Wrapper
+    pub async fn pay_and_update(db: &Database, user_id: &CryptoHash, amount: u64) -> Result<()> {
+        let mut user = Self::select_one_by_index(db, user_id).await?
+            .ok_or(anyhow!("User not found"))?;
+        if !user.points.pay(amount) {
+            return Err(anyhow!("Insufficient points"));
+        }
+        user.save_or_update(db).await?;
+        Ok(())
+    }
+
+    pub async fn claim_free_balance(db: &Database, user_id: &CryptoHash, amount: u64) -> Result<()> {
+        let mut user = Self::select_one_by_index(db, user_id).await?
+            .ok_or(anyhow!("User not found"))?;
+        user.points.try_claim_free_balance(amount)?;
+        user.save_or_update(db).await?;
+        Ok(())
+    }
+
+    pub async fn record_purchase_balance(db: &Database, user_id: &CryptoHash, amount: u64) -> Result<()> {
+        let mut user = Self::select_one_by_index(db, user_id).await?
+            .ok_or(anyhow!("User not found"))?;
+        user.points.purchase_balance(amount);
+        user.save_or_update(db).await?;
+        Ok(())
+    }
+
+    pub async fn record_misc_balance(db: &Database, user_id: &CryptoHash, amount: u64) -> Result<()> {
+        let mut user = Self::select_one_by_index(db, user_id).await?
+            .ok_or(anyhow!("User not found"))?;
+        user.points.add_misc_balance(amount);
+        user.save_or_update(db).await?;
+        Ok(())
+    }
+
+    pub fn add_usage(&mut self, usage: CompletionUsage, model_name: String) {
+        self.usage.push(UserUsage::new(model_name, usage));
+    }
 }
