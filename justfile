@@ -20,4 +20,4 @@ export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
     cargo run --package voda-runtime-evm --bin takara_lend
 
 @api:
-    cargo run --package voda-service-api --bin server
+    cargo run --package voda-service --bin voda_service --release

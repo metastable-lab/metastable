@@ -18,6 +18,8 @@ members = [
     "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
 
+    "services/voda-service",
+
     "scripts",
 ]
 resolver = "2"

@@ -8,9 +8,10 @@ use voda_runtime::FunctionExecutor;
 use voda_runtime_roleplay::RoleplayRuntimeClient;
 use voda_service_api::{
     character_routes, misc_routes, setup_tracing, system_config_routes, user_routes, 
-    runtime_routes
+    runtime_routes, voice_routes
 };
 
+use voda_service::voda_routes;
 use voda_runtime_evm::GitcoinFunctionCall;
 define_function_types! {
     Gitcoin(GitcoinFunctionCall, "gitcoin_allocate_grant")
@@ -34,11 +35,18 @@ async fn main() -> Result<()> {
     });
 
     let app = Router::new()
+
+        // generic routes
         .merge(character_routes())
         .merge(user_routes())
         .merge(misc_routes())
         .merge(system_config_routes())
         .merge(runtime_routes())
+        .merge(voice_routes())
+
+        // voda routes
+        .merge(voda_routes())
+
         .layer(cors)
         .layer(trace)
         .with_state(client);
