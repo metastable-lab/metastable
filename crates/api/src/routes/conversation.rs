@@ -8,45 +8,45 @@ use axum::{
 };
 use voda_common::CryptoHash;
 use voda_database::MongoDbObject;
-use voda_runtime::{Character, ConversationMemory, ExecutableFunctionCall, RuntimeClient, User};
+use voda_runtime::{Character, ConversationMemory, RuntimeClient, User};
 
 use crate::{middleware::authenticate, response::{AppError, AppSuccess}};
 
-pub fn conversation_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
+pub fn conversation_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
-        .route("/conversations/public/{character_id}",get(get_public_conversation_history::<S, F>))
-        .route("/conversation/public/{conversation_id}",get(get_public_conversation::<S, F>))
+        .route("/conversations/public/{character_id}",get(get_public_conversation_history::<S>))
+        .route("/conversation/public/{conversation_id}",get(get_public_conversation::<S>))
 
         .route("/conversation/{conversation_id}",
-            get(get_conversation_history::<S, F>)
+            get(get_conversation_history::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
         // profile
         .route("/conversations/character_list",
-            get(get_character_list::<S, F>)
+            get(get_character_list::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
         .route("/conversations/{character_id}",
-            get(get_conversations::<S, F>)
+            get(get_conversations::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
         .route("/conversations/{character_id}",
-            post(new_chat::<S, F>)
+            post(new_chat::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
         .route("/conversation/{conversation_id}",
-            delete(delete_chat::<S, F>)
+            delete(delete_chat::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ListConversationHistoryQuery { limit: Option<u64>, offset: Option<u64> }
-async fn get_public_conversation_history<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_public_conversation_history<S: RuntimeClient>(
     State(state): State<S>,
     Path(character_id): Path<CryptoHash>,
     Query(payload): Query<ListConversationHistoryQuery>,
@@ -58,7 +58,7 @@ async fn get_public_conversation_history<S: RuntimeClient<F>, F: ExecutableFunct
     ).await?;
     Ok(AppSuccess::new(StatusCode::OK, "Public conversation history fetched successfully", json!(conversations)))
 }
-async fn get_public_conversation<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_public_conversation<S: RuntimeClient>(
     State(state): State<S>,
     Path(conversation_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
@@ -66,7 +66,7 @@ async fn get_public_conversation<S: RuntimeClient<F>, F: ExecutableFunctionCall>
     Ok(AppSuccess::new(StatusCode::OK, "Public conversation fetched successfully", json!(conversation)))
 }
 
-async fn get_conversation_history<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_conversation_history<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,
@@ -91,7 +91,7 @@ pub struct CharacterListBrief {
     pub count: usize,
 }
 
-async fn get_character_list<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_character_list<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
@@ -118,7 +118,7 @@ async fn get_character_list<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetConversationsRequest { pub limit: Option<u64> }
-async fn get_conversations<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_conversations<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(character_id): Path<CryptoHash>,
@@ -133,7 +133,7 @@ async fn get_conversations<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     })))
 }
 
-async fn new_chat<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn new_chat<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(character_id): Path<CryptoHash>,
@@ -155,7 +155,7 @@ async fn new_chat<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn delete_chat<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn delete_chat<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,

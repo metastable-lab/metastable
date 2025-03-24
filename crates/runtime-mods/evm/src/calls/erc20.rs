@@ -1,13 +1,11 @@
 use alloy_core::primitives::{Address, U256};
 use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
-use alloy_rpc_types::TransactionRequest;
 use anyhow::Result;
-use voda_common::CryptoHash;
 
-use crate::client::send_transaction_with_retry;
 use crate::eth_call;
-use crate::wallet::LocalWallet;
+
+use super::RawTransaction;
 
 sol! {
     #[derive(Debug)]
@@ -84,42 +82,34 @@ sol! {
     }    
 }
 
-pub async fn approve(
-    pk: &[u8; 32], token_address: Address,
-    guy: Address, amount: U256
-) -> Result<CryptoHash> {
-    let local_wallet = LocalWallet::from_private_key(pk);
-    let tx = TransactionRequest::default()
-        .to(token_address)
-        .value(U256::from(0))
-        .input(IERC20::approveCall { spender: guy, value: amount }.abi_encode().into());
-
-    let tx_hash = send_transaction_with_retry(tx, &local_wallet).await?;
-    Ok(tx_hash)
+pub fn approve(
+    token_address: Address, guy: Address, amount: U256
+) -> Result<RawTransaction> {
+    Ok(RawTransaction {
+        to: token_address,
+        value: U256::from(0),
+        data: IERC20::approveCall { spender: guy, value: amount }.abi_encode().into(),
+    })
 }
 
-pub async fn transfer(
-    pk: &[u8; 32], token_address: Address,
-    to: Address, amount: U256
-) -> Result<CryptoHash> {
-    let local_wallet = LocalWallet::from_private_key(pk);
-    let tx = TransactionRequest::default()
-        .to(token_address)
-        .value(U256::from(0))
-        .input(IERC20::transferCall { to, value: amount }.abi_encode().into());
-
-    let tx_hash = send_transaction_with_retry(tx, &local_wallet).await?;
-    Ok(tx_hash)
+pub fn transfer(
+    token_address: Address, to: Address, amount: U256
+) -> Result<RawTransaction> {
+    Ok(RawTransaction {
+        to: token_address,
+        value: U256::from(0),
+        data: IERC20::transferCall { to, value: amount }.abi_encode().into(),
+    })
 }
 
 pub async fn get_balance_of_token(
     token_address: Address, address: Address
 ) -> Result<U256> {
-    let call = TransactionRequest::default()
-        .to(token_address)
-        .input(IERC20::balanceOfCall { account: address }.abi_encode().into());
-
-    let balance_bytes: [u8; 32] = eth_call(call)
+    let balance_bytes: [u8; 32] = eth_call(RawTransaction {
+        to: token_address,
+        value: U256::from(0),
+        data: IERC20::balanceOfCall { account: address }.abi_encode().into(),
+    })
         .await?
         .try_into()
         .map_err(|_| anyhow::anyhow!("Failed to convert balance to bytes"))?;

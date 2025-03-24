@@ -15,23 +15,23 @@ use crate::middleware::{authenticate, admin_only};
 use crate::response::{AppError, AppSuccess};
 
 use voda_common::encrypt;
-use voda_runtime::{ExecutableFunctionCall, RuntimeClient, User, UserProfile, UserProvider};
+use voda_runtime::{RuntimeClient, User, UserProfile, UserProvider};
 
 pub const AMOUNT_PER_CLAIM: u64 = 100;
 
-pub fn user_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
+pub fn user_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
         // TODO: deprecate this
         .route("/token",post(generate_token)
             .route_layer(middleware::from_fn(admin_only))
         )
-        .route("/user", post(save_user::<S, F>)
+        .route("/user", post(save_user::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/user/{user_id}", get(get_user::<S, F>))
-        .route("/users", post(get_users::<S, F>))
-        .route("/user/claim_points/{user_id}", post(claim_free_points::<S, F>))
+        .route("/user/{user_id}", get(get_user::<S>))
+        .route("/users", post(get_users::<S>))
+        .route("/user/claim_points/{user_id}", post(claim_free_points::<S>))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,7 +44,7 @@ struct UserPayload {
     profile_photo: Option<String>,
 }
 
-async fn save_user<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn save_user<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Json(payload): Json<UserPayload>,
@@ -105,7 +105,7 @@ async fn save_user<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn get_user<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_user<S: RuntimeClient>(
     State(state): State<S>,
     Path(user_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
@@ -123,7 +123,7 @@ async fn get_user<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
 struct GetUsersRequest {
     user_ids: Vec<String>,
 }
-async fn get_users<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_users<S: RuntimeClient>(
     State(state): State<S>,
     Json(request): Json<GetUsersRequest>,
 ) -> Result<AppSuccess, AppError> {
@@ -149,7 +149,7 @@ async fn generate_token(
     ))
 }
 
-async fn claim_free_points<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn claim_free_points<S: RuntimeClient>(
     State(state): State<S>,
     Path(user_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {

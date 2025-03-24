@@ -6,33 +6,33 @@ use axum::{extract::State, http::StatusCode, middleware, Router};
 use serde_json::json;
 use voda_common::CryptoHash;
 use voda_database::{doc, MongoDbObject};
-use voda_runtime::{ExecutableFunctionCall, RuntimeClient, SystemConfig};
+use voda_runtime::{RuntimeClient, SystemConfig};
 use crate::middleware::admin_only;
 use crate::response::{AppError, AppSuccess};
 
-pub fn system_config_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
+pub fn system_config_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
         .route("/system_config", 
-            get(get_system_config::<S, F>)
+            get(get_system_config::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
 
         .route("/system_config", 
-            post(create_new_system_config::<S, F>)
+            post(create_new_system_config::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
         .route("/system_config", 
-            put(update_system_config::<S, F>)
+            put(update_system_config::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
         
         .route("/system_config/{id}", 
-            delete(delete_system_config::<S, F>)
+            delete(delete_system_config::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
 }
 
-async fn get_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_system_config<S: RuntimeClient>(
     State(state): State<S>,
 ) -> Result<AppSuccess, AppError> {
     let system_configs = SystemConfig::select_many_simple(&state.get_db(), doc! {}).await?;
@@ -43,7 +43,7 @@ async fn get_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn update_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn update_system_config<S: RuntimeClient>(
     State(state): State<S>,
     Json(payload): Json<SystemConfig>,
 ) -> Result<AppSuccess, AppError> {
@@ -55,7 +55,7 @@ async fn update_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn create_new_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn create_new_system_config<S: RuntimeClient>(
     State(state): State<S>,
     Json(payload): Json<SystemConfig>,
 ) -> Result<AppSuccess, AppError> {
@@ -67,7 +67,7 @@ async fn create_new_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall
     ))
 }
 
-async fn delete_system_config<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn delete_system_config<S: RuntimeClient>(
     State(state): State<S>,
     Path(id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use anyhow::{anyhow, Result};
 use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionToolArgs, 
@@ -9,26 +7,27 @@ use async_openai::{
     config::OpenAIConfig, types::CreateChatCompletionRequestArgs, Client
 };
 
+use tokio::sync::{mpsc, oneshot};
 use voda_common::{blake3_hash, EnvVars};
 use voda_database::{get_db, Database, MongoDbEnv, MongoDbObject};
 use voda_runtime::{
-    Character, ConversationMemory, ExecutableFunctionCall, 
-    HistoryMessage, MessageRole, MessageType, RuntimeClient, 
-    SystemConfig, User
+    Character, ConversationMemory, HistoryMessage, MessageRole, MessageType, RuntimeClient, SystemConfig, User
 };
 
 use super::env::RoleplayEnv;
 use super::message::prepare_chat_messages;
 
 #[derive(Clone)]
-pub struct RoleplayRuntimeClient<F: ExecutableFunctionCall> {
+pub struct RoleplayRuntimeClient {
     db: Database,
     client: Client<OpenAIConfig>,
-    _phantom: PhantomData<F>,
+    executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
 }
 
-impl<F: ExecutableFunctionCall> RoleplayRuntimeClient<F> {
-    pub async fn new() -> Self {
+impl RoleplayRuntimeClient {
+    pub async fn new(
+        executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
+    ) -> Self {
         let env = MongoDbEnv::load();
         let db = get_db(&env.get_env_var("MONGODB_URI"), "voda_is").await;
 
@@ -43,7 +42,7 @@ impl<F: ExecutableFunctionCall> RoleplayRuntimeClient<F> {
             Default::default()
         );
 
-        Self { client, db, _phantom: PhantomData }
+        Self { client, db, executor }
     }
 
     pub async fn send_request(
@@ -103,8 +102,7 @@ impl<F: ExecutableFunctionCall> RoleplayRuntimeClient<F> {
 
         let mut maybe_results = Vec::new();
         for maybe_function in maybe_function_call.iter() {
-            let fc = F::from_function_call(maybe_function.clone())?;
-            let result = fc.execute().await?;
+            let result = self.execute_function_call(maybe_function).await?;
             maybe_results.push(result);
         }
 
@@ -116,9 +114,11 @@ impl<F: ExecutableFunctionCall> RoleplayRuntimeClient<F> {
     }
 }
 
-impl<F: ExecutableFunctionCall> RuntimeClient<F> for RoleplayRuntimeClient<F> {
+#[async_trait::async_trait]
+impl RuntimeClient for RoleplayRuntimeClient {
     fn get_price(&self) -> u64 { 1 }
     fn get_db(&self) -> &Database { &self.db }
+
     async fn run(
         &self, 
         character: &Character, user: &mut User, system_config: &SystemConfig,
@@ -192,5 +192,14 @@ impl<F: ExecutableFunctionCall> RuntimeClient<F> for RoleplayRuntimeClient<F> {
             .ok_or(anyhow!("System config not found"))?;
 
         Ok(config)
+    }
+
+    async fn execute_function_call(
+        &self, call: &FunctionCall
+    ) -> Result<String> {
+        let (tx, rx) = oneshot::channel();
+        self.executor.send((call.clone(), tx)).await?;
+        let result = rx.await?;
+        result
     }
 }

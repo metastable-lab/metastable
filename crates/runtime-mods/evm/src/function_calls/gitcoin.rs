@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use voda_runtime::ExecutableFunctionCall;
 
 use crate::addresses::sei::GITCOIN_ADDRESS;
-use crate::to_wei;
+use crate::{send_transaction, to_wei, LocalWallet};
 use crate::calls::gitcoin::send_donation;
 
 pub struct GitcoinEnv {
@@ -55,9 +55,11 @@ impl ExecutableFunctionCall for GitcoinFunctionCall {
         let env = GitcoinEnv::load();
         let pk_salt = env.get_env_var("GITCOIN_PRIVATE_KEY_SALT");
         let pk = blake3_hash(pk_salt.as_bytes());
-
+        let local_wallet = LocalWallet::from_private_key(&pk.hash());
+        
         let recepient_id = Address::from_str(&self.recepient_id)?;
-        let tx_hash = send_donation(&pk.hash(), GITCOIN_ADDRESS, recepient_id, to_wei(100)).await?;
+        let tx = send_donation(GITCOIN_ADDRESS, recepient_id, to_wei(100)).await?;
+        let tx_hash = send_transaction(tx, &local_wallet).await?;
         Ok(tx_hash.to_string())
     }
 }

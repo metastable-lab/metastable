@@ -1,11 +1,11 @@
 use voda_common::{CryptoHash, EnvVars};
 
-use alloy_core::primitives::{Address, U256};
+use alloy_core::primitives::{bytes, Address, U256};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionRequest;
 use anyhow::Result;
 
-use crate::{env::EvmEnv, wallet::LocalWallet};
+use crate::{env::EvmEnv, wallet::LocalWallet, RawTransaction};
 
 pub async fn get_code(address: Address) -> Result<Vec<u8>> {
     let env = EvmEnv::load();
@@ -15,8 +15,14 @@ pub async fn get_code(address: Address) -> Result<Vec<u8>> {
     Ok(code.into())
 }
 
-pub async fn send_transaction(tx: TransactionRequest, wallet: &LocalWallet) -> Result<CryptoHash> {
+pub async fn send_transaction(tx: RawTransaction, wallet: &LocalWallet) -> Result<CryptoHash> {
     let env = EvmEnv::load();
+
+    let tx = TransactionRequest::default()
+        .to(tx.to)
+        .value(tx.value)
+        .input(tx.data.into());
+
     let provider = ProviderBuilder::new()
         .with_recommended_fillers()
         .wallet(wallet.into_alloy_wallet())
@@ -27,7 +33,7 @@ pub async fn send_transaction(tx: TransactionRequest, wallet: &LocalWallet) -> R
 }
 
 // send transaction with retry 
-pub async fn send_transaction_with_retry(tx: TransactionRequest, wallet: &LocalWallet) -> Result<CryptoHash> {
+pub async fn send_transaction_with_retry(tx: RawTransaction, wallet: &LocalWallet) -> Result<CryptoHash> {
     for _ in 0..50 {
         let tx_hash = send_transaction(tx.clone(), wallet).await;
         if tx_hash.is_ok() {
@@ -39,10 +45,14 @@ pub async fn send_transaction_with_retry(tx: TransactionRequest, wallet: &LocalW
     Err(anyhow::anyhow!("Failed to send transaction"))
 }
 
-pub async fn eth_call(tx: TransactionRequest) -> Result<Vec<u8>> {
+pub async fn eth_call(tx: RawTransaction) -> Result<Vec<u8>> {
     let env = EvmEnv::load();
     let provider = ProviderBuilder::new()
         .on_http(env.get_env_var("ETH_RPC_URL").parse()?);
+    let tx = TransactionRequest::default()
+        .to(tx.to)
+        .value(tx.value)
+        .input(tx.data.into());
     let result = provider.call(&tx).await?;
     Ok(result.into())
 }
@@ -66,10 +76,10 @@ pub async fn get_balance(address: Address) -> Result<u64> {
 
 pub async fn transfer(pk: &[u8; 32], to: Address, amount: U256) -> Result<CryptoHash> {
     let local_wallet = LocalWallet::from_private_key(pk);
-    let tx = TransactionRequest::default()
-        .to(to)
-        .value(amount);
-
-    let tx_hash = send_transaction_with_retry(tx, &local_wallet).await?;
+    let tx_hash = send_transaction_with_retry(RawTransaction {
+        to,
+        value: amount,
+        data: bytes!(""),
+    }, &local_wallet).await?;
     Ok(tx_hash)
 }

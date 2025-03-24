@@ -1,14 +1,13 @@
 use anyhow::Result;
+use async_openai::types::FunctionCall;
 use voda_database::Database;
 
-use crate::{ExecutableFunctionCall, SystemConfig};
+use crate::SystemConfig;
 
 use super::{Character, ConversationMemory, HistoryMessage, User};
 
-#[allow(async_fn_in_trait)]
-pub trait RuntimeClient<
-    F: ExecutableFunctionCall
->: Clone + Send + Sync + 'static {
+#[async_trait::async_trait]
+pub trait RuntimeClient: Clone + Send + Sync + 'static {
     fn get_price(&self) -> u64;
     fn get_db(&self) -> &Database;
 
@@ -27,4 +26,8 @@ pub trait RuntimeClient<
     async fn find_system_config_by_character(
         &self, character: &Character
     ) -> Result<SystemConfig>;
+
+    async fn execute_function_call(
+        &self, call: &FunctionCall
+    ) -> Result<String>;
 }

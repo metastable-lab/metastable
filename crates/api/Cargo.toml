@@ -27,3 +27,4 @@ base64.workspace = true
 rand.workspace = true
 hex.workspace = true
 tracing-subscriber.workspace = true
+async-trait.workspace = true

@@ -6,38 +6,38 @@ use voda_common::{get_current_timestamp, CryptoHash};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use voda_database::{doc, MongoDbObject};
-use voda_runtime::{Character, ExecutableFunctionCall, RuntimeClient, User, UserRole};
+use voda_runtime::{Character, RuntimeClient, User, UserRole};
 
 use crate::middleware::{admin_only, authenticate};
 use crate::response::{AppError, AppSuccess};
 
-pub fn character_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
+pub fn character_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
-        .route("/characters", get(list_characters::<S, F>))
-        .route("/characters/count", get(list_characters_count::<S, F>))
-        .route("/character/{id}", get(get_character::<S, F>))
+        .route("/characters", get(list_characters::<S>))
+        .route("/characters/count", get(list_characters_count::<S>))
+        .route("/character/{id}", get(get_character::<S>))
 
         .route("/characters/with_filters", 
-            get(list_characters_with_filters::<S, F>)
+            get(list_characters_with_filters::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
         .route("/characters/with_filters/count", 
-            get(list_characters_with_filters_count::<S, F>)
+            get(list_characters_with_filters_count::<S>)
             .route_layer(middleware::from_fn(admin_only))
         )
 
-        .route("/character", post(create_character::<S, F>)
+        .route("/character", post(create_character::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/character/{id}", put(update_character::<S, F>)
+        .route("/character/{id}", put(update_character::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/character/{id}", delete(delete_character::<S, F>)
+        .route("/character/{id}", delete(delete_character::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
         
-        .route("/character/status/{id}", post(set_character_status::<S, F>)
+        .route("/character/status/{id}", post(set_character_status::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -46,7 +46,7 @@ pub fn character_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Rou
 pub struct ListCharactersQuery {
     limit: Option<u64>, offset: Option<u64>,
 }
-async fn list_characters<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn list_characters<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersQuery>,
 ) -> Result<AppSuccess, AppError> {
@@ -60,7 +60,7 @@ async fn list_characters<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(chars)))
 }
-async fn list_characters_count<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn list_characters_count<S: RuntimeClient>(
     State(state): State<S>,
 ) -> Result<AppSuccess, AppError> {
     let filter = doc! { "metadata.enable_roleplay": true };
@@ -70,7 +70,7 @@ async fn list_characters_count<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
         "count": count
     })))
 }
-async fn get_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn get_character<S: RuntimeClient>(
     State(state): State<S>,
     Path(id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
@@ -92,7 +92,7 @@ pub struct ListCharactersWithFiltersQuery {
     limit: Option<u64>,
     offset: Option<u64>,
 }
-async fn list_characters_with_filters<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn list_characters_with_filters<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
 ) -> Result<AppSuccess, AppError> {
@@ -118,7 +118,7 @@ async fn list_characters_with_filters<S: RuntimeClient<F>, F: ExecutableFunction
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(characters)))
 }
-async fn list_characters_with_filters_count<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn list_characters_with_filters_count<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
 ) -> Result<AppSuccess, AppError> {
@@ -141,7 +141,7 @@ async fn list_characters_with_filters_count<S: RuntimeClient<F>, F: ExecutableFu
     })))
 }
 
-async fn create_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn create_character<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Json(mut payload): Json<Character>,
@@ -174,7 +174,7 @@ async fn create_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn update_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn update_character<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
@@ -205,7 +205,7 @@ async fn update_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     ))
 }
 
-async fn delete_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn delete_character<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
@@ -235,7 +235,7 @@ async fn delete_character<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
 pub struct SetCharacterStatusPayload {
     roleplay_status: Option<bool>,
 }
-async fn set_character_status<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn set_character_status<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,

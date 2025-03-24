@@ -1,8 +1,10 @@
 use anyhow::Result;
 use axum::Router;
+use tokio::sync::mpsc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use voda_runtime::define_function_types;
 use voda_runtime::ExecutableFunctionCall;
+use voda_runtime::FunctionExecutor;
 use voda_runtime_roleplay::RoleplayRuntimeClient;
 use voda_service_api::{
     character_routes, misc_routes, setup_tracing, system_config_routes, user_routes, 
@@ -21,7 +23,15 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::very_permissive();
     let trace = TraceLayer::new_for_http();
 
-    let client = RoleplayRuntimeClient::<RuntimeFunctionType>::new().await;
+    let (executor, execution_queue) = mpsc::channel(100);
+    let client = RoleplayRuntimeClient::new(executor).await;
+
+    tokio::spawn(async move {
+        let mut function_executor = FunctionExecutor::<RuntimeFunctionType>::new(
+            execution_queue
+        );
+        function_executor.run().await;
+    });
 
     let app = Router::new()
         .merge(character_routes())

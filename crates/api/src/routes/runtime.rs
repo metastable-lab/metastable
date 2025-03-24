@@ -8,26 +8,26 @@ use axum::{
 };
 use voda_common::CryptoHash;
 use voda_database::MongoDbObject;
-use voda_runtime::{Character, ConversationMemory, ExecutableFunctionCall, HistoryMessage, RuntimeClient, User};
+use voda_runtime::{Character, ConversationMemory, HistoryMessage, RuntimeClient, User};
 
 use crate::{middleware::authenticate, response::{AppError, AppSuccess}};
 
-pub fn runtime_routes<S: RuntimeClient<F>, F: ExecutableFunctionCall>() -> Router<S> {
+pub fn runtime_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
-        // .route("/runtime/chat/{conversation_id}",
-        //     post(chat::<S, F>)
-        //     .route_layer(middleware::from_fn(authenticate))
-        // )
+        .route("/runtime/chat/{conversation_id}",
+            post(chat::<S>)
+            .route_layer(middleware::from_fn(authenticate))
+        )
 
-        // .route("/runtime/regenerate_last_message/{conversation_id}",
-        //     post(regenerate::<S, F>)
-        //     .route_layer(middleware::from_fn(authenticate))
-        // )
+        .route("/runtime/regenerate_last_message/{conversation_id}",
+            post(regenerate::<S>)
+            .route_layer(middleware::from_fn(authenticate))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest { pub message: String }
-async fn chat<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn chat<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,
@@ -63,7 +63,7 @@ async fn chat<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
     Ok(AppSuccess::new(StatusCode::OK, "Chat completed successfully", json!(response_message)))
 }
 
-async fn regenerate<S: RuntimeClient<F>, F: ExecutableFunctionCall>(
+async fn regenerate<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,
