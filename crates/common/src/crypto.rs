@@ -62,6 +62,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_blake3_hash() {
+        let input = "Hello, World!";
+        let hash = blake3_hash(input.as_bytes());
+
+        let base64_hash = URL_SAFE_NO_PAD.encode(hash.hash());  
+        println!("hash: {}", base64_hash);
+    }
+
+    #[test]
     fn test_encryption_decryption() {
         let key = "super_secret_key";
         let original_text = "Hello, World!";

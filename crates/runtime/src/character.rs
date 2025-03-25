@@ -5,8 +5,8 @@ use voda_database::MongoDbObject;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct CharacterMetadata {
-    pub creator: String,
-    pub version: String,
+    pub creator: CryptoHash,
+    pub version: u64,
 
     pub enable_voice: bool,
     pub enable_roleplay: bool,

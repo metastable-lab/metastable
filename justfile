@@ -12,6 +12,7 @@ export GITCOIN_PRIVATE_KEY_SALT := env("GITCOIN_PRIVATE_KEY_SALT")
 export SECRET_SALT := env("SECRET_SALT")
 export OPENAI_API_KEY := env("OPENAI_API_KEY")
 export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
+export FISH_AUDIO_API_KEY := env("FISH_AUDIO_API_KEY")
 
 @docs:
     cd docs && bunx mintlify dev
@@ -21,3 +22,6 @@ export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
 
 @api:
     cargo run --package voda-service --bin voda_service --release
+
+@migration:
+    cargo run --package voda-runtime --bin migration

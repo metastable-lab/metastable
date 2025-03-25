@@ -11,11 +11,11 @@ pub use routes::{
     misc_routes,
     system_config_routes,
     runtime_routes,
-    conversation_routes,
+    memory_routes,
     voice_routes,
 };
 
 pub use env::ApiServerEnv;
 pub use utils::setup_tracing;
-pub use middleware::{authenticate, admin_only};
+pub use middleware::{authenticate, ensure_account};
 pub use response::{AppError, AppSuccess};

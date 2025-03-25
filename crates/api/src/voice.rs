@@ -63,7 +63,7 @@ impl TTSRequest {
         println!("Sending request to Fish Audio: {}", serialized);
         let response = client
             .post("https://api.fish.audio/v1/tts")
-            .header("authorization", format!("Bearer {}", env.get_env_var("FISH_API_KEY")))
+            .header("authorization", format!("Bearer {}", env.get_env_var("FISH_AUDIO_API_KEY")))
             .header("content-type", "application/json")
             .body(serialized)
             .send()

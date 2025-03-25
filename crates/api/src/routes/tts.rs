@@ -7,9 +7,9 @@ use voda_common::CryptoHash;
 
 use serde_json::Value;
 use voda_database::MongoDbObject;
-use voda_runtime::{Character, RuntimeClient, User};
+use voda_runtime::{Character, RuntimeClient};
 
-use crate::{middleware::authenticate, voice::TTSRequest};
+use crate::{ensure_account, middleware::authenticate, voice::TTSRequest};
 use crate::response::AppError;
 
 pub fn voice_routes<S: RuntimeClient>() -> Router<S> {
@@ -26,7 +26,7 @@ async fn tts<S: RuntimeClient>(
     Path(character_id): Path<CryptoHash>,
     Json(value): Json<Value>,
 ) -> Result<impl IntoResponse, AppError> {
-    User::pay_and_update(&state.get_db(), &user_id, 5).await?;
+    ensure_account(&state, &user_id, false, false, 5).await?;
 
     let message = value["message"].as_str().ok_or(anyhow!("message is required"))?.to_string();
     let character = Character::select_one_by_index(&state.get_db(), &character_id)

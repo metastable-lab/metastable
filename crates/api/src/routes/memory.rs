@@ -8,37 +8,37 @@ use axum::{
 };
 use voda_common::CryptoHash;
 use voda_database::MongoDbObject;
-use voda_runtime::{Character, ConversationMemory, RuntimeClient, User};
+use voda_runtime::{Character, ConversationMemory, RuntimeClient};
 
-use crate::{middleware::authenticate, response::{AppError, AppSuccess}};
+use crate::{ensure_account, middleware::authenticate, response::{AppError, AppSuccess}};
 
-pub fn conversation_routes<S: RuntimeClient>() -> Router<S> {
+pub fn memory_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
-        .route("/conversations/public/{character_id}",get(get_public_conversation_history::<S>))
-        .route("/conversation/public/{conversation_id}",get(get_public_conversation::<S>))
+        .route("/memories/public/{character_id}",get(get_public_conversation_history::<S>))
+        .route("/memory/public/{conversation_id}",get(get_public_conversation::<S>))
 
-        .route("/conversation/{conversation_id}",
+        .route("/memory/{conversation_id}",
             get(get_conversation_history::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
         // profile
-        .route("/conversations/character_list",
+        .route("/memories/character_list",
             get(get_character_list::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/conversations/{character_id}",
+        .route("/memories/{character_id}",
             get(get_conversations::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/conversations/{character_id}",
+        .route("/memories/{character_id}",
             post(new_chat::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/conversation/{conversation_id}",
+        .route("/memory/{conversation_id}",
             delete(delete_chat::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
@@ -71,8 +71,8 @@ async fn get_conversation_history<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    let _ = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+    ensure_account(&state, &user_id, false, false, 0).await?;
+
     let conversation_memory = ConversationMemory::select_one_by_index(&state.get_db(), &conversation_id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Conversation not found")))?;
 
@@ -95,9 +95,7 @@ async fn get_character_list<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    let _ = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
-
+    ensure_account(&state, &user_id, false, false, 0).await?;
     let mut results = Vec::new();
 
     // select all conversations that the user chatted with
@@ -124,13 +122,11 @@ async fn get_conversations<S: RuntimeClient>(
     Path(character_id): Path<CryptoHash>,
     Query(payload): Query<GetConversationsRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let limit = payload.limit.unwrap_or(1);
+    let limit = payload.limit.unwrap_or(10);
     let conversations = ConversationMemory::find_latest_conversations(&state.get_db(), &user_id, &character_id, limit)
         .await?;
 
-    Ok(AppSuccess::new(StatusCode::OK, "Conversations fetched successfully", json!({
-        "conversations": conversations
-    })))
+    Ok(AppSuccess::new(StatusCode::OK, "Conversations fetched successfully", json!(conversations)))
 }
 
 async fn new_chat<S: RuntimeClient>(
@@ -138,15 +134,9 @@ async fn new_chat<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Path(character_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
-
-    let conversation_memory = ConversationMemory::new(
-        false, 
-        user_id, 
-        character_id
-    );
-    conversation_memory.save(&state.get_db()).await?;
+    ensure_account(&state, &user_id, false, false, 0).await?;
+    ConversationMemory::new(false, user_id, character_id)
+        .save(&state.get_db()).await?;
 
     Ok(AppSuccess::new(
         StatusCode::CREATED, 

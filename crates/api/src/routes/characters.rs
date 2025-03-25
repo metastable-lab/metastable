@@ -6,9 +6,9 @@ use voda_common::{get_current_timestamp, CryptoHash};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use voda_database::{doc, MongoDbObject};
-use voda_runtime::{Character, RuntimeClient, User, UserRole};
+use voda_runtime::{Character, RuntimeClient, UserRole};
 
-use crate::middleware::{admin_only, authenticate};
+use crate::middleware::{authenticate, ensure_account};
 use crate::response::{AppError, AppSuccess};
 
 pub fn character_routes<S: RuntimeClient>() -> Router<S> {
@@ -19,11 +19,11 @@ pub fn character_routes<S: RuntimeClient>() -> Router<S> {
 
         .route("/characters/with_filters", 
             get(list_characters_with_filters::<S>)
-            .route_layer(middleware::from_fn(admin_only))
+            .route_layer(middleware::from_fn(authenticate))
         )
         .route("/characters/with_filters/count", 
             get(list_characters_with_filters_count::<S>)
-            .route_layer(middleware::from_fn(admin_only))
+            .route_layer(middleware::from_fn(authenticate))
         )
 
         .route("/character", post(create_character::<S>)
@@ -95,7 +95,10 @@ pub struct ListCharactersWithFiltersQuery {
 async fn list_characters_with_filters<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
+    Extension(user_id): Extension<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
+    ensure_account(&state, &user_id, false, true, 0).await?;
+
     let limit = query.limit.unwrap_or(10);
     let offset = query.offset.unwrap_or(0);
 
@@ -121,7 +124,10 @@ async fn list_characters_with_filters<S: RuntimeClient>(
 async fn list_characters_with_filters_count<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
+    Extension(user_id): Extension<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
+    ensure_account(&state, &user_id, false, true, 0).await?;
+
     let mut filter = doc! {};
 
     if let Some(has_image) = query.has_image {
@@ -146,14 +152,10 @@ async fn create_character<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Json(mut payload): Json<Character>,
 ) -> Result<AppSuccess, AppError> {
-    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+    let user = ensure_account(&state, &user_id, false, false, 100).await?
+        .expect("user must have been registered");
 
-    if user.role == UserRole::Admin || payload.metadata.creator == user_id.to_string() {
-        if user.role != UserRole::Admin {
-            User::pay_and_update(&state.get_db(), &user_id, 100).await?;
-        }
-
+    if user.role == UserRole::Admin || payload.metadata.creator == user_id {
         payload.clean()?;
         payload.published_at = get_current_timestamp();
         payload.created_at = get_current_timestamp();
@@ -180,13 +182,13 @@ async fn update_character<S: RuntimeClient>(
     Path(id): Path<CryptoHash>,
     Json(mut payload): Json<Character>,
 ) -> Result<AppSuccess, AppError> {
-    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+    let user = ensure_account(&state, &user_id, false, false, 0).await?
+        .expect("user must have been registered");
 
     let character = Character::select_one_by_index(&state.get_db(), &id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
-    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+    if user.role == UserRole::Admin || character.metadata.creator == user_id {
         payload.clean()?;
         payload.id = id;
         payload.updated_at = get_current_timestamp();
@@ -210,13 +212,13 @@ async fn delete_character<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Path(id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+    let user = ensure_account(&state, &user_id, false, false, 0).await?
+        .expect("user must have been registered");
 
     let character = Character::select_one_by_index(&state.get_db(), &id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
-    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+    if user.role == UserRole::Admin || character.metadata.creator == user_id {
         character.delete(&state.get_db()).await?;
     } else {
         return Err(AppError::new(
@@ -241,13 +243,13 @@ async fn set_character_status<S: RuntimeClient>(
     Path(id): Path<CryptoHash>,
     Json(payload): Json<SetCharacterStatusPayload>,
 ) -> Result<AppSuccess, AppError> {
-    let user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
+    let user = ensure_account(&state, &user_id, false, false, 0).await?
+        .expect("user must have been registered");
 
     let mut character = Character::select_one_by_index(&state.get_db(), &id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
-    if user.role == UserRole::Admin || character.metadata.creator == user_id.to_string() {
+    if user.role == UserRole::Admin || character.metadata.creator == user_id {
         character.metadata.enable_roleplay = payload.roleplay_status.unwrap_or(character.metadata.enable_roleplay);
         character.updated_at = get_current_timestamp();
         character.update(&state.get_db()).await?;

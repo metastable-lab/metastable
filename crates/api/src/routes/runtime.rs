@@ -8,9 +8,9 @@ use axum::{
 };
 use voda_common::CryptoHash;
 use voda_database::MongoDbObject;
-use voda_runtime::{Character, ConversationMemory, HistoryMessage, RuntimeClient, User};
+use voda_runtime::{Character, ConversationMemory, HistoryMessage, RuntimeClient};
 
-use crate::{middleware::authenticate, response::{AppError, AppSuccess}};
+use crate::{ensure_account, middleware::authenticate, response::{AppError, AppSuccess}};
 
 pub fn runtime_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
@@ -33,9 +33,8 @@ async fn chat<S: RuntimeClient>(
     Path(conversation_id): Path<CryptoHash>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
-    User::pay_and_update(&state.get_db(), &user_id, state.get_price()).await?;
+    let mut user = ensure_account(&state, &user_id, false, false, state.get_price()).await?
+        .expect("user must have been registered");
 
     let mut conversation_memory = ConversationMemory::select_one_by_index(&state.get_db(), &conversation_id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Conversation not found")))?;
@@ -68,9 +67,8 @@ async fn regenerate<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Path(conversation_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = User::select_one_by_index(&state.get_db(), &user_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("User not found")))?;
-    User::pay_and_update(&state.get_db(), &user_id, 5).await?;
+    let mut user = ensure_account(&state, &user_id, false, false, state.get_price()).await?
+        .expect("user must have been registered");
 
     let mut conversation_memory = ConversationMemory::select_one_by_index(&state.get_db(), &conversation_id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Conversation not found")))?;

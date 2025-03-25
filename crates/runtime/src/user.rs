@@ -69,9 +69,6 @@ pub struct UserProfile {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UserPoints {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
-    
     pub running_claimed_balance: u64,
     pub running_purchased_balance: u64,
     pub running_misc_balance: u64,
@@ -99,12 +96,6 @@ impl UserUsage {
 }
 
 impl UserPoints {
-    pub fn new(user_id: CryptoHash) -> Self {
-        let mut default_user_points = Self::default();
-        default_user_points.id = user_id;
-        default_user_points
-    }
-
     /* BALANCE ADDITION */
     // Rate limit: ONE Claim per day
     // running balance sum should be <= BALANCE_CAP
@@ -211,10 +202,13 @@ impl User {
     pub async fn pay_and_update(db: &Database, user_id: &CryptoHash, amount: u64) -> Result<()> {
         let mut user = Self::select_one_by_index(db, user_id).await?
             .ok_or(anyhow!("User not found"))?;
-        if !user.points.pay(amount) {
-            return Err(anyhow!("Insufficient points"));
+
+        if user.role != UserRole::Admin {
+            if !user.points.pay(amount) {
+                return Err(anyhow!("Insufficient points"));
+            }
+            user.save_or_update(db).await?;
         }
-        user.save_or_update(db).await?;
         Ok(())
     }
 
