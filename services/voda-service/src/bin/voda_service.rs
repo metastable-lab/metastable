@@ -8,7 +8,7 @@ use voda_runtime::FunctionExecutor;
 use voda_runtime_roleplay::RoleplayRuntimeClient;
 use voda_service_api::{
     character_routes, misc_routes, setup_tracing, system_config_routes, user_routes, 
-    runtime_routes, voice_routes
+    runtime_routes, voice_routes, memory_routes
 };
 
 use voda_service::voda_routes;
@@ -40,6 +40,7 @@ async fn main() -> Result<()> {
         .merge(character_routes())
         .merge(user_routes())
         .merge(misc_routes())
+        .merge(memory_routes())
         .merge(system_config_routes())
         .merge(runtime_routes())
         .merge(voice_routes())

@@ -28,7 +28,6 @@ pub struct GitcoinGrant {
     pub recipient_id: String,
 }
 
-
 impl MongoDbObject for Url {
     const COLLECTION_NAME: &'static str = "url";
     type Error = anyhow::Error;

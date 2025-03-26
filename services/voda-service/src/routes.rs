@@ -21,13 +21,8 @@ pub fn voda_routes<S: RuntimeClient>() -> Router<S> {
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/gitcoin/all", 
-            get(get_all_gitcoin_grants::<S>)
-        )
-
-        .route("/gitcoin/{grant_id}", 
-            get(get_gitcoin_grant::<S>)
-        )
+        .route("/gitcoin/all", get(get_all_gitcoin_grants::<S>))
+        .route("/gitcoin/{grant_id}", get(get_gitcoin_grant::<S>))
 }
 
 async fn get_all_gitcoin_grants<S: RuntimeClient>(

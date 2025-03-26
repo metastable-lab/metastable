@@ -1,1 +1,0 @@
-Most scripts are hidden.

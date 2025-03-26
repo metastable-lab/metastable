@@ -19,8 +19,6 @@ members = [
     "crates/runtime-mods/roleplay",
 
     "services/voda-service",
-
-    "scripts",
 ]
 resolver = "2"
 
