@@ -8,7 +8,7 @@ use async_openai::{
 };
 
 use tokio::sync::{mpsc, oneshot};
-use voda_common::{blake3_hash, EnvVars};
+use voda_common::{blake3_hash, EnvVars, get_current_timestamp};
 use voda_database::{get_db, Database, MongoDbEnv, MongoDbObject};
 use voda_runtime::{
     Character, ConversationMemory, HistoryMessage, MessageRole, MessageType, RuntimeClient, SystemConfig, User
@@ -149,6 +149,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
             content_type: MessageType::Text,
             function_call_request: maybe_function_call,
             function_call_response: maybe_results,
+            created_at: get_current_timestamp(),
         };
 
         memory.history.push((message.clone(), response_message.clone()));

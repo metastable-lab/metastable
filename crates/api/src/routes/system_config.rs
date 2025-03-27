@@ -4,7 +4,7 @@ use axum::routing::{delete, post, put, get};
 use axum::{Extension, Json};
 use axum::{extract::State, http::StatusCode, middleware, Router};
 use serde_json::json;
-use voda_common::CryptoHash;
+use voda_common::{get_current_timestamp, CryptoHash};
 use voda_database::{doc, MongoDbObject};
 use voda_runtime::{RuntimeClient, SystemConfig};
 
@@ -50,10 +50,11 @@ async fn get_system_config<S: RuntimeClient>(
 async fn update_system_config<S: RuntimeClient>(
     State(state): State<S>,
     Extension(user_id): Extension<CryptoHash>,
-    Json(payload): Json<SystemConfig>,
+    Json(mut payload): Json<SystemConfig>,
 ) -> Result<AppSuccess, AppError> {
     ensure_account(&state, &user_id, false, true, 0).await?;
-
+    payload.populate_id();
+    payload.updated_at = get_current_timestamp();
     payload.update(&state.get_db()).await?;
     Ok(AppSuccess::new(
         StatusCode::OK, 

@@ -152,22 +152,16 @@ async fn create_character<S: RuntimeClient>(
     Extension(user_id): Extension<CryptoHash>,
     Json(mut payload): Json<Character>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state, &user_id, false, false, 100).await?
-        .expect("user must have been registered");
+    ensure_account(&state, &user_id, false, false, 100).await?;
 
-    if user.role == UserRole::Admin || payload.metadata.creator == user_id {
-        payload.clean()?;
-        payload.published_at = get_current_timestamp();
-        payload.created_at = get_current_timestamp();
-        payload.updated_at = get_current_timestamp();
+    payload.populate_id();
+    payload.metadata.creator = user_id;
+    payload.clean()?;
+    payload.published_at = get_current_timestamp();
+    payload.created_at = get_current_timestamp();
+    payload.updated_at = get_current_timestamp();
 
-        payload.clone().save(&state.get_db()).await?;
-    } else {
-        return Err(AppError::new(
-            StatusCode::FORBIDDEN, 
-            anyhow!("You are not authorized to create a character")
-        ));
-    }
+    payload.clone().save_or_update(&state.get_db()).await?;
 
     Ok(AppSuccess::new(
         StatusCode::CREATED,

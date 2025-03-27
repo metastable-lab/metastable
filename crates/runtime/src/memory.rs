@@ -38,6 +38,7 @@ pub struct HistoryMessage {
     pub content: String,
     pub function_call_request: Vec<FunctionCall>,
     pub function_call_response: Vec<String>,
+    pub created_at: u64,
 }
 
 pub type HistoryMessagePair = (HistoryMessage, HistoryMessage);
