@@ -21,10 +21,6 @@ pub fn character_routes<S: RuntimeClient>() -> Router<S> {
             get(list_characters_with_filters::<S>)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/characters/with_filters/count", 
-            get(list_characters_with_filters_count::<S>)
-            .route_layer(middleware::from_fn(authenticate))
-        )
 
         .route("/character", post(create_character::<S>)
             .route_layer(middleware::from_fn(authenticate))
@@ -92,12 +88,20 @@ pub struct ListCharactersWithFiltersQuery {
     limit: Option<u64>,
     offset: Option<u64>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListCharactersWithFiltersResponse {
+    characters: Vec<Character>,
+    total_count: u64,
+}
+
 async fn list_characters_with_filters<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersWithFiltersQuery>,
     Extension(user_id): Extension<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
-    ensure_account(&state, &user_id, false, true, 0).await?;
+    let user = ensure_account(&state, &user_id, false, false, 0).await?
+        .expect("user must be valid");
 
     let limit = query.limit.unwrap_or(10);
     let offset = query.offset.unwrap_or(0);
@@ -115,36 +119,20 @@ async fn list_characters_with_filters<S: RuntimeClient>(
         filter.insert("metadata.enable_roleplay", has_roleplay_enabled);
     }
 
+    if user.role != UserRole::Admin {
+        filter.insert("metadata.creator", user.id.to_string());
+    }
+
     let characters = Character::select_many(
-        &state.get_db(),  filter, Some(limit as i64), Some(offset)
+        &state.get_db(),  filter.clone(), Some(limit as i64), Some(offset)
     ).await?;
+    let total_count = Character::total_count(&state.get_db(), filter).await?;
 
-    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(characters)))
-}
-async fn list_characters_with_filters_count<S: RuntimeClient>(
-    State(state): State<S>,
-    Query(query): Query<ListCharactersWithFiltersQuery>,
-    Extension(user_id): Extension<CryptoHash>,
-) -> Result<AppSuccess, AppError> {
-    ensure_account(&state, &user_id, false, true, 0).await?;
-
-    let mut filter = doc! {};
-
-    if let Some(has_image) = query.has_image {
-        filter.insert("$and", vec![
-            doc! { "background_image_url": { "$exists": has_image, "$ne": null } },
-            doc! { "avatar_image_url": { "$exists": has_image, "$ne": null } }
-        ]);
-    }
-
-    if let Some(true) = query.has_roleplay_enabled {
-        filter.insert("metadata.enable_roleplay", true);
-    }
-
-    let count = Character::total_count(&state.get_db(), filter).await?;
-    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
-        "count": count
-    })))
+    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(
+        ListCharactersWithFiltersResponse{
+            characters, total_count
+        }
+    )))
 }
 
 async fn create_character<S: RuntimeClient>(
