@@ -14,7 +14,6 @@ use crate::response::{AppError, AppSuccess};
 pub fn character_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
         .route("/characters", get(list_characters::<S>))
-        .route("/characters/count", get(list_characters_count::<S>))
         .route("/character/{id}", get(get_character::<S>))
 
         .route("/characters/with_filters", 
@@ -42,6 +41,12 @@ pub fn character_routes<S: RuntimeClient>() -> Router<S> {
 pub struct ListCharactersQuery {
     limit: Option<u64>, offset: Option<u64>,
 }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListCharactersResponse {
+    characters: Vec<Character>,
+    total_count: u64,
+}
+
 async fn list_characters<S: RuntimeClient>(
     State(state): State<S>,
     Query(query): Query<ListCharactersQuery>,
@@ -50,21 +55,16 @@ async fn list_characters<S: RuntimeClient>(
     let offset = query.offset.unwrap_or(0);
 
     let filter = doc! { "metadata.enable_roleplay": true };
-    let chars = Character::select_many(
-        &state.get_db(), filter, Some(limit as i64), Some(offset)
+    let characters = Character::select_many(
+        &state.get_db(), filter.clone(), Some(limit as i64), Some(offset)
     ).await?;
+    let total_count = Character::total_count(&state.get_db(), filter).await?;
 
-    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(chars)))
-}
-async fn list_characters_count<S: RuntimeClient>(
-    State(state): State<S>,
-) -> Result<AppSuccess, AppError> {
-    let filter = doc! { "metadata.enable_roleplay": true };
-    let count = Character::total_count(&state.get_db(), filter).await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!({
-        "count": count
-    })))
+    Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(
+        ListCharactersResponse {
+            characters, total_count
+        }
+    )))
 }
 async fn get_character<S: RuntimeClient>(
     State(state): State<S>,
@@ -87,12 +87,6 @@ pub struct ListCharactersWithFiltersQuery {
 
     limit: Option<u64>,
     offset: Option<u64>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ListCharactersWithFiltersResponse {
-    characters: Vec<Character>,
-    total_count: u64,
 }
 
 async fn list_characters_with_filters<S: RuntimeClient>(
@@ -129,7 +123,7 @@ async fn list_characters_with_filters<S: RuntimeClient>(
     let total_count = Character::total_count(&state.get_db(), filter).await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Characters fetched successfully", json!(
-        ListCharactersWithFiltersResponse{
+        ListCharactersResponse{
             characters, total_count
         }
     )))
