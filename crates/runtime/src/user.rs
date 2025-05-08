@@ -22,6 +22,7 @@ pub enum UserProvider {
     Telegram,
     Google,
     X,
+    Github,
     CryptoWallet,
 }
 

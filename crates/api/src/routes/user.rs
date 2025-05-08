@@ -49,6 +49,7 @@ async fn save_user<S: RuntimeClient>(
         "telegram" => UserProvider::Telegram,
         "google" => UserProvider::Google,
         "x" => UserProvider::X,
+        "github" => UserProvider::Github,
         "crypto_wallet" => UserProvider::CryptoWallet,
         _ => return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("Invalid provider"))),
     };
