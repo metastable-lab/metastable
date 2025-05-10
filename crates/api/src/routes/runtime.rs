@@ -11,6 +11,7 @@ use voda_database::MongoDbObject;
 use voda_runtime::{Character, ConversationMemory, HistoryMessage, RuntimeClient};
 
 use crate::{ensure_account, middleware::authenticate, response::{AppError, AppSuccess}};
+use crate::metrics::*;
 
 pub fn runtime_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
@@ -45,6 +46,12 @@ async fn chat<S: RuntimeClient>(
     let character = Character::select_one_by_index(&state.get_db(), &conversation_memory.character_id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
 
+    println!("conversation_memory.history.len(): {}", conversation_memory.history.len());
+    /* ALL PRE-RUN CHECKS DONE! */
+    if conversation_memory.history.is_empty() {
+        CHARACTER_NON_EMPTY_SESSIONS.with_label_values(&[&character.id.to_string()]).inc();
+    }
+
     let mut new_message = HistoryMessage::default();
     new_message.content = payload.message;
     new_message.owner = user_id;
@@ -58,6 +65,15 @@ async fn chat<S: RuntimeClient>(
         ).await?;
 
     conversation_memory.update(&state.get_db()).await?;
+
+    CHARACTER_MESSAGES.with_label_values(&[&character.id.to_string()]).inc();    
+    // SAFETY: user.usage is not empty
+    let token_usage = user.usage.last().unwrap().clone();
+    TOKEN_USAGE.with_label_values(&[
+        &system_config.openai_model.clone(), 
+        &character.id.to_string()
+    ]).inc_by(token_usage.usage.total_tokens as u64);
+
 
     Ok(AppSuccess::new(StatusCode::OK, "Chat completed successfully", json!(response_message)))
 }
@@ -90,7 +106,8 @@ async fn regenerate<S: RuntimeClient>(
 
     let system_config = state
         .find_system_config_by_character(&character).await?;
-    
+
+
     let response_message = state
         .regenerate(
             &character, &mut user, &system_config, 
@@ -98,6 +115,15 @@ async fn regenerate<S: RuntimeClient>(
         ).await?;
 
     conversation_memory.update(&state.get_db()).await?;
+
+    CHARACTER_REGENERATIONS.with_label_values(&[&character.id.to_string()]).inc();
+
+    // SAFETY: user.usage is not empty
+    let token_usage = user.usage.last().unwrap().clone();
+    TOKEN_USAGE.with_label_values(&[
+        &system_config.openai_model.clone(), 
+        &character.id.to_string()
+    ]).inc_by(token_usage.usage.total_tokens as u64);
 
     Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(response_message)))
 }
