@@ -42,6 +42,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 xsalsa20poly1305 = "0.9"
 blake3 = "^1"
 base64 = "0.21"
-teloxide = { version = "0.12", default-features = false, features = ["macros", "rustls", "ctrlc_handler"] }
 
 async-trait = "0.1"
+lazy_static = "1.5.0"

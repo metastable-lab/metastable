@@ -7,10 +7,11 @@ use axum::{
     routing::{delete, get, post}, Router
 };
 use voda_common::CryptoHash;
-use voda_database::MongoDbObject;
+use voda_database::{doc, MongoDbObject};
 use voda_runtime::{Character, ConversationMemory, RuntimeClient};
 
 use crate::{ensure_account, middleware::authenticate, response::{AppError, AppSuccess}};
+use crate::metrics::*;
 
 pub fn memory_routes<S: RuntimeClient>() -> Router<S> {
     Router::new()
@@ -135,8 +136,21 @@ async fn new_chat<S: RuntimeClient>(
     Path(character_id): Path<CryptoHash>,
 ) -> Result<AppSuccess, AppError> {
     ensure_account(&state, &user_id, false, false, 0).await?;
-    ConversationMemory::new(false, user_id, character_id)
+
+    // if the user has history with the character
+    let filter = doc! {
+        "owner_id": user_id.to_string(),
+        "character_id": character_id.to_string(),
+    };
+    let new_unique_user = ConversationMemory::total_count(&state.get_db(), filter).await?;
+    if new_unique_user == 0 {
+        CHARACTER_UNIQUE_USER.with_label_values(&[&character_id.to_string()]).inc();
+    }
+
+    ConversationMemory::new(false, user_id, character_id.clone())
         .save(&state.get_db()).await?;
+
+    CHARACTER_SESSIONS.with_label_values(&[&character_id.to_string()]).inc();
 
     Ok(AppSuccess::new(
         StatusCode::CREATED, 

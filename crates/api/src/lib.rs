@@ -4,6 +4,7 @@ mod response;
 mod utils;
 mod voice;
 mod routes;
+mod metrics;
 
 pub use routes::{
     character_routes,
