@@ -1,8 +1,8 @@
 use anyhow::Result;
 
-use super::HistoryMessagePair;
+use crate::Message;
 
-#[allow(async_fn_in_trait)]
+#[async_trait::async_trait]
 pub trait OutputClient {
-    async fn send_message(&self, message: &HistoryMessagePair) -> Result<()>;
+    async fn send_message(&self, message: &impl Message) -> Result<()>;
 }

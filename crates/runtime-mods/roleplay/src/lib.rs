@@ -1,6 +1,7 @@
 mod client;
-mod env;
 mod message;
+mod character;
+mod memory;
 
 pub use client::RoleplayRuntimeClient;
-pub use env::RoleplayEnv;
+pub use character::Character;

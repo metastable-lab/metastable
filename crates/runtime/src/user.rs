@@ -15,17 +15,6 @@ pub enum UserRole {
     User,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum UserProvider {
-    #[default]
-    Telegram,
-    Google,
-    X,
-    Github,
-    CryptoWallet,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     #[serde(rename = "_id")]
@@ -33,7 +22,7 @@ pub struct User {
     pub user_id: String,
 
     pub role: UserRole,
-    pub provider: UserProvider,
+    pub provider: String,
     pub network_name: Option<String>,
 
     pub profile: UserProfile,
@@ -187,7 +176,7 @@ impl User {
             id: profile.id.clone(),
             user_id,
             role: UserRole::default(),
-            provider: UserProvider::default(),
+            provider: "".to_string(),
             network_name: None,
 
             profile,

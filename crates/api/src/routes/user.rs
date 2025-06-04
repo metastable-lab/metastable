@@ -12,7 +12,7 @@ use serde_json::json;
 
 use crate::middleware::{authenticate, ensure_account};
 use crate::response::{AppError, AppSuccess};
-use voda_runtime::{RuntimeClient, User, UserProfile, UserProvider};
+use voda_runtime::{RuntimeClient, User, UserProfile};
 
 pub const AMOUNT_PER_CLAIM: u64 = 100;
 
