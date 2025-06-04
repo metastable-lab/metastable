@@ -52,7 +52,7 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
             .tools(tools)
             .tool_choice(ChatCompletionToolChoiceOption::Auto)
             .temperature(system_config.openai_temperature)
-            .max_tokens(system_config.openai_max_tokens)
+            .max_tokens(system_config.openai_max_tokens as u32)
             .build()?;
 
         // Send request to OpenAI

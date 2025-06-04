@@ -7,15 +7,15 @@ edition = "2021"
 voda-common = { path = "../common" }
 
 mongodb.workspace = true
+tokio.workspace = true
+futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-tokio.workspace = true 
-futures.workspace = true
-hex.workspace = true
-rand.workspace = true
 blake3.workspace = true
 async-openai.workspace = true
+sqlx.workspace = true
+async-trait.workspace = true
 
 [dev-dependencies]
 dotenv.workspace = true

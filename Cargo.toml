@@ -10,15 +10,16 @@ opt-level = 1
 
 [workspace]
 members = [
-    "crates/api",
+    # "crates/api",
     "crates/common",
-    "crates/database",
+    "crates/database", 
+    "crates/db-macros",
     "crates/runtime",
 
     "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
 
-    "services/voda-service",
+    # "services/voda-service",
 ]
 resolver = "2"
 
@@ -45,3 +46,13 @@ base64 = "0.21"
 
 async-trait = "0.1"
 lazy_static = "1.5.0"
+sqlx = { version = "0.8.6", default-features = false, features = [
+    "runtime-tokio-rustls", 
+    "postgres", 
+    "macros", 
+    "uuid", 
+    "json",
+    "chrono", 
+    "ipnetwork",
+    "bigdecimal"
+] }

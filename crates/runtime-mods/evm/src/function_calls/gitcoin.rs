@@ -60,6 +60,6 @@ impl ExecutableFunctionCall for GitcoinFunctionCall {
         let recepient_id = Address::from_str(&self.recepient_id)?;
         let tx = send_donation(GITCOIN_ADDRESS, recepient_id, to_wei(100)).await?;
         let tx_hash = send_transaction(tx, &local_wallet).await?;
-        Ok(tx_hash.to_string())
+        Ok(tx_hash.to_hex_string())
     }
 }
