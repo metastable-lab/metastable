@@ -1,5 +1,4 @@
-use sqlx::{FromRow, Postgres, Error as SqlxError, postgres::PgArguments, Acquire, PgPool};
-use async_trait::async_trait;
+use sqlx::{FromRow, Postgres, Error as SqlxError, postgres::PgArguments, Acquire};
 
 /// Trait for custom primary key population logic for SqlxObject.
 pub trait SqlxPopulateId {
@@ -44,7 +43,7 @@ pub trait SqlxSchema: Send + Sync + Unpin + Clone + std::fmt::Debug + SqlxPopula
 }
 
 /// Trait for CRUD (Create, Read, Update, Delete) operations for PostgreSQL.
-#[async_trait]
+#[async_trait::async_trait]
 pub trait SqlxCrud: SqlxSchema + Sized { // Removed redundant Send + Sync + Unpin + Clone, implied by SqlxSchema or Sized context
     /// Binds the struct fields to an insert query.
     fn bind_insert<'q>(&self, query: sqlx::query::QueryAs<'q, Postgres, Self::Row, PgArguments>)

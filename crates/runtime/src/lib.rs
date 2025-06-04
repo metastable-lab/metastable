@@ -2,7 +2,7 @@ mod toolcall;
 mod memory;
 mod output_client;
 mod runtime_client;
-mod user;
+pub mod user;
 mod system_config;
 mod function_executor;
 mod env;
