@@ -68,9 +68,9 @@ impl RoleplayMessage {
             &character.name, 
             &user.profile.first_name,
             &system_config.system_prompt, 
-            &character.prompts.personality_prompt,
-            &character.prompts.example_dialogue,
-            &character.prompts.scenario_prompt
+            &character.prompts_personality_prompt,
+            &character.prompts_example_dialogue,
+            &character.prompts_scenario_prompt
         );
 
         Self {
@@ -86,7 +86,7 @@ impl RoleplayMessage {
 
     pub fn first_message(character: &Character, user: &User) -> Self {
         let first_message = Self::replace_placeholders(
-            &character.prompts.first_message, 
+            &character.prompts_first_message, 
             &character.name, 
             &user.profile.first_name
         );

@@ -44,6 +44,10 @@ pub trait SqlxSchema {
     /// Retrieves the value of the primary key for an instance of the object.
     fn get_id_value(&self) -> Self::Id;
 
+    /// Populates the primary key field(s) for a new instance of the object.
+    /// This is typically called before inserting a new record.
+    fn populate_id(&mut self);
+
     /// Generates the SQL query string for creating the table.
     /// Example: "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT NOT NULL, email TEXT);"
     fn create_table_sql() -> String;
@@ -70,10 +74,11 @@ pub trait SqlxCrud: SqlxSchema + Sized + Send + Sync + Unpin + Clone {
         -> sqlx::query::QueryAs<'q, Postgres, Self::Row, PgArguments>;
 
     /// Creates a new record in the database.
-    async fn create<'e, A>(self, acquirer: A) -> Result<Self, SqlxError>
+    async fn create<'e, A>(mut self, acquirer: A) -> Result<Self, SqlxError>
     where
         A: Acquire<'e, Database = Postgres> + Send,
     {
+        self.populate_id();
         let mut conn = acquirer.acquire().await?;
         let sql = Self::insert_sql();
         let query_with_bindings = self.bind_insert(sqlx::query_as(&sql));
@@ -131,4 +136,11 @@ pub trait SqlxCrud: SqlxSchema + Sized + Send + Sync + Unpin + Clone {
             .await?;
         Ok(rows.into_iter().map(Self::from_row).collect())
     }
+}
+
+/// Trait for custom primary key population logic for SqlxObject.
+pub trait SqlxPopulateId {
+    /// Populates the primary key field (`id`) of the struct.
+    /// This method is called by `SqlxSchema::populate_id` before an insert.
+    fn sql_populate_id(&mut self);
 } 

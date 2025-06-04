@@ -2,25 +2,11 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use voda_common::{blake3_hash, CryptoHash};
 use voda_database::MongoDbObject;
+use voda_db_macros::SqlxObject;
+use voda_database::sqlx_postgres::SqlxPopulateId;
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
-pub struct CharacterMetadata {
-    pub creator: CryptoHash,
-    pub version: u64,
-
-    pub enable_voice: bool,
-    pub enable_roleplay: bool,
-}
-
-#[derive(Clone, Default,Debug, Serialize, Deserialize)]
-pub struct CharacterPrompts {
-    pub scenario_prompt: String,
-    pub personality_prompt: String,
-    pub example_dialogue: String,
-    pub first_message: String,
-}
-
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
+#[table_name = "characters"]
 pub struct Character {
     #[serde(rename = "_id")]
     pub id: CryptoHash,
@@ -28,8 +14,17 @@ pub struct Character {
     pub name: String,
     pub description: String,
 
-    pub metadata: CharacterMetadata,
-    pub prompts: CharacterPrompts,
+    // Fields from CharacterMetadata (prefixed)
+    pub metadata_creator: CryptoHash,
+    pub metadata_version: i64,
+    pub metadata_enable_voice: bool,
+    pub metadata_enable_roleplay: bool,
+
+    // Fields from CharacterPrompts (prefixed)
+    pub prompts_scenario_prompt: String,
+    pub prompts_personality_prompt: String,
+    pub prompts_example_dialogue: String,
+    pub prompts_first_message: String,
 
     pub tags: Vec<String>,
 
@@ -37,9 +32,9 @@ pub struct Character {
     pub avatar_image_url: Option<String>,
     pub voice_model_id: Option<String>,
 
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub published_at: u64,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub published_at: i64,
 }
 
 impl MongoDbObject for Character {
@@ -52,6 +47,12 @@ impl MongoDbObject for Character {
     fn get_id(&self) -> CryptoHash { self.id.clone() }
 }
 
+impl SqlxPopulateId for Character {
+    fn sql_populate_id(&mut self) {
+        self.id = ::voda_common::blake3_hash(self.name.as_bytes());
+    }
+}
+
 impl Character {
     pub fn clean(&mut self) -> Result<()> {
         self.populate_id();
@@ -61,10 +62,10 @@ impl Character {
         self.description = self.description.trim().to_string();
 
         // strip everything in prompts
-        self.prompts.scenario_prompt = self.prompts.scenario_prompt.trim().to_string();
-        self.prompts.personality_prompt = self.prompts.personality_prompt.trim().to_string();
-        self.prompts.example_dialogue = self.prompts.example_dialogue.trim().to_string();
-        self.prompts.first_message = self.prompts.first_message.trim().to_string();
+        self.prompts_scenario_prompt = self.prompts_scenario_prompt.trim().to_string();
+        self.prompts_personality_prompt = self.prompts_personality_prompt.trim().to_string();
+        self.prompts_example_dialogue = self.prompts_example_dialogue.trim().to_string();
+        self.prompts_first_message = self.prompts_first_message.trim().to_string();
 
         // remove all empty strings from tags
         // lowercase all tags

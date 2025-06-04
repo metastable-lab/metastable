@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use voda_db_macros::SqlxObject;
 use sqlx::types::Json;
 use voda_common::CryptoHash;
+use voda_database::sqlx_postgres::SqlxPopulateId;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "system_configs"]
-#[primary_key(name = "id", ty = "::voda_common::CryptoHash", auto_generated = false)]
 pub struct SystemConfig {
     pub id: CryptoHash,
 
@@ -23,6 +23,12 @@ pub struct SystemConfig {
 
     pub functions: Json<Vec<FunctionObject>>,
     pub updated_at: i64,
+}
+
+impl SqlxPopulateId for SystemConfig {
+    fn sql_populate_id(&mut self) {
+        self.id = CryptoHash::random();
+    }
 }
 
 impl SystemConfig {
@@ -56,7 +62,7 @@ impl SystemConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use voda_database::sqlx_postgres_traits::{SqlxCrud, SqlxSchema};
+    use voda_database::sqlx_postgres::{SqlxCrud, SqlxSchema};
     use sqlx::{types::Uuid, PgPool};
     use tokio::sync::OnceCell;
 
@@ -97,9 +103,9 @@ mod tests {
         }
     }
 
-    fn create_sample_config(id_override: Option<CryptoHash>) -> SystemConfig {
+    fn create_sample_config() -> SystemConfig {
         SystemConfig {
-            id: id_override.unwrap_or_else(CryptoHash::random),
+            id: CryptoHash::default(),
             name: format!("test_config_{}", Uuid::new_v4().to_string()),
             system_prompt: "Test prompt".to_string(),
             system_prompt_version: 1i64,
@@ -117,18 +123,15 @@ mod tests {
         let pool = init_db().await;
         let mut tx = pool.begin().await?;
 
-        let new_crypto_id = CryptoHash::random();
-        let mut sample_config = create_sample_config(Some(new_crypto_id.clone()));
+        let mut sample_config = create_sample_config();
         sample_config.name = format!("create_find_test_{}", Uuid::new_v4().to_string());
 
         let created_config = sample_config.clone().create(&mut tx).await?;
-        assert_eq!(created_config.id, new_crypto_id);
         assert_eq!(created_config.name, sample_config.name);
 
-        let found_config_opt = SystemConfig::find_by_id(new_crypto_id.hash().to_vec(), &mut tx).await?;
+        let found_config_opt = SystemConfig::find_by_id(created_config.id.hash().to_vec(), &mut tx).await?;
         assert!(found_config_opt.is_some(), "Config should be found by ID");
         let found_config = found_config_opt.unwrap();
-        assert_eq!(found_config.id, new_crypto_id);
         assert_eq!(found_config.name, sample_config.name);
         Ok(())
     }
@@ -138,7 +141,7 @@ mod tests {
         let pool = init_db().await;
         let mut tx = pool.begin().await?;
 
-        let mut sample_config = create_sample_config(None);
+        let mut sample_config = create_sample_config();
         sample_config.name = format!("update_test_{}", Uuid::new_v4().to_string()); 
 
         let mut created_config = sample_config.create(&mut tx).await?;
@@ -157,7 +160,7 @@ mod tests {
         let pool = init_db().await;
         let mut tx = pool.begin().await?;
 
-        let mut sample_config = create_sample_config(None);
+        let mut sample_config = create_sample_config();
         sample_config.name = format!("delete_test_{}", Uuid::new_v4().to_string());
 
         let created_config = sample_config.create(&mut tx).await?;
@@ -176,13 +179,13 @@ mod tests {
         let pool = init_db().await;
         let mut tx = pool.begin().await?;
         
-        let mut config1 = create_sample_config(None);
+        let mut config1 = create_sample_config();
         config1.name = format!("findall_test1_{}", Uuid::new_v4().to_string());
         let config1_name = config1.name.clone();
         config1.system_prompt_version = 10i64;
         config1.create(&mut tx).await?;
 
-        let mut config2 = create_sample_config(None);
+        let mut config2 = create_sample_config();
         config2.name = format!("findall_test2_{}", Uuid::new_v4().to_string());
         let config2_name = config2.name.clone();
         config2.system_prompt_version = 20i64;
