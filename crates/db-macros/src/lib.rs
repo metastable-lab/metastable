@@ -81,7 +81,7 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
         return "BYTEA".to_string();
     }
     if type_str == "Vec<::voda_common::CryptoHash>" || type_str == "Vec<voda_common::CryptoHash>" || type_str == "Vec<CryptoHash>" {
-        return "BYTEA[]".to_string();
+        return "TEXT[]".to_string();
     }
     if type_str == "Vec<String>" || type_str == "Vec<std::string::String>" {
         return "TEXT[]".to_string();
@@ -110,7 +110,7 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
         "f64" => "DOUBLE PRECISION".to_string(),
         "bool" => "BOOLEAN".to_string(),
         "Uuid" | "::sqlx::types::Uuid" | "sqlx::types::Uuid" => "UUID".to_string(),
-        "CryptoHash" | "::voda_common::CryptoHash" | "voda_common::CryptoHash" => "BYTEA".to_string(),
+        "CryptoHash" | "::voda_common::CryptoHash" | "voda_common::CryptoHash" => "TEXT".to_string(),
         s if s.starts_with("Json<") || s.starts_with("::sqlx::types::Json<") || s.starts_with("sqlx::types::Json<") => "JSONB".to_string(),
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" => "TIMESTAMPTZ".to_string(),
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" => "TIMESTAMP".to_string(),
@@ -291,10 +291,10 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let mut row_field_ty = field_ty.clone();
 
         if is_original_leaf_crypto_hash {
-            let ch_vec_u8_type: Type = parse_quote!(Vec<u8>);
-            row_field_ty = if field_is_option { parse_quote!(Option<#ch_vec_u8_type>) } else { ch_vec_u8_type };
+            let ch_string_type: Type = parse_quote!(String);
+            row_field_ty = if field_is_option { parse_quote!(Option<#ch_string_type>) } else { ch_string_type };
         } else if fq_field_type_str == "Vec<CryptoHash>" || fq_field_type_str == "Vec<::voda_common::CryptoHash>" || fq_field_type_str == "Vec<voda_common::CryptoHash>" {
-            row_field_ty = parse_quote!(Vec<Vec<u8>>);
+            row_field_ty = parse_quote!(Vec<String>);
         } else if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
             row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
@@ -328,12 +328,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
         if is_original_leaf_crypto_hash {
             if field_is_option {
-                quote! { #field_ident: row.#row_field_name.map(|bytes| ::voda_common::CryptoHash::new(bytes.try_into().expect("Failed to convert Option<Vec<u8>> to [u8;32] for CryptoHash"))) }
+                quote! { #field_ident: row.#row_field_name.map(|s| s.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string")) }
             } else {
-                quote! { #field_ident: ::voda_common::CryptoHash::new(row.#row_field_name.try_into().expect("Failed to convert Vec<u8> to [u8;32] for CryptoHash")) }
+                quote! { #field_ident: row.#row_field_name.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string") }
             }
         } else if fq_field_type_str == "Vec<CryptoHash>" || fq_field_type_str == "Vec<::voda_common::CryptoHash>" || fq_field_type_str == "Vec<voda_common::CryptoHash>" {
-            quote! { #field_ident: row.#row_field_name.into_iter().map(|bytes| ::voda_common::CryptoHash::new(bytes.try_into().expect("Failed to convert Vec<u8> to [u8;32] for CryptoHash"))).collect() }
+            quote! { #field_ident: row.#row_field_name.into_iter().map(|s| s.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string")).collect() }
         } else if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
             if field_is_option {
                  quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
@@ -483,7 +483,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
                     {
                         if let Some(id_val_ref) = &#self_field_access {
-                            let id_value_for_query = id_val_ref.hash().to_vec();
+                            let id_value_for_query = id_val_ref.to_hex_string();
                             let criteria = ::voda_database::QueryCriteria::new()
                                 .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
                                 .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for Option<ForeignKey>.");
@@ -503,7 +503,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
                         #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
                     {
-                        let id_value_for_query = #self_field_access.hash().to_vec();
+                        let id_value_for_query = #self_field_access.to_hex_string();
                         let criteria = ::voda_database::QueryCriteria::new()
                             .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
                             .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for ForeignKey.");
@@ -531,11 +531,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     if self.#field_ident.is_empty() {
                         return Ok(Vec::new());
                     }
-                    let ids_as_vec_u8: Vec<Vec<u8>> = self.#field_ident.iter().map(|ch| ch.hash().to_vec()).collect();
+                    let ids_as_strings: Vec<String> = self.#field_ident.iter().map(|ch| ch.to_hex_string()).collect();
                     let sql = format!("SELECT * FROM \"{}\" WHERE \"id\" = ANY($1)", #referenced_table_str);
                     
                     let related_rows = sqlx::query_as::<_, <#related_type as ::voda_database::SqlxSchema>::Row>(&sql)
-                        .bind(ids_as_vec_u8)
+                        .bind(ids_as_strings)
                         .fetch_all(executor)
                         .await?;
                     
@@ -563,12 +563,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
         let insert_bind = if is_original_leaf_crypto_hash {
             if field_is_option {
-                quote! { .bind(#field_access_path.as_ref().map(|ch| ch.hash().to_vec())) }
+                quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
             } else {
-                quote! { .bind(#field_access_path.hash().to_vec()) }
+                quote! { .bind(#field_access_path.to_hex_string()) }
             }
         } else if is_vec_crypto_hash { 
-             quote! { .bind(#field_access_path.iter().map(|ch| ch.hash().to_vec()).collect::<Vec<Vec<u8>>>()) }
+             quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
         } else if is_standalone_text_mappable_candidate { 
             if field_is_option {
                  quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
@@ -586,12 +586,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             update_placeholder_idx += 1;
             let update_bind = if is_original_leaf_crypto_hash {
                 if field_is_option {
-                    quote! { .bind(#field_access_path.as_ref().map(|ch| ch.hash().to_vec())) }
+                    quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
                 } else {
-                    quote! { .bind(#field_access_path.hash().to_vec()) }
+                    quote! { .bind(#field_access_path.to_hex_string()) }
                 }
             } else if is_vec_crypto_hash {
-                 quote! { .bind(#field_access_path.iter().map(|ch| ch.hash().to_vec()).collect::<Vec<Vec<u8>>>()) }
+                 quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
             } else if is_standalone_text_mappable_candidate { 
                 if field_is_option {
                     quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
@@ -622,7 +622,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let insert_bind_placeholders_sql = (1..=insert_col_sql_names.len()).map(|i| format!("${}", i)).collect::<Vec<String>>().join(", ");
     let insert_sql_query = format!("INSERT INTO \"{}\" ({}) VALUES ({}) RETURNING {}", table_name_str, insert_column_names_joined_sql, insert_bind_placeholders_sql, all_sql_columns_joined_str);
 
-    let pk_binding_for_update = quote! { .bind(self.id.hash().to_vec()) };
+    let pk_binding_for_update = quote! { .bind(self.id.to_hex_string()) };
     let update_set_str_sql = update_set_clauses_sql.join(", ");
     
     let update_by_id_sql_query_is_select = update_set_clauses_sql.is_empty();
@@ -634,8 +634,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     
     let sql_for_delete_instance_by_id = format!("DELETE FROM \"{}\" WHERE \"id\" = $1", table_name_str);
 
-    let final_pk_id_trait_type: Type = parse_quote!(Vec<u8>);
-    let get_id_value_impl = quote! { self.id.hash().to_vec() };
+    let final_pk_id_trait_type: Type = parse_quote!(String);
+    let get_id_value_impl = quote! { self.id.to_hex_string() };
     
     let expanded = quote! {
         #[derive(::sqlx::FromRow, Debug, Clone)]
@@ -758,7 +758,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             {
                 let mut sql_query_parts: Vec<String> = Vec::new();
                 let mut placeholder_idx = 1;
-                let mut criteria_arguments = criteria.arguments; // Take ownership to potentially prepend later
+                let criteria_arguments = criteria.arguments; // Take ownership to potentially prepend later
 
                 // Use fully qualified path for schema items
                 sql_query_parts.push(format!(
@@ -776,12 +776,16 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         }
                         first_condition = false;
                         
+                        let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
                         if condition.uses_placeholder {
-                            sql_query_parts.push(format!("\"{}\" {} ${}", condition.column, condition.operator, placeholder_idx));
+                            if !condition.operator.contains('$') { // If operator is simple (e.g., "=")
+                                current_condition_sql.push_str(&format!(" ${}", placeholder_idx));
+                            }
+                            // If operator contains '$' (e.g., "= ANY($1)"), we assume it's correctly formatted.
+                            // The placeholder_idx still needs to be incremented to account for the argument.
                             placeholder_idx += 1;
-                        } else {
-                            sql_query_parts.push(format!("\"{}\" {}", condition.column, condition.operator));
                         }
+                        sql_query_parts.push(current_condition_sql);
                     }
                 }
 
@@ -834,12 +838,16 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         }
                         first_condition = false;
                         
+                        let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
                         if condition.uses_placeholder {
-                            sql_query_parts.push(format!("\"{}\" {} ${}", condition.column, condition.operator, placeholder_idx));
+                            if !condition.operator.contains('$') { // If operator is simple (e.g., "=")
+                                current_condition_sql.push_str(&format!(" ${}", placeholder_idx));
+                            }
+                            // If operator contains '$' (e.g., "= ANY($1)"), we assume it's correctly formatted.
+                            // The placeholder_idx still needs to be incremented to account for the argument.
                             placeholder_idx += 1;
-                        } else {
-                            sql_query_parts.push(format!("\"{}\" {}", condition.column, condition.operator));
                         }
+                        sql_query_parts.push(current_condition_sql);
                     }
                 } else {
                     // Deleting without a WHERE clause is dangerous.

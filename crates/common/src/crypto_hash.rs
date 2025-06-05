@@ -46,6 +46,14 @@ impl CryptoHash {
     }
 }
 
+impl std::str::FromStr for CryptoHash {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_hex_string(s)
+    }
+}
+
 impl Hash for CryptoHash {
     fn hash<H: Hasher>(&self, state: &mut H) {
         state.write(self.hash());

@@ -50,8 +50,8 @@ impl RoleplaySession {
     where
         Exe: sqlx::Executor<'e, Database = Postgres> + Send,
     {
-        let message_id_bytes = message_id_to_add.hash().to_vec();
-        let session_id_bytes = self.id.hash().to_vec();
+        let message_id_hex = message_id_to_add.to_hex_string();
+        let session_id_hex = self.id.to_hex_string();
 
         sqlx::query(
             r#"
@@ -62,9 +62,9 @@ impl RoleplaySession {
             WHERE id = $3
             "#,
         )
-        .bind(message_id_bytes)
+        .bind(message_id_hex)
         .bind(new_updated_at)
-        .bind(session_id_bytes)
+        .bind(session_id_hex)
         .execute(executor)
         .await?;
 

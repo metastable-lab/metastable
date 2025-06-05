@@ -30,7 +30,7 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     async fn on_init(&self) -> Result<()>;
     async fn on_shutdown(&self) -> Result<()>;
 
-    async fn on_new_message(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<()>;
+    async fn on_new_message(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
     async fn on_tool_call(&self, call: &FunctionCall) -> Result<String>;
 
     async fn send_llm_request(&self, messages: &[<Self::MemoryType as Memory>::MessageType]) -> Result<LLMRunResponse> {

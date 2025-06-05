@@ -117,11 +117,9 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
 #[macro_export]
 macro_rules! init_db_pool {
     ($($target_type:ty),*) => {
-        use tokio::sync::OnceCell;
-        use voda_common::EnvVars;
         use $crate::SqlxSchema; // Assumes SqlxSchema is accessible via $crate (voda_database::SqlxSchema)
 
-        static POOL: OnceCell<PgPool> = OnceCell::const_new();
+        static POOL: tokio::sync::OnceCell<PgPool> = tokio::sync::OnceCell::const_new();
 
         // To use this macro, call it like this:
         // init_db_pool!(MyType1, MyType2, MyType3);
@@ -134,7 +132,7 @@ macro_rules! init_db_pool {
         // let pool = connect().await;
         async fn connect() -> &'static PgPool {
             POOL.get_or_init(|| async {
-                let database_url = $crate::PostgresDbEnv::load().get_env_var("POSTGRES_URI");
+                let database_url = std::env::var("DATABASE_URL").unwrap();
                 
                 let pool = PgPool::connect(&database_url).await
                     .expect("Failed to connect to Postgres. Ensure DB is running and POSTGRES_URI is correct.");

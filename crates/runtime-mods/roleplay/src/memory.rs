@@ -38,9 +38,9 @@ impl Memory for RoleplayRawMemory {
         for message in messages {
             let mut m = message.clone();
 
-            let session_id_bytes = m.session_id.hash().to_vec();
+            let session_id_hex = m.session_id.to_hex_string();
             let criteria = QueryCriteria::new()
-                .add_valued_filter("id", "=", session_id_bytes)?;
+                .add_valued_filter("id", "=", session_id_hex)?;
         
             let mut session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx)
                 .await?
@@ -59,18 +59,18 @@ impl Memory for RoleplayRawMemory {
     }
 
     async fn get_one(&self, message_id: &CryptoHash) -> Result<Option<RoleplayMessage>> {
-        let message_id_bytes = message_id.hash().to_vec();
+        let message_id_hex = message_id.to_hex_string();
         let criteria = QueryCriteria::new()
-            .add_valued_filter("id", "=", message_id_bytes)?;
+            .add_valued_filter("id", "=", message_id_hex)?;
         
         let message = RoleplayMessage::find_one_by_criteria(criteria, &*self.db).await?;
         Ok(message)
     }
 
     async fn get_all(&self, user_id: &CryptoHash, limit: u64, offset: u64) -> Result<Vec<RoleplayMessage>> {
-        let user_id_bytes = user_id.hash().to_vec();
+        let user_id_hex = user_id.to_hex_string();
         let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_bytes)?
+            .add_valued_filter("owner", "=", user_id_hex)?
             .order_by("created_at", OrderDirection::Desc)?
             .limit(limit as i64)?
             .offset(offset as i64)?;
@@ -83,7 +83,7 @@ impl Memory for RoleplayRawMemory {
         let mut tx = self.db.begin().await?;
 
         let criteria = QueryCriteria::new()
-            .add_valued_filter("id", "=", message.session_id.hash().to_vec())?;
+            .add_valued_filter("id", "=", message.session_id.to_hex_string())?;
         let session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::search] Session not found"))?;
 
@@ -106,7 +106,7 @@ impl Memory for RoleplayRawMemory {
     }
 
     async fn delete(&self, message_ids: &[CryptoHash]) -> Result<()> {
-        let sqlx_ids = message_ids.iter().map(|id| id.hash().to_vec()).collect::<Vec<_>>();
+        let sqlx_ids = message_ids.iter().map(|id| id.to_hex_string()).collect::<Vec<_>>();
         let criteria = QueryCriteria::new()
             .add_filter("id", " = ANY($1)", Some(sqlx_ids))?;
 
@@ -116,13 +116,13 @@ impl Memory for RoleplayRawMemory {
 
     async fn reset(&self, user_id: &CryptoHash) -> Result<()> {
         let mut tx = self.db.begin().await?;
-        let user_id_bytes = user_id.hash().to_vec();
+        let user_id_hex = user_id.to_hex_string();
         let criteria_session = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_bytes.clone())?;
+            .add_valued_filter("owner", "=", user_id_hex.clone())?;
         RoleplaySession::delete_by_criteria(criteria_session, &mut *tx).await?;
 
         let criteria_message = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_bytes)?;
+            .add_valued_filter("owner", "=", user_id_hex)?;
         RoleplayMessage::delete_by_criteria(criteria_message, &mut *tx).await?;
 
         tx.commit().await?;
@@ -135,7 +135,7 @@ impl RoleplayRawMemory {
         &self, character_id: &CryptoHash, limit: u64, offset: u64
     ) -> Result<Vec<RoleplaySession>> {
         let criteria = QueryCriteria::new()
-            .add_valued_filter("character_id", "=", character_id.hash().to_vec())?
+            .add_valued_filter("character_id", "=", character_id.to_hex_string())?
             .add_valued_filter("public", "=", true)?
             .order_by("updated_at", OrderDirection::Desc)?
             .limit(limit as i64)?
@@ -148,11 +148,11 @@ impl RoleplayRawMemory {
     pub async fn find_latest_conversations(
         &self, user_id: &CryptoHash, character_id: &CryptoHash, limit: u64
     ) -> Result<Vec<RoleplaySession>> {
-        let user_id_bytes = user_id.hash().to_vec();
-        let character_id_bytes = character_id.hash().to_vec();
+        let user_id_hex = user_id.to_hex_string();
+        let character_id_hex = character_id.to_hex_string();
         let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_bytes)?
-            .add_valued_filter("character_id", "=", character_id_bytes)?
+            .add_valued_filter("owner", "=", user_id_hex)?
+            .add_valued_filter("character_id", "=", character_id_hex)?
             .order_by("updated_at", OrderDirection::Desc)?
             .limit(limit as i64)?;
 
@@ -163,9 +163,9 @@ impl RoleplayRawMemory {
     pub async fn find_character_list_of_user(
         &self, user_id: &CryptoHash
     ) -> Result<HashMap<CryptoHash, usize>> {
-        let user_id_bytes = user_id.hash().to_vec();
+        let user_id_hex = user_id.to_hex_string();
         let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_bytes)?;
+            .add_valued_filter("owner", "=", user_id_hex)?;
         let sessions = RoleplaySession::find_by_criteria(criteria, &*self.db).await?;
 
         let mut character_list = HashMap::new();
@@ -311,15 +311,19 @@ mod tests {
         let messages_to_add = vec![system_prompt.clone(), user_message.clone(), ai_response.clone()];
         memory.add_messages(&messages_to_add).await?;
 
-        let criteria_session_updated = QueryCriteria::new().add_valued_filter("id", "=", session.id.hash().to_vec())?;
+        eprintln!("test_add_messages_and_get_one: Added messages. Fetching session to check history...");
+        let criteria_session_updated = QueryCriteria::new().add_valued_filter("id", "=", session.id.to_hex_string())?;
         let updated_session = RoleplaySession::find_one_by_criteria(criteria_session_updated, &*pool).await?.unwrap();
+        eprintln!("test_add_messages_and_get_one: Updated session: {:?}", updated_session);
         
         assert_eq!(updated_session.history.len(), 3);
         assert!(updated_session.updated_at >= session.updated_at);
 
         let mut populated_message_ids = Vec::new();
         for msg_id_in_history in &updated_session.history {
+             eprintln!("test_add_messages_and_get_one: Fetching message with ID from history: {:?}", msg_id_in_history);
              let fetched_msg = memory.get_one(msg_id_in_history).await?.unwrap();
+             eprintln!("test_add_messages_and_get_one: Fetched message: {:?}", fetched_msg);
              populated_message_ids.push(fetched_msg.id.clone());
              assert_eq!(fetched_msg.session_id, session.id);
         }
@@ -429,7 +433,7 @@ mod tests {
         memory.add_messages(&[msg1.clone()]).await?;
         
         let criteria = QueryCriteria::new()
-            .add_valued_filter("session_id", "=", session.id.hash().to_vec())?
+            .add_valued_filter("session_id", "=", session.id.to_hex_string())?
             .add_valued_filter("content", "=", original_message_content.to_string())?;
         let mut fetched_msg = RoleplayMessage::find_one_by_criteria(criteria, &*pool).await?.unwrap();
 
@@ -505,16 +509,16 @@ mod tests {
         let user1_messages_after_reset = memory.get_all(&user1.id, 10, 0).await?;
         assert!(user1_messages_after_reset.is_empty());
 
-        let criteria_s1u1 = QueryCriteria::new().add_valued_filter("id", "=", session1_user1.id.hash().to_vec())?;
+        let criteria_s1u1 = QueryCriteria::new().add_valued_filter("id", "=", session1_user1.id.to_hex_string())?;
         assert!(RoleplaySession::find_one_by_criteria(criteria_s1u1, &*pool).await?.is_none());
-        let criteria_s2u1 = QueryCriteria::new().add_valued_filter("id", "=", session2_user1.id.hash().to_vec())?;
+        let criteria_s2u1 = QueryCriteria::new().add_valued_filter("id", "=", session2_user1.id.to_hex_string())?;
         assert!(RoleplaySession::find_one_by_criteria(criteria_s2u1, &*pool).await?.is_none());
 
         let user2_messages_after_reset = memory.get_all(&user2.id, 10, 0).await?;
         assert_eq!(user2_messages_after_reset.len(), 1);
         assert_eq!(user2_messages_after_reset[0].content, "U2S1M_Reset");
 
-        let criteria_s1u2 = QueryCriteria::new().add_valued_filter("id", "=", session1_user2.id.hash().to_vec())?;
+        let criteria_s1u2 = QueryCriteria::new().add_valued_filter("id", "=", session1_user2.id.to_hex_string())?;
         assert!(RoleplaySession::find_one_by_criteria(criteria_s1u2, &*pool).await?.is_some());
 
         Ok(())
