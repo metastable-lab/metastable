@@ -3,6 +3,7 @@ use mongodb::error::Error as MongoDbError;
 use mongodb::bson::{self, doc, Document};
 use mongodb::Database;
 use mongodb::options::FindOptions;
+use mongodb::Client;
 
 use futures::StreamExt;
 use serde::{de::DeserializeOwned, Serialize};
@@ -10,7 +11,12 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use voda_common::CryptoHash;
 
-#[allow(async_fn_in_trait)]
+pub async fn get_db(uri: &str, db_name: &str) -> Database {
+    let client = Client::with_uri_str(uri).await.unwrap();
+    client.database(db_name)
+}
+
+#[async_trait::async_trait]
 pub trait MongoDbObject: 
     Sized + Serialize + DeserializeOwned + Sync + Unpin + Send + Clone
 {
@@ -40,10 +46,10 @@ pub trait MongoDbObject:
     }
 
     async fn update(&self, db: &Database) -> Result<(), Self::Error> {
-        let col = db.collection(Self::COLLECTION_NAME);
+        let col = db.collection::<Document>(Self::COLLECTION_NAME);
         col.replace_one(
             doc! { "_id": self.get_id().to_hex_string() },
-            bson::to_document(&self).map_err(Self::Error::from)?,
+            bson::to_document(&self)?,
             None,
         )
         .await?;

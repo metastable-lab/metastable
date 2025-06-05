@@ -5,17 +5,25 @@ edition = "2021"
 
 [dependencies]
 voda-common = { path = "../common" }
+voda-db-macros = { path = "../db-macros"}
 
-mongodb.workspace = true
 tokio.workspace = true
 futures.workspace = true
+async-trait.workspace = true
+
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-blake3.workspace = true
+
 async-openai.workspace = true
-sqlx.workspace = true
-async-trait.workspace = true
+
+mongodb = { workspace = true, optional = true}
+sqlx = { workspace = true, optional = true }
 
 [dev-dependencies]
 dotenv.workspace = true
+
+[features]
+default = ["postgres"]
+postgres = ["dep:sqlx"]
+mongodb = ["dep:mongodb"]

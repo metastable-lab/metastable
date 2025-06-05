@@ -24,6 +24,10 @@ impl CryptoHash {
         &self.hash
     }
 
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.hash.to_vec()
+    }
+
     pub fn to_hex_string(&self) -> String {
         hex::encode(self.hash)
     }

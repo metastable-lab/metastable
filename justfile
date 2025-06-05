@@ -6,13 +6,15 @@ set shell := ["zsh", "-cu"]
 set dotenv-filename := ".env"
 set dotenv-load := true
 
-export ETH_RPC_URL := env("ETH_RPC_URL")
-export MONGODB_URI := env("MONGODB_URI")
-export GITCOIN_PRIVATE_KEY_SALT := env("GITCOIN_PRIVATE_KEY_SALT")
-export SECRET_SALT := env("SECRET_SALT")
-export OPENAI_API_KEY := env("OPENAI_API_KEY")
-export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
-export FISH_AUDIO_API_KEY := env("FISH_AUDIO_API_KEY")
+# export ETH_RPC_URL := env("ETH_RPC_URL")
+# export MONGODB_URI := env("MONGODB_URI")
+# export GITCOIN_PRIVATE_KEY_SALT := env("GITCOIN_PRIVATE_KEY_SALT")
+# export SECRET_SALT := env("SECRET_SALT")
+# export OPENAI_API_KEY := env("OPENAI_API_KEY")
+# export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
+# export FISH_AUDIO_API_KEY := env("FISH_AUDIO_API_KEY")
+
+export DATABASE_URL := env("DATABASE_URL")
 
 @docs:
     cd docs && bunx mintlify dev
@@ -25,3 +27,6 @@ export FISH_AUDIO_API_KEY := env("FISH_AUDIO_API_KEY")
 
 @migration:
     cargo run --package voda-runtime --bin migration
+
+@test:
+    cargo test -p voda-runtime-roleplay

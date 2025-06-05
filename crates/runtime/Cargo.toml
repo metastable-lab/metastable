@@ -6,19 +6,17 @@ edition = "2021"
 [dependencies]
 voda-common = { path = "../common" }
 voda-database = { path = "../database" }
-voda-db-macros = { path = "../db-macros" }
-hex = "0.4"
 
 async-openai.workspace = true
 serde.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
-mongodb.workspace = true
 futures.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true }
+
 chrono = { version = "0.4", features = ["serde"] }
 strum = "0.26" # Or your desired version
 strum_macros = "0.26" # Or your desired version
@@ -26,3 +24,4 @@ strum_macros = "0.26" # Or your desired version
 [dev-dependencies]
 sqlx = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+hex.workspace = true

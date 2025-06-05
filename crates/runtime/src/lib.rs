@@ -10,7 +10,7 @@ mod env;
 pub use toolcall::ExecutableFunctionCall;
 pub use output_client::OutputClient;
 pub use runtime_client::RuntimeClient;
-pub use user::{User, UserProfile, UserPoints, UserUsage, UserRole};
+pub use user::{User, UserMetadata, UserPoints, UserUsage, UserRole};
 pub use system_config::SystemConfig;
 pub use function_executor::FunctionExecutor;
 pub use env::RuntimeEnv;

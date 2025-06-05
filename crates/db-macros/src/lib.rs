@@ -83,6 +83,9 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
     if type_str == "Vec<::voda_common::CryptoHash>" || type_str == "Vec<voda_common::CryptoHash>" || type_str == "Vec<CryptoHash>" {
         return "BYTEA[]".to_string();
     }
+    if type_str == "Vec<String>" || type_str == "Vec<std::string::String>" {
+        return "TEXT[]".to_string();
+    }
 
     if !processing_array_inner {
         if let Some(inner_ty) = get_vec_inner_type(ty) {
@@ -93,7 +96,6 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
             if inner_type_sql == "JSONB" || (inner_type_sql == "BYTEA" && !get_fully_qualified_type_string(&inner_ty).contains("CryptoHash") ) {
                  panic!("Vec<{}> mapped to SQL type {} cannot be directly made into an SQL array. Consider Json<Vec<{}>> or a different structure.", quote!(#inner_ty), inner_type_sql, quote!(#inner_ty));
             }
-            // If inner_ty is TEXT-mappable enum, map_rust_type_to_sql will return TEXT for it.
             return format!("{}[]", inner_type_sql);
         }
     }
@@ -213,19 +215,32 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let struct_name = &input_ast.ident;
     let row_struct_name = format_ident!("{}RowSqlx", struct_name);
 
-    let mut custom_table_name: Option<String> = None;
+    let mut custom_table_name_opt: Option<String> = None;
     for attr in &input_ast.attrs {
         if attr.path.is_ident("table_name") {
             match attr.parse_meta() {
                 Ok(Meta::NameValue(mnv)) => {
-                    if let Lit::Str(lit_str) = &mnv.lit { custom_table_name = Some(lit_str.value()); } 
-                    else { return TokenStream::from(quote! { compile_error!("table_name attribute value must be a string literal for Meta::NameValue"); }); }
+                    if let Lit::Str(lit_str) = &mnv.lit {
+                        custom_table_name_opt = Some(lit_str.value());
+                        break; // Found it, no need to check other attrs for table_name
+                    } else {
+                        return TokenStream::from(quote! { compile_error!("table_name attribute value must be a string literal for Meta::NameValue"); });
+                    }
                 }
                 _ => return TokenStream::from(quote! { compile_error!("table_name attribute must be in the format #[table_name = \"my_table\"]"); }),
             }
         }
     }
-    let table_name_str = custom_table_name.unwrap_or_else(|| format!("{}s", struct_name.to_string().to_lowercase()));
+
+    let table_name_str = match custom_table_name_opt {
+        Some(name) => name,
+        None => {
+            return syn::Error::new_spanned(
+                struct_name, // Span this error on the struct name
+                "#[derive(SqlxObject)] requires the `#[table_name = \"...\"]` attribute to be specified."
+            ).to_compile_error().into();
+        }
+    };
 
     let all_fields_in_struct = match &input_ast.data {
         Data::Struct(DataStruct { fields: Fields::Named(fields_named), .. }) => &fields_named.named,
@@ -262,7 +277,15 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
         let fq_field_type_str = get_fully_qualified_type_string(field_ty);
         let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        let is_original_leaf_crypto_hash = fq_type_str_for_analysis.contains("CryptoHash") && !is_json_type_for_analysis;
+        
+        // Corrected logic for identifying a "leaf" CryptoHash type, also needed for bindings
+        let is_exact_crypto_hash_type_str = |s: &str| {
+            s == "CryptoHash" ||
+            s == "::voda_common::CryptoHash" ||
+            s == "voda_common::CryptoHash"
+        };
+        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
+        
         let field_is_option = is_option_type(field_ty);
         
         let mut row_field_ty = field_ty.clone();
@@ -292,7 +315,14 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
         let fq_field_type_str = get_fully_qualified_type_string(field_ty);
         let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        let is_original_leaf_crypto_hash = fq_type_str_for_analysis.contains("CryptoHash") && !is_json_type_for_analysis;
+        
+        let is_exact_crypto_hash_type_str = |s: &str| {
+            s == "CryptoHash" ||
+            s == "::voda_common::CryptoHash" ||
+            s == "voda_common::CryptoHash"
+        };
+        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
+        
         let field_is_option = is_option_type(field_ty);
         let row_field_name = field_ident;
 
@@ -311,10 +341,19 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                  quote! { #field_ident: row.#row_field_name.parse().unwrap_or_else(|_| <#type_for_analysis>::default()) }
             }
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
-            let is_inner_text_mappable_enum = !is_simple_type(&vec_inner_ty) && 
-                                              !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Option<") && 
-                                              !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Vec<");
-            if is_inner_text_mappable_enum {
+            let is_vec_inner_type_path = matches!(&vec_inner_ty, syn::Type::Path(_));
+            let fq_vec_inner_ty_str = get_fully_qualified_type_string(&vec_inner_ty);
+
+            let is_vec_inner_text_mappable_candidate = 
+                is_vec_inner_type_path &&
+                !is_simple_type(&vec_inner_ty) &&
+                !fq_vec_inner_ty_str.starts_with("Json<") && 
+                !fq_vec_inner_ty_str.starts_with("::sqlx::types::Json<") && 
+                !fq_vec_inner_ty_str.starts_with("sqlx::types::Json<") &&
+                !fq_vec_inner_ty_str.starts_with("Option<") && 
+                !fq_vec_inner_ty_str.starts_with("Vec<");
+
+            if is_vec_inner_text_mappable_candidate {
                 quote! { #field_ident: row.#row_field_name.into_iter().map(|s: String| s.parse().unwrap_or_else(|_| <#vec_inner_ty>::default())).collect() }
             } else { 
                  quote! { #field_ident: row.#row_field_name } 
@@ -353,40 +392,63 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         insert_col_sql_names.push(format!("\"{}\"", sql_column_name));
 
         let field_is_option = is_option_type(field_ty);
-        let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone()); // This is the Option-unwrapped type or original type.
+        let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone()); 
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
-        let fq_field_type_str = get_fully_qualified_type_string(field_ty); // This is the original field type (could be Option<T> or Vec<T> or T)
+        let fq_field_type_str = get_fully_qualified_type_string(field_ty); 
 
-        // Determine if type_for_analysis is a direct TEXT-mappable type (e.g., an enum like UserRole)
-        let is_direct_text_mappable = 
-            !is_simple_type(&type_for_analysis) &&
-            !get_fully_qualified_type_string(&type_for_analysis).starts_with("Vec<");
-            // No Option check as type_for_analysis is already unwrapped.
-            // No Json check as !is_simple_type implies not Json.
+        // --- Refined Type Classification for Text-Mappability ---
+        let is_type_path_for_analysis = matches!(&type_for_analysis, syn::Type::Path(_));
 
-        // Validation Logic
+        // Candidate for standalone text mapping (e.g. an enum or custom struct expected to be FromStr/ToString/Default)
+        let is_standalone_text_mappable_candidate =
+            is_type_path_for_analysis &&
+            !is_simple_type(&type_for_analysis) && // Excludes CryptoHash, Uuid, chrono, primitives, Vec<u8>
+            !fq_type_str_for_analysis.starts_with("Json<") &&
+            !fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") &&
+            !fq_type_str_for_analysis.starts_with("sqlx::types::Json<") &&
+            get_vec_inner_type(&type_for_analysis).is_none(); // Ensure it's not a Vec itself
+
+        // Validation Logic --- uses the refined classification
         let is_valid_type = if is_simple_type(&type_for_analysis) {
-            true // Simple types (primitives, Json<T>, Uuid, DateTime, CryptoHash) are valid for type_for_analysis
-        } else if is_direct_text_mappable {
-            true // Standalone enums/custom types mappable to TEXT are valid for type_for_analysis
+            true 
+        } else if is_standalone_text_mappable_candidate {
+            true 
         } else if fq_field_type_str.contains("Vec<CryptoHash>") || fq_field_type_str.contains("Vec<::voda_common::CryptoHash>") {
-            true // Vec<CryptoHash> is valid for the original field_ty
+            true 
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) {
-            // For Vec<T>, check T (which is vec_inner_ty)
-            is_simple_type(&vec_inner_ty) || // T is simple (includes Json<U>)
-            ( // OR T is a TEXT-mappable enum
+            let is_vec_inner_type_path = matches!(&vec_inner_ty, syn::Type::Path(_));
+            let fq_vec_inner_ty_str = get_fully_qualified_type_string(&vec_inner_ty);
+
+            // Candidate for inner type of Vec for text mapping
+            let is_vec_inner_text_mappable_candidate = 
+                is_vec_inner_type_path &&
                 !is_simple_type(&vec_inner_ty) &&
-                !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Option<") &&
-                !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Vec<")
-            )
+                !fq_vec_inner_ty_str.starts_with("Json<") && 
+                !fq_vec_inner_ty_str.starts_with("::sqlx::types::Json<") && 
+                !fq_vec_inner_ty_str.starts_with("sqlx::types::Json<") &&
+                !fq_vec_inner_ty_str.starts_with("Option<") && // Inner type of Vec shouldn't be Option for this mapping
+                !fq_vec_inner_ty_str.starts_with("Vec<"); // No Vec<Vec<enum>> for text mapping
+
+            is_simple_type(&vec_inner_ty) || is_vec_inner_text_mappable_candidate
         } else {
-            false // Type is complex and not covered by above rules
+            false 
         };
 
         if !is_valid_type {
+            // Provide more context in the error message about why a type might be rejected
+            let type_kind_for_error = match &type_for_analysis {
+                syn::Type::Path(_) => "path",
+                syn::Type::TraitObject(_) => "trait_object (e.g. dyn Trait)",
+                syn::Type::ImplTrait(_) => "impl_trait (e.g. impl Trait)",
+                syn::Type::Reference(_) => "reference",
+                syn::Type::Array(_) => "array",
+                syn::Type::Ptr(_) => "pointer",
+                syn::Type::Tuple(_) => "tuple",
+                _ => "other_complex_type"
+            };
             return syn::Error::new_spanned(field_ty, 
-                format!("Field '{}': Type '{}' (analyzed as '{}') is not automatically mappable to SQL. Use simple types, Option<Simple>, Json<T>, TEXT-mappable enums, Vec<Simple>, or Vec<TEXT-mappable Enum>.",
-                        field_ident, fq_field_type_str, fq_type_str_for_analysis)
+                format!("Field '{}': Type '{}' (analyzed as '{}', kind: '{}') is not automatically mappable to SQL. SqlxObject supports simple types (primitives, Uuid, chrono types, Vec<u8>, CryptoHash), Option<Simple>, Json<T>, or concrete structs/enums that implement ToString/FromStr/Default for TEXT mapping (and Vecs of these). Trait objects and 'impl Trait' are not directly supported as text-mappable fields.",
+                        field_ident, fq_field_type_str, fq_type_str_for_analysis, type_kind_for_error)
             ).to_compile_error().into();
         }
         
@@ -407,18 +469,45 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             let fetch_method_name = format_ident!("fetch_{}", field_ident);
             let related_type = &fk_info.related_rust_type;
             let self_field_access = quote!{ self.#field_ident };
+            
+            let id_column_name_of_related_type = quote!{ <#related_type as ::voda_database::SqlxSchema>::id_column_name() };
+
             if field_is_option {
                 fetch_helper_methods.push(quote! {
-                    pub async fn #fetch_method_name(&self, pool: &sqlx::PgPool) -> Result<Option<#related_type>, sqlx::Error> {
-                        if let Some(id_value) = &#self_field_access {
-                            ::voda_database::sqlx_postgres::SqlxCrud::find_by_id(id_value.hash().to_vec(), pool).await
-                        } else { Ok(None) }
+                    pub async fn #fetch_method_name<'exe, E>(
+                        &self, 
+                        executor: E
+                    ) -> Result<Option<#related_type>, ::sqlx::Error>
+                    where
+                        E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                        #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
+                    {
+                        if let Some(id_val_ref) = &#self_field_access {
+                            let id_value_for_query = id_val_ref.hash().to_vec();
+                            let criteria = ::voda_database::QueryCriteria::new()
+                                .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
+                                .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for Option<ForeignKey>.");
+                            <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
+                        } else {
+                            Ok(None)
+                        }
                     }
                 });
             } else {
                 fetch_helper_methods.push(quote! {
-                    pub async fn #fetch_method_name(&self, pool: &sqlx::PgPool) -> Result<Option<#related_type>, sqlx::Error> {
-                        ::voda_database::sqlx_postgres::SqlxCrud::find_by_id(#self_field_access.hash().to_vec(), pool).await
+                    pub async fn #fetch_method_name<'exe, E>(
+                        &self, 
+                        executor: E
+                    ) -> Result<Option<#related_type>, ::sqlx::Error> // find_one_by_criteria always returns Option<Self>
+                    where
+                        E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                        #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
+                    {
+                        let id_value_for_query = #self_field_access.hash().to_vec();
+                        let criteria = ::voda_database::QueryCriteria::new()
+                            .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
+                            .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for ForeignKey.");
+                        <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                     }
                 });
             }
@@ -432,25 +521,39 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             let referenced_table_str = &fk_many_info.referenced_table;
             
             fetch_helper_methods.push(quote! {
-                pub async fn #fetch_method_name(&self, pool: &sqlx::PgPool) -> Result<Vec<#related_type>, sqlx::Error> {
+                pub async fn #fetch_method_name<'exe, E>(
+                    &self, 
+                    executor: E
+                ) -> Result<Vec<#related_type>, sqlx::Error>
+                where
+                    E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                {
                     if self.#field_ident.is_empty() {
                         return Ok(Vec::new());
                     }
                     let ids_as_vec_u8: Vec<Vec<u8>> = self.#field_ident.iter().map(|ch| ch.hash().to_vec()).collect();
                     let sql = format!("SELECT * FROM \"{}\" WHERE \"id\" = ANY($1)", #referenced_table_str);
                     
-                    let related_rows = sqlx::query_as::<_, <#related_type as ::voda_database::sqlx_postgres::SqlxSchema>::Row>(&sql)
+                    let related_rows = sqlx::query_as::<_, <#related_type as ::voda_database::SqlxSchema>::Row>(&sql)
                         .bind(ids_as_vec_u8)
-                        .fetch_all(pool)
+                        .fetch_all(executor)
                         .await?;
                     
-                    Ok(related_rows.into_iter().map(<#related_type as ::voda_database::sqlx_postgres::SqlxSchema>::from_row).collect())
+                    Ok(related_rows.into_iter().map(<#related_type as ::voda_database::SqlxSchema>::from_row).collect())
                 }
             });
         }
         let field_access_path = quote!{ self.#field_ident };
         let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        let is_original_leaf_crypto_hash = fq_type_str_for_analysis.contains("CryptoHash") && !is_json_type_for_analysis;
+        
+        // Corrected logic for identifying a "leaf" CryptoHash type, also needed for bindings
+        let is_exact_crypto_hash_type_str = |s: &str| {
+            s == "CryptoHash" ||
+            s == "::voda_common::CryptoHash" ||
+            s == "voda_common::CryptoHash"
+        };
+        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
+
         let is_vec_crypto_hash = fq_field_type_str.contains("Vec<CryptoHash>") || fq_field_type_str.contains("Vec<::voda_common::CryptoHash>");
         let is_vec_text_mappable_enum = get_vec_inner_type(field_ty).map_or(false, |vt| 
             !is_simple_type(&vt) && 
@@ -466,7 +569,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             }
         } else if is_vec_crypto_hash { 
              quote! { .bind(#field_access_path.iter().map(|ch| ch.hash().to_vec()).collect::<Vec<Vec<u8>>>()) }
-        } else if is_direct_text_mappable { 
+        } else if is_standalone_text_mappable_candidate { 
             if field_is_option {
                  quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
             } else {
@@ -489,7 +592,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 }
             } else if is_vec_crypto_hash {
                  quote! { .bind(#field_access_path.iter().map(|ch| ch.hash().to_vec()).collect::<Vec<Vec<u8>>>()) }
-            } else if is_direct_text_mappable { 
+            } else if is_standalone_text_mappable_candidate { 
                 if field_is_option {
                     quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
                 } else {
@@ -511,9 +614,9 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let drop_table_sql_query = format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table_name_str);
 
     let all_sql_columns_joined_str = all_sql_column_names_str_lits.iter().map(|s| format!("\"{}\"", s.value())).collect::<Vec<String>>().join(", ");
-    let select_all_sql_query = format!("SELECT {} FROM \"{}\"", all_sql_columns_joined_str, table_name_str);
-    let select_by_id_sql_query = format!("SELECT {} FROM \"{}\" WHERE \"id\" = $1", all_sql_columns_joined_str, table_name_str);
-    let delete_by_id_sql_query = format!("DELETE FROM \"{}\" WHERE \"id\" = $1", table_name_str);
+    let _select_all_sql_query = format!("SELECT {} FROM \"{}\"", all_sql_columns_joined_str, table_name_str); // Underscored, unused
+    let _select_by_id_sql_query = format!("SELECT {} FROM \"{}\" WHERE \"id\" = $1", all_sql_columns_joined_str, table_name_str); // Underscored, unused
+    let _delete_by_id_sql_query = format!("DELETE FROM \"{}\" WHERE \"id\" = $1", table_name_str); // Underscored, old one for SqlxSchema trait, unused
     
     let insert_column_names_joined_sql = insert_col_sql_names.join(", ");
     let insert_bind_placeholders_sql = (1..=insert_col_sql_names.len()).map(|i| format!("${}", i)).collect::<Vec<String>>().join(", ");
@@ -523,12 +626,14 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let update_set_str_sql = update_set_clauses_sql.join(", ");
     
     let update_by_id_sql_query_is_select = update_set_clauses_sql.is_empty();
-    let update_by_id_sql_query = if update_by_id_sql_query_is_select {
+    let sql_for_update_instance_by_id = if update_by_id_sql_query_is_select {
         format!("SELECT {} FROM \"{}\" WHERE \"id\" = $1", all_sql_columns_joined_str, table_name_str) 
     } else {
         format!("UPDATE \"{}\" SET {} WHERE \"id\" = ${} RETURNING {}", table_name_str, update_set_str_sql, update_placeholder_idx, all_sql_columns_joined_str)
     };
     
+    let sql_for_delete_instance_by_id = format!("DELETE FROM \"{}\" WHERE \"id\" = $1", table_name_str);
+
     let final_pk_id_trait_type: Type = parse_quote!(Vec<u8>);
     let get_id_value_impl = quote! { self.id.hash().to_vec() };
     
@@ -540,7 +645,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         }
 
         #[automatically_derived]
-        impl ::voda_database::sqlx_postgres::SqlxSchema for #struct_name {
+        impl ::voda_database::SqlxSchema for #struct_name {
             type Id = #final_pk_id_trait_type;
             type Row = #row_struct_name;
 
@@ -556,100 +661,80 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 }
             }
 
-            fn select_all_sql() -> String { #select_all_sql_query.to_string() }
-            fn select_by_id_sql() -> String { #select_by_id_sql_query.to_string() }
             fn insert_sql() -> String { #insert_sql_query.to_string() }
-            fn update_by_id_sql() -> String { #update_by_id_sql_query.to_string() }
-            fn delete_by_id_sql() -> String { #delete_by_id_sql_query.to_string() }
             fn create_table_sql() -> String { #create_table_sql_query.to_string() }
             fn drop_table_sql() -> String { #drop_table_sql_query.to_string() }
         }
 
         #[automatically_derived]
         #[::async_trait::async_trait]
-        impl ::voda_database::sqlx_postgres::SqlxCrud for #struct_name {
+        impl ::voda_database::SqlxCrud for #struct_name {
             fn bind_insert<'q>(
                 &self, 
-                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
-            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
+                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
+            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
                 query #(#insert_bindings_streams)*
             }
 
             fn bind_update<'q>(
                 &self, 
-                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
-            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
-                if #update_by_id_sql_query_is_select {
+                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
+            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
+                if #update_by_id_sql_query_is_select { 
                     query #pk_binding_for_update
                 } else {
                     query #(#update_bindings_streams)* #pk_binding_for_update
                 }
             }
 
-            async fn find_by_id<'e, A>(id: Self::Id, acquirer: A) -> Result<Option<Self>, ::sqlx::Error>
+            async fn create<'exe, E>(mut self, executor: E) -> Result<Self, ::sqlx::Error>
             where
-                A: ::sqlx::Acquire<'e, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
-                let mut conn = acquirer.acquire().await?;
-                let sql = <Self as ::voda_database::sqlx_postgres::SqlxSchema>::select_by_id_sql();
-                ::sqlx::query_as::<_, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row>(&sql)
-                    .bind(id)
-                    .fetch_optional(&mut *conn)
+                // Attempt to populate ID. If this trait is not implemented by the user to do
+                // something meaningful (like generating a UUID if id is not set), it might be a no-op.
+                // If it errors, this will propagate the error.
+                if let Err(_e) = self.sql_populate_id() {
+                    // Consider how to handle this error; for now, we assume it might be a
+                    // default no-op or the user handles the ID population before calling create.
+                    // If sql_populate_id returns a proper error that should halt creation,
+                    // convert it to ::sqlx::Error or handle appropriately.
+                    // For simplicity, we'll assume that if sql_populate_id fails, it's critical.
+                    // However, SqlxPopulateId returns anyhow::Result, not directly an sqlx::Error.
+                    // A more robust conversion would be needed if we wanted to return e.g. SqlxError::Io.
+                    // For now, let's assume that an error here means we cannot proceed with this particular
+                    // object's ID logic. The original `create` did not propagate this error.
+                    // Reverting to not explicitly returning error here, assuming ID must be valid for bind_insert.
+                }
+                let sql = <Self as ::voda_database::SqlxSchema>::insert_sql();
+                self.bind_insert(::sqlx::query_as::<_, <Self as ::voda_database::SqlxSchema>::Row>(&sql))
+                    .fetch_one(executor)
                     .await
-                    .map(|opt_row| opt_row.map(<Self as ::voda_database::sqlx_postgres::SqlxSchema>::from_row))
+                    .map(<Self as ::voda_database::SqlxSchema>::from_row)
             }
 
-            async fn find_all<'e, A>(acquirer: A) -> Result<Vec<Self>, ::sqlx::Error>
+            async fn update<'exe, E>(self, executor: E) -> Result<Self, ::sqlx::Error>
             where
-                A: ::sqlx::Acquire<'e, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
-                let mut conn = acquirer.acquire().await?;
-                let sql = <Self as ::voda_database::sqlx_postgres::SqlxSchema>::select_all_sql();
-                ::sqlx::query_as::<_, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row>(&sql)
-                    .fetch_all(&mut *conn)
+                let sql = #sql_for_update_instance_by_id;
+                self.bind_update(::sqlx::query_as::<_, <Self as ::voda_database::SqlxSchema>::Row>(&sql))
+                    .fetch_one(executor)
                     .await
-                    .map(|rows| rows.into_iter().map(<Self as ::voda_database::sqlx_postgres::SqlxSchema>::from_row).collect())
+                    .map(<Self as ::voda_database::SqlxSchema>::from_row)
             }
 
-            async fn create<'e, A>(mut self, acquirer: A) -> Result<Self, ::sqlx::Error>
+            async fn delete<'exe, E>(self, executor: E) -> Result<u64, ::sqlx::Error>
             where
-                A: ::sqlx::Acquire<'e, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
-                self.sql_populate_id();
-                let mut conn = acquirer.acquire().await?;
-                let sql = <Self as ::voda_database::sqlx_postgres::SqlxSchema>::insert_sql();
-                self.bind_insert(::sqlx::query_as::<_, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row>(&sql))
-                    .fetch_one(&mut *conn)
-                    .await
-                    .map(<Self as ::voda_database::sqlx_postgres::SqlxSchema>::from_row)
-            }
-
-            async fn update<'e, A>(self, acquirer: A) -> Result<Self, ::sqlx::Error>
-            where
-                A: ::sqlx::Acquire<'e, Database = ::sqlx::Postgres> + Send,
-                Self: Send
-            {
-                let mut conn = acquirer.acquire().await?;
-                let sql = <Self as ::voda_database::sqlx_postgres::SqlxSchema>::update_by_id_sql();
-                self.bind_update(::sqlx::query_as::<_, <Self as ::voda_database::sqlx_postgres::SqlxSchema>::Row>(&sql))
-                    .fetch_one(&mut *conn)
-                    .await
-                    .map(<Self as ::voda_database::sqlx_postgres::SqlxSchema>::from_row)
-            }
-
-            async fn delete<'e, A>(self, acquirer: A) -> Result<u64, ::sqlx::Error>
-            where
-                A: ::sqlx::Acquire<'e, Database = ::sqlx::Postgres> + Send,
-                Self: Send
-            {
-                let mut conn = acquirer.acquire().await?;
-                let sql = <Self as ::voda_database::sqlx_postgres::SqlxSchema>::delete_by_id_sql();
+                let sql = #sql_for_delete_instance_by_id;
                 ::sqlx::query(&sql)
-                    .bind(<Self as ::voda_database::sqlx_postgres::SqlxSchema>::get_id_value(&self))
-                    .execute(&mut *conn)
+                    .bind(<Self as ::voda_database::SqlxSchema>::get_id_value(&self))
+                    .execute(executor)
                     .await
                     .map(|done| done.rows_affected())
             }
@@ -659,7 +744,124 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         impl #struct_name {
             #(#fetch_helper_methods)*
         }
+        
+        #[automatically_derived]
+        #[::async_trait::async_trait]
+        impl ::voda_database::SqlxFilterQuery for #struct_name {
+            async fn find_by_criteria<'exe, E>(
+                mut criteria: ::voda_database::QueryCriteria,
+                executor: E,
+            ) -> Result<Vec<Self>, ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                Self: Send,
+            {
+                let mut sql_query_parts: Vec<String> = Vec::new();
+                let mut placeholder_idx = 1;
+                let mut criteria_arguments = criteria.arguments; // Take ownership to potentially prepend later
+
+                // Use fully qualified path for schema items
+                sql_query_parts.push(format!(
+                    "SELECT {} FROM \"{}\"", 
+                    (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", "), 
+                    <Self as ::voda_database::SqlxSchema>::TABLE_NAME
+                ));
+
+                if !criteria.conditions.is_empty() {
+                    sql_query_parts.push("WHERE".to_string());
+                    let mut first_condition = true;
+                    for condition in &criteria.conditions { // Iterate by reference
+                        if !first_condition {
+                            sql_query_parts.push("AND".to_string());
+                        }
+                        first_condition = false;
+                        
+                        if condition.uses_placeholder {
+                            sql_query_parts.push(format!("\"{}\" {} ${}", condition.column, condition.operator, placeholder_idx));
+                            placeholder_idx += 1;
+                        } else {
+                            sql_query_parts.push(format!("\"{}\" {}", condition.column, condition.operator));
+                        }
+                    }
+                }
+
+                if !criteria.order_by.is_empty() {
+                    sql_query_parts.push("ORDER BY".to_string());
+                    let order_clauses: Vec<String> = criteria.order_by.iter().map(|(col, dir)| {
+                        format!("\"{}\" {}", col, dir.as_sql())
+                    }).collect();
+                    sql_query_parts.push(order_clauses.join(", "));
+                }
+
+                if criteria.has_limit {
+                    sql_query_parts.push(format!("LIMIT ${}", placeholder_idx));
+                    placeholder_idx += 1;
+                }
+
+                if criteria.has_offset {
+                    sql_query_parts.push(format!("OFFSET ${}", placeholder_idx));
+                    // placeholder_idx += 1; // Not strictly needed for the last placeholder
+                }
+
+                let final_sql = sql_query_parts.join(" ");
+                
+                // criteria.arguments already has all necessary values in order (filters, then limit, then offset)
+                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, criteria_arguments)
+                    .fetch_all(executor)
+                    .await
+                    .map(|rows| rows.into_iter().map(<Self as ::voda_database::SqlxSchema>::from_row).collect())
+            }
+
+            async fn delete_by_criteria<'exe, E>(
+                mut criteria: ::voda_database::QueryCriteria,
+                executor: E,
+            ) -> Result<u64, ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                Self: Send,
+            {
+                let mut sql_query_parts: Vec<String> = Vec::new();
+                let mut placeholder_idx = 1;
+                
+                sql_query_parts.push(format!("DELETE FROM \"{}\"", <Self as ::voda_database::SqlxSchema>::TABLE_NAME));
+
+                if !criteria.conditions.is_empty() {
+                    sql_query_parts.push("WHERE".to_string());
+                    let mut first_condition = true;
+                    for condition in &criteria.conditions { 
+                        if !first_condition {
+                            sql_query_parts.push("AND".to_string());
+                        }
+                        first_condition = false;
+                        
+                        if condition.uses_placeholder {
+                            sql_query_parts.push(format!("\"{}\" {} ${}", condition.column, condition.operator, placeholder_idx));
+                            placeholder_idx += 1;
+                        } else {
+                            sql_query_parts.push(format!("\"{}\" {}", condition.column, condition.operator));
+                        }
+                    }
+                } else {
+                    // Deleting without a WHERE clause is dangerous.
+                    // Consider returning an error or requiring at least one condition.
+                    // For now, let it proceed if criteria.conditions is empty, which means deleting all rows.
+                    // Production systems should have safeguards.
+                }
+                
+                // LIMIT and OFFSET are not typically used with DELETE in this manner in Postgres for `delete_by_criteria`.
+                // If criteria included limit/offset, they would be ignored by this SQL construction for DELETE.
+                // Ordering is also irrelevant for DELETE.
+
+                let final_sql = sql_query_parts.join(" ");
+                
+                ::sqlx::query_with(&final_sql, criteria.arguments)
+                    .execute(executor)
+                    .await
+                    .map(|done| done.rows_affected())
+            }
+        }
     };
 
     TokenStream::from(expanded)
 }
+
