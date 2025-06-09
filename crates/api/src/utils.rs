@@ -39,7 +39,6 @@ pub fn extract_bearer_token(req: &Request) -> Result<String, AppError> {
     }
 }
 
-
 pub fn setup_tracing() {
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_max_level(tracing::Level::DEBUG)

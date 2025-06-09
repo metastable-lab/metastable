@@ -5,15 +5,15 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
+use sqlx::PgPool;
 use termimad::crossterm::style::{Attribute, Color};
 use termimad::MadSkin;
 use tokio::sync::mpsc;
 // use tracing::Level;
 
-use sqlx::PgPool;
 use voda_common::CryptoHash;
 use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery, SqlxPopulateId};
-use voda_runtime::user::UserProfile;
+use voda_runtime::user::{UserProfile, UserUrl};
 use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserMetadata, UserPoints, UserUsage};
 use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
 
@@ -21,7 +21,7 @@ mod config;
 use config::{SYSTEM_CONFIG, TEST_CHARACTER, TEST_USER};
 
 init_db_pool!(
-    User, UserUsage, UserProfile, SystemConfig, UserPoints, UserMetadata,
+    User, UserUsage, UserProfile, SystemConfig, UserPoints, UserMetadata, UserUrl,
     Character, RoleplaySession, RoleplayMessage, AuditLog
 );
 
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
 
     let (tx, _rx) = mpsc::channel(100);
     let client =
-        RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), SYSTEM_CONFIG.clone(), tx).await;
+        RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), tx).await;
 
     let mut rl = DefaultEditor::new()?;
     println!("{}", "Sandbox CLI Initialized. Type 'exit' or press Ctrl-D to quit.".green());

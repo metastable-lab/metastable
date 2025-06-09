@@ -1,21 +1,24 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use axum::Router;
 use tokio::sync::mpsc;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
-use voda_runtime::define_function_types;
-use voda_runtime::ExecutableFunctionCall;
-use voda_runtime::FunctionExecutor;
-use voda_runtime_roleplay::RoleplayRuntimeClient;
+
 use voda_service_api::{
-    character_routes, misc_routes, setup_tracing, system_config_routes, user_routes, 
-    runtime_routes, voice_routes, memory_routes
+    graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, GlobalState
 };
 
-use voda_service::voda_routes;
-use voda_runtime_evm::GitcoinFunctionCall;
-define_function_types! {
-    Gitcoin(GitcoinFunctionCall, "gitcoin_allocate_grant")
-}
+use voda_database::init_db_pool;
+use voda_runtime::user::{UserProfile, UserUrl};
+use voda_runtime::{SystemConfig, User, UserMetadata, UserPoints, UserUsage};
+use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
+
+init_db_pool!(
+    User, UserUsage, UserProfile, SystemConfig, UserPoints, UserMetadata, UserUrl,
+    Character, RoleplaySession, RoleplayMessage, AuditLog
+);
+
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,33 +27,25 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::very_permissive();
     let trace = TraceLayer::new_for_http();
 
-    let (executor, execution_queue) = mpsc::channel(100);
-    let client = RoleplayRuntimeClient::new(executor).await;
+    let db_pool = Arc::new(connect(true).await.clone());
 
-    tokio::spawn(async move {
-        let mut function_executor = FunctionExecutor::<RuntimeFunctionType>::new(
-            execution_queue
-        );
-        function_executor.run().await;
-    });
+    let (executor, _execution_queue) = mpsc::channel(100);
+    let memory = RoleplayRawMemory::new(db_pool.clone());
+    let client = RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), executor).await;
+
+    let global_state = GlobalState {
+        roleplay_client: client,
+    };
 
     let app = Router::new()
-
-        // generic routes
-        .merge(character_routes())
-        .merge(user_routes())
         .merge(misc_routes())
-        .merge(memory_routes())
-        .merge(system_config_routes())
         .merge(runtime_routes())
         .merge(voice_routes())
-
-        // voda routes
-        .merge(voda_routes())
+        .merge(graphql_route())
 
         .layer(cors)
         .layer(trace)
-        .with_state(client);
+        .with_state(global_state);
 
     let port: u16 = std::env::var("PORT")
         .unwrap_or("3033".into())

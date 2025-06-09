@@ -2,6 +2,7 @@ mod metadata;
 mod points;
 mod profile;
 mod usage;
+mod url;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -14,6 +15,7 @@ pub use metadata::UserMetadata;
 pub use points::UserPoints;
 pub use profile::UserProfile;
 pub use usage::UserUsage;
+pub use url::UserUrl;
 
 pub const BALANCE_CAP: i64 = 500;
 

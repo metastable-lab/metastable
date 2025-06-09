@@ -56,8 +56,9 @@ impl Message for RoleplayMessage {
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: response.content,
-            created_at: 0,
             session_id: session_id.clone(),
+
+            created_at: 0,
             updated_at: 0,
         }
     }
@@ -108,8 +109,9 @@ impl RoleplayMessage {
             role: MessageRole::System,
             content_type: MessageType::Text,
             content: system_prompt,
-            created_at: 0,
             session_id: session.id.clone(),
+
+            created_at: 0,
             updated_at: 0,
         }
     }
@@ -129,8 +131,25 @@ impl RoleplayMessage {
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: first_message,
-            created_at: 0,
             session_id: session.id.clone(),
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn user_message(
+        message: &str, session_id: &CryptoHash, user_id: &CryptoHash
+    ) -> Self {
+        Self {
+            id: CryptoHash::default(),
+            owner: user_id.clone(),
+            role: MessageRole::User,
+            content_type: MessageType::Text,
+            content: message.to_string(),
+            session_id: session_id.clone(),
+
+            created_at: 0,
             updated_at: 0,
         }
     }

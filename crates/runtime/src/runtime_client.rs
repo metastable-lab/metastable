@@ -25,7 +25,6 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     const NAME: &'static str;
     type MemoryType: Memory;
 
-    fn system_config(&self) -> &SystemConfig;
     fn get_db(&self) -> &Arc<PgPool>;
     fn get_memory(&self) -> &Arc<Self::MemoryType>;
     fn get_price(&self) -> u64;
@@ -35,11 +34,14 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     async fn on_shutdown(&self) -> Result<()>;
 
     async fn on_new_message(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
+    async fn on_rollback(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
     async fn on_tool_call(&self, call: &FunctionCall) -> Result<String>;
 
     // NOTE: toolcall are sent for execution here, and results are returned here
-    async fn send_llm_request(&self, messages: &[<Self::MemoryType as Memory>::MessageType]) -> Result<LLMRunResponse> {
-        let system_config = self.system_config();
+    async fn send_llm_request(&self, 
+        system_config: &SystemConfig,
+        messages: &[<Self::MemoryType as Memory>::MessageType]
+    ) -> Result<LLMRunResponse> {
         let messages = Message::pack(messages)?;
 
         let tools = system_config.functions.iter()

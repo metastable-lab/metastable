@@ -3,6 +3,7 @@ use voda_common::EnvVars;
 pub struct ApiServerEnv {
     pub secret_salt: String,
     pub fish_audio_api_key: String,
+    pub hasura_graphql_url: String,
 }
 
 impl EnvVars for ApiServerEnv {
@@ -10,6 +11,7 @@ impl EnvVars for ApiServerEnv {
         Self {
             secret_salt: std::env::var("SECRET_SALT").unwrap(),
             fish_audio_api_key: std::env::var("FISH_AUDIO_API_KEY").unwrap(),
+            hasura_graphql_url: std::env::var("HASURA_GRAPHQL_URL").unwrap(),
         }
     }
 
@@ -17,6 +19,7 @@ impl EnvVars for ApiServerEnv {
         match key {
             "SECRET_SALT" => self.secret_salt.clone(),
             "FISH_AUDIO_API_KEY" => self.fish_audio_api_key.clone(),
+            "HASURA_GRAPHQL_URL" => self.hasura_graphql_url.clone(),
             _ => panic!("{} is not set", key),
         }
     }

@@ -121,7 +121,7 @@ macro_rules! init_db_pool {
     ($($target_type:ty),*) => {
         use $crate::SqlxSchema; // Assumes SqlxSchema is accessible via $crate (voda_database::SqlxSchema)
 
-        static POOL: tokio::sync::OnceCell<PgPool> = tokio::sync::OnceCell::const_new();
+        static POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
         // To use this macro, call it like this:
         // init_db_pool!(MyType1, MyType2, MyType3);
@@ -132,11 +132,11 @@ macro_rules! init_db_pool {
         //
         // Example usage:
         // let pool = connect().await;
-        async fn connect(drop_table: bool) -> &'static PgPool {
+        async fn connect(drop_table: bool) -> &'static sqlx::PgPool {
             POOL.get_or_init(|| async {
                 let database_url = std::env::var("DATABASE_URL").unwrap();
                 
-                let pool = PgPool::connect(&database_url).await
+                let pool = sqlx::PgPool::connect(&database_url).await
                     .expect("Failed to connect to Postgres. Ensure DB is running and POSTGRES_URI is correct.");
 
                 // Create the timestamp helper function globally

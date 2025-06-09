@@ -7,7 +7,7 @@ use async_openai::{config::OpenAIConfig, Client};
 use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
 use voda_common::EnvVars;
-use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
+use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage};
 use voda_database::SqlxCrud;
 
 use crate::{RoleplayMessage, RoleplayRawMemory};
@@ -16,18 +16,14 @@ use crate::{RoleplayMessage, RoleplayRawMemory};
 pub struct RoleplayRuntimeClient {
     db: Arc<PgPool>,
     memory: Arc<RoleplayRawMemory>,
-
     client: Client<OpenAIConfig>,
-
     executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
-    system_config: SystemConfig,
 }
 
 impl RoleplayRuntimeClient {
     pub async fn new(
         db: Arc<PgPool>,
         memory: Arc<RoleplayRawMemory>,
-        system_config: SystemConfig,
         executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
     ) -> Self {
         let env = RuntimeEnv::load();
@@ -41,7 +37,7 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        Self { client, db, memory, executor, system_config }
+        Self { client, db, memory, executor }
     }
 }
 
@@ -50,7 +46,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
     const NAME: &'static str = "rolplay";
     type MemoryType = RoleplayRawMemory;
 
-    fn system_config(&self) -> &SystemConfig { &self.system_config }
     fn get_price(&self) -> u64 { 1 }
     fn get_db(&self) -> &Arc<PgPool> { &self.db }
     fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
@@ -60,10 +55,10 @@ impl RuntimeClient for RoleplayRuntimeClient {
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
-        let messages = self.memory
+        let (messages, system_config) = self.memory
             .search(&message, 100, 0).await?;
 
-        let response = self.send_llm_request(&messages).await?;
+        let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
             response.clone(), 
             &message.session_id, 
@@ -77,7 +72,27 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         let user_usage = UserUsage::new(
             message.owner.clone(),
-            self.system_config.openai_model.clone(),
+            system_config.openai_model.clone(),
+            response.usage.clone()
+        );
+        user_usage.create(&*self.db).await?;
+
+        Ok(response)
+    }
+
+    async fn on_rollback(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
+        let (mut messages, system_config) = self.memory
+            .search(&message, 100, 0).await?;
+        let mut last_assistant_message = messages.pop()
+            .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last message found"))?;
+
+        let response = self.send_llm_request(&system_config, &messages).await?;
+        last_assistant_message.content = response.content.clone();
+        last_assistant_message.update(&*self.db).await?;
+
+        let user_usage = UserUsage::new(
+            message.owner.clone(),
+            system_config.openai_model.clone(),
             response.usage.clone()
         );
         user_usage.create(&*self.db).await?;

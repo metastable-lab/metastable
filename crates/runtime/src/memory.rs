@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
 use voda_common::CryptoHash;
-use crate::LLMRunResponse;
+use crate::{LLMRunResponse, SystemConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
 pub enum MessageRole {
@@ -92,7 +92,7 @@ pub trait Memory: Clone + Send + Sync + 'static {
     ) -> Result<Vec<Self::MessageType>>;
 
     async fn search(&self, message: &Self::MessageType, limit: u64, offset: u64) -> Result<
-        Vec<Self::MessageType>
+        (Vec<Self::MessageType>, SystemConfig)
     >;
 
     async fn update(&self, messages: &[Self::MessageType]) -> Result<()>;

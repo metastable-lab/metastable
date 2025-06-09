@@ -10,7 +10,7 @@ opt-level = 1
 
 [workspace]
 members = [
-    # "crates/api",
+    "crates/api",
     "crates/common",
     "crates/database", 
     "crates/db-macros",
@@ -20,6 +20,7 @@ members = [
     "crates/runtime-mods/roleplay",
 
     "services/voda-sandbox",
+    "services/voda-service",
 ]
 resolver = "2"
 

@@ -6,7 +6,7 @@ use sqlx::PgPool;
 use voda_database::{
     SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery
 };
-use voda_runtime::Memory;
+use voda_runtime::{Memory, SystemConfig};
 use voda_common::CryptoHash;
 
 use crate::RoleplaySession;
@@ -32,18 +32,22 @@ impl Memory for RoleplayRawMemory {
     async fn initialize(&self) -> Result<()> { Ok(()) }
 
     async fn add_messages(&self, messages: &[RoleplayMessage]) -> Result<()> {
+        if messages.len() == 0 {
+            return Ok(());
+        }
+
         let mut tx = self.db.begin().await?;
+
+        // NOTE: ASSUME ALL MESSAGES HAVE THE SAME SESSION_ID
+        let mut session = RoleplaySession::find_one_by_criteria(
+            QueryCriteria::by_id(&messages[0].session_id)?,
+            &mut *tx
+        ).await?
+            .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
 
         for message in messages {
             let m = message.clone();
-            let criteria = QueryCriteria::by_id(&m.session_id)?;
-        
-            let mut session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx)
-                .await?
-                .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
-
             let created_m = m.create(&mut *tx).await?;
-
             session.append_message_to_history(&created_m.id, &mut *tx).await?;
         }
 
@@ -69,7 +73,9 @@ impl Memory for RoleplayRawMemory {
         Ok(messages)
     }
 
-    async fn search(&self, message: &RoleplayMessage, _limit: u64, _offset: u64) -> Result<Vec<RoleplayMessage>> {
+    async fn search(&self, message: &RoleplayMessage, _limit: u64, _offset: u64) -> Result<
+        (Vec<RoleplayMessage>, SystemConfig)
+    > {
         let mut tx = self.db.begin().await?;
 
         let criteria = QueryCriteria::by_id(&message.session_id)?;
@@ -91,7 +97,7 @@ impl Memory for RoleplayRawMemory {
         messages.push(message.clone());
 
         tx.commit().await?;
-        Ok(messages)
+        Ok((messages, system_config))
     }
 
     async fn update(&self, messages: &[Self::MessageType]) -> Result<()> {

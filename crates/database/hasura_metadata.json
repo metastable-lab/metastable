@@ -1,5 +1,5 @@
 {
-  "resource_version": 40,
+  "resource_version": 53,
   "metadata": {
     "version": 3,
     "sources": [
@@ -577,6 +577,101 @@
           },
           {
             "table": {
+              "name": "user_urls",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "user",
+                "using": {
+                  "foreign_key_constraint_on": "created_by"
+                }
+              }
+            ],
+            "insert_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "check": {},
+                  "set": {
+                    "created_by": "x-hasura-User-Id",
+                    "used_by": "[]"
+                  },
+                  "columns": [
+                    "path",
+                    "url_type"
+                  ]
+                },
+                "comment": ""
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "anyone",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "created_by",
+                    "id",
+                    "path",
+                    "updated_at",
+                    "url_type"
+                  ],
+                  "filter": {}
+                },
+                "comment": ""
+              },
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "created_by",
+                    "id",
+                    "path",
+                    "updated_at",
+                    "url_type",
+                    "used_by"
+                  ],
+                  "filter": {}
+                },
+                "comment": ""
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "path",
+                    "url_type"
+                  ],
+                  "filter": {
+                    "created_by": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                },
+                "comment": ""
+              }
+            ],
+            "delete_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "filter": {
+                    "created_by": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "user_usages",
               "schema": "public"
             },
@@ -701,6 +796,18 @@
                     "column": "referred_by",
                     "table": {
                       "name": "user_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "user_urls",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "created_by",
+                    "table": {
+                      "name": "user_urls",
                       "schema": "public"
                     }
                   }
