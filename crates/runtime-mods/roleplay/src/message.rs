@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use voda_common::{get_current_timestamp, CryptoHash};
+use voda_common::CryptoHash;
 use voda_database::{SqlxObject, SqlxPopulateId};
 use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
 
@@ -24,6 +24,7 @@ pub struct RoleplayMessage {
 
     pub content: String,
     pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl SqlxPopulateId for RoleplayMessage {
@@ -55,8 +56,9 @@ impl Message for RoleplayMessage {
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: response.content,
-            created_at: get_current_timestamp(),
+            created_at: 0,
             session_id: session_id.clone(),
+            updated_at: 0,
         }
     }
 }
@@ -106,8 +108,9 @@ impl RoleplayMessage {
             role: MessageRole::System,
             content_type: MessageType::Text,
             content: system_prompt,
-            created_at: get_current_timestamp(),
+            created_at: 0,
             session_id: session.id.clone(),
+            updated_at: 0,
         }
     }
 
@@ -126,8 +129,9 @@ impl RoleplayMessage {
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: first_message,
-            created_at: get_current_timestamp(),
+            created_at: 0,
             session_id: session.id.clone(),
+            updated_at: 0,
         }
     }
 }

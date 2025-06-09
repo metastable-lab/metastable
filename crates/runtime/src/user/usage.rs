@@ -16,9 +16,11 @@ pub struct UserUsage {
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub user_id: CryptoHash,
-    pub created_at: i64,
     pub model_name: String,
     pub usage: Json<CompletionUsage>,
+
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 
@@ -38,9 +40,11 @@ impl UserUsage {
             id: CryptoHash::default(),
 
             user_id,
-            created_at: get_current_timestamp(),
             model_name,
             usage: Json(usage),
+
+            created_at: get_current_timestamp(),
+            updated_at: get_current_timestamp(),
         }
     }
 }

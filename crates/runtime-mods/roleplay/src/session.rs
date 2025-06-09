@@ -3,7 +3,7 @@ use anyhow::Result;
 use sqlx::Postgres;
 
 use voda_database::{SqlxObject, SqlxPopulateId};
-use voda_common::{get_current_timestamp, CryptoHash};
+use voda_common::CryptoHash;
 use voda_runtime::{User, SystemConfig};
 
 use crate::Character;
@@ -20,7 +20,7 @@ pub struct RoleplaySession {
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub owner: CryptoHash,
 
-    #[foreign_key(referenced_table = "characters", related_rust_type = "Character")]
+    #[foreign_key(referenced_table = "roleplay_characters", related_rust_type = "Character")]
     pub character: CryptoHash,
 
     #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
@@ -43,8 +43,7 @@ impl SqlxPopulateId for RoleplaySession {
 }
 
 impl RoleplaySession {
-    /// Atomically appends a message ID to the session's history in the database
-    /// and updates the `updated_at` timestamp.
+    /// Atomically appends a message ID to the session's history in the database.
     pub async fn append_message_to_history<'e, Exe>(
         &mut self,
         message_id_to_add: &CryptoHash,
@@ -60,19 +59,16 @@ impl RoleplaySession {
             r#"
             UPDATE "roleplay_sessions"
             SET 
-                history = array_append(history, $1),
-                updated_at = $2
-            WHERE id = $3
+                history = array_append(history, $1)
+            WHERE id = $2
             "#,
         )
         .bind(message_id_hex)
-        .bind(get_current_timestamp())
         .bind(session_id_hex)
         .execute(executor)
         .await?;
 
         self.history.push(message_id_to_add.clone());
-        self.updated_at = get_current_timestamp();
 
         Ok(())
     }

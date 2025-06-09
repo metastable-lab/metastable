@@ -24,7 +24,7 @@ pub enum UserRole {
     User,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, SqlxObject, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "users"]
 pub struct User {
     #[serde(rename = "_id")]
@@ -36,7 +36,9 @@ pub struct User {
     pub provider: String,
 
     pub last_active: i64,
+
     pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl SqlxPopulateId for User {

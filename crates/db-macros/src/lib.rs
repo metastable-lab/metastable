@@ -251,6 +251,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         .filter(|field| !has_sqlx_skip_column_attr(field))
         .collect();
     
+    let has_updated_at = active_fields_for_sql.iter().any(|f| f.ident.as_ref().unwrap() == "updated_at");
+
     if active_fields_for_sql.is_empty() {
         return TokenStream::from(quote! { compile_error!("After skipping #[sqlx_skip_column] fields, no fields remain for SQL mapping."); });
     }
@@ -389,8 +391,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let sql_column_name = field_ident.to_string();
         
         all_sql_column_names_str_lits.push(LitStr::new(&sql_column_name, proc_macro2::Span::call_site()));
-        insert_col_sql_names.push(format!("\"{}\"", sql_column_name));
-
+        
         let field_is_option = is_option_type(field_ty);
         let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone()); 
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
@@ -458,6 +459,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let mut col_def_parts = vec![format!("\"{}\"", sql_column_name), sql_type_str.clone()];
         let is_pk = sql_column_name == "id";
         if is_pk { col_def_parts.push("PRIMARY KEY".to_string()); }
+        else if sql_column_name == "created_at" || sql_column_name == "updated_at" {
+            // Handled by default now, but let's ensure the type is what we expect for the DDL
+            let idx = col_def_parts.iter().position(|s| s == &sql_type_str).unwrap();
+            col_def_parts[idx] = "BIGINT".to_string();
+            col_def_parts.push("NOT NULL DEFAULT floor(extract(epoch from now()))".to_string());
+        }
         else if !field_is_option { col_def_parts.push("NOT NULL".to_string()); }
         create_table_column_defs.push(col_def_parts.join(" "));
 
@@ -560,49 +567,53 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             !get_fully_qualified_type_string(&vt).starts_with("Option<") && 
             !get_fully_qualified_type_string(&vt).starts_with("Vec<")
         );
-
-        let insert_bind = if is_original_leaf_crypto_hash {
-            if field_is_option {
-                quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
-            } else {
-                quote! { .bind(#field_access_path.to_hex_string()) }
-            }
-        } else if is_vec_crypto_hash { 
-             quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
-        } else if is_standalone_text_mappable_candidate { 
-            if field_is_option {
-                 quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
-            } else {
-                 quote! { .bind(#field_access_path.to_string()) }
-            }
-        } else if is_vec_text_mappable_enum { 
-            quote! { .bind(#field_access_path.iter().map(|v| v.to_string()).collect::<Vec<String>>()) }
-        }
-        else { quote! { .bind(#field_access_path.clone()) } }; 
-        insert_bindings_streams.push(insert_bind);
-
-        if !is_pk {
-            update_set_clauses_sql.push(format!("\"{}\" = ${}", sql_column_name, update_placeholder_idx));
-            update_placeholder_idx += 1;
-            let update_bind = if is_original_leaf_crypto_hash {
+        
+        // Exclude timestamp fields from binding lists
+        if field_ident != "created_at" && field_ident != "updated_at" {
+            insert_col_sql_names.push(format!("\"{}\"", sql_column_name));
+            let insert_bind = if is_original_leaf_crypto_hash {
                 if field_is_option {
                     quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
                 } else {
                     quote! { .bind(#field_access_path.to_hex_string()) }
                 }
-            } else if is_vec_crypto_hash {
+            } else if is_vec_crypto_hash { 
                  quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
             } else if is_standalone_text_mappable_candidate { 
                 if field_is_option {
-                    quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
+                     quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
                 } else {
-                    quote! { .bind(#field_access_path.to_string()) }
+                     quote! { .bind(#field_access_path.to_string()) }
                 }
             } else if is_vec_text_mappable_enum { 
-                 quote! { .bind(#field_access_path.iter().map(|v| v.to_string()).collect::<Vec<String>>()) }
+                quote! { .bind(#field_access_path.iter().map(|v| v.to_string()).collect::<Vec<String>>()) }
             }
-            else { quote! { .bind(#field_access_path.clone()) } };
-            update_bindings_streams.push(update_bind);
+            else { quote! { .bind(#field_access_path.clone()) } }; 
+            insert_bindings_streams.push(insert_bind);
+
+            if !is_pk {
+                update_set_clauses_sql.push(format!("\"{}\" = ${}", sql_column_name, update_placeholder_idx));
+                update_placeholder_idx += 1;
+                let update_bind = if is_original_leaf_crypto_hash {
+                    if field_is_option {
+                        quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
+                    } else {
+                        quote! { .bind(#field_access_path.to_hex_string()) }
+                    }
+                } else if is_vec_crypto_hash {
+                     quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
+                } else if is_standalone_text_mappable_candidate { 
+                    if field_is_option {
+                        quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
+                    } else {
+                        quote! { .bind(#field_access_path.to_string()) }
+                    }
+                } else if is_vec_text_mappable_enum { 
+                     quote! { .bind(#field_access_path.iter().map(|v| v.to_string()).collect::<Vec<String>>()) }
+                }
+                else { quote! { .bind(#field_access_path.clone()) } };
+                update_bindings_streams.push(update_bind);
+            }
         }
     }
 
@@ -637,6 +648,17 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let final_pk_id_trait_type: Type = parse_quote!(String);
     let get_id_value_impl = quote! { self.id.to_hex_string() };
     
+    let trigger_sql_impl = if has_updated_at {
+        let trigger_name = format!("set_updated_at_{}", table_name_str);
+        format!(
+            "DROP TRIGGER IF EXISTS {trigger} ON \"{table}\"; CREATE TRIGGER {trigger} BEFORE UPDATE ON \"{table}\" FOR EACH ROW EXECUTE PROCEDURE set_updated_at_unix_timestamp();",
+            trigger = trigger_name,
+            table = table_name_str
+        )
+    } else {
+        "".to_string()
+    };
+
     let expanded = quote! {
         #[derive(::sqlx::FromRow, Debug, Clone)]
         #[automatically_derived]
@@ -664,6 +686,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             fn insert_sql() -> String { #insert_sql_query.to_string() }
             fn create_table_sql() -> String { #create_table_sql_query.to_string() }
             fn drop_table_sql() -> String { #drop_table_sql_query.to_string() }
+            fn trigger_sql() -> String { #trigger_sql_impl.to_string() }
         }
 
         #[automatically_derived]
@@ -872,4 +895,3 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
-

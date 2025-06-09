@@ -12,6 +12,7 @@ use crate::user::User;
 #[table_name = "user_metadata"]
 pub struct UserMetadata {
     #[serde(rename = "_id")]
+    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub id: CryptoHash,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
@@ -19,6 +20,9 @@ pub struct UserMetadata {
     pub referred_code: Option<String>,
 
     pub notes: Json<Value>,
+
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl SqlxPopulateId for UserMetadata {

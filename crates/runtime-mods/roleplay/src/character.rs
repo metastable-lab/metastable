@@ -48,7 +48,7 @@ pub enum CharacterFeature {
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
-#[table_name = "characters"]
+#[table_name = "roleplay_characters"]
 pub struct Character {
     #[serde(rename = "_id")]
     pub id: CryptoHash,
@@ -58,8 +58,6 @@ pub struct Character {
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub creator: CryptoHash,
-    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub reviewed_by: Option<CryptoHash>,
 
     pub version: i64,
 
@@ -72,12 +70,12 @@ pub struct Character {
     pub prompts_personality: String,
     pub prompts_example_dialogue: String,
     pub prompts_first_message: String,
+    pub prompts_background_stories: Vec<String>,
 
     pub tags: Vec<String>,
 
     pub created_at: i64,
-    pub updated_at: i64,
-    pub published_at: i64,
+    pub updated_at: i64
 }
 
 impl SqlxPopulateId for Character {

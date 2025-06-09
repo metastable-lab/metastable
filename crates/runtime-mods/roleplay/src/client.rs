@@ -8,7 +8,7 @@ use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
 use voda_common::EnvVars;
 use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
-use voda_database::{SqlxCrud, SqlxPopulateId};
+use voda_database::SqlxCrud;
 
 use crate::{RoleplayMessage, RoleplayRawMemory};
 
@@ -60,31 +60,26 @@ impl RuntimeClient for RoleplayRuntimeClient {
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
-        let mut message = message.clone();
-        message.sql_populate_id()?;
-
         let messages = self.memory
             .search(&message, 100, 0).await?;
 
         let response = self.send_llm_request(&messages).await?;
-        let mut assistant_message = RoleplayMessage::from_llm_response(
+        let assistant_message = RoleplayMessage::from_llm_response(
             response.clone(), 
             &message.session_id, 
             &message.owner
         );
-        assistant_message.sql_populate_id()?;
 
         self.memory.add_messages(&[
             message.clone(),
             assistant_message.clone(),
         ]).await?;
 
-        let mut user_usage = UserUsage::new(
+        let user_usage = UserUsage::new(
             message.owner.clone(),
             self.system_config.openai_model.clone(),
             response.usage.clone()
         );
-        user_usage.sql_populate_id()?;
         user_usage.create(&*self.db).await?;
 
         Ok(response)

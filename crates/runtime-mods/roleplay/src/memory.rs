@@ -4,8 +4,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 use voda_database::{
-    SqlxCrud, SqlxPopulateId,
-    QueryCriteria, OrderDirection, SqlxFilterQuery
+    SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery
 };
 use voda_runtime::Memory;
 use voda_common::CryptoHash;
@@ -36,14 +35,13 @@ impl Memory for RoleplayRawMemory {
         let mut tx = self.db.begin().await?;
 
         for message in messages {
-            let mut m = message.clone();
+            let m = message.clone();
             let criteria = QueryCriteria::by_id(&m.session_id)?;
         
             let mut session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx)
                 .await?
                 .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
 
-            m.sql_populate_id()?;
             let created_m = m.create(&mut *tx).await?;
 
             session.append_message_to_history(&created_m.id, &mut *tx).await?;

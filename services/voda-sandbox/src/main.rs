@@ -14,15 +14,15 @@ use sqlx::PgPool;
 use voda_common::CryptoHash;
 use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery, SqlxPopulateId};
 use voda_runtime::user::UserProfile;
-use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserUsage};
-use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
+use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserMetadata, UserPoints, UserUsage};
+use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
 
 mod config;
 use config::{SYSTEM_CONFIG, TEST_CHARACTER, TEST_USER};
 
 init_db_pool!(
-    User, UserUsage, UserProfile, SystemConfig,
-    Character, RoleplaySession, RoleplayMessage
+    User, UserUsage, UserProfile, SystemConfig, UserPoints, UserMetadata,
+    Character, RoleplaySession, RoleplayMessage, AuditLog
 );
 
 fn create_skin() -> MadSkin {
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     // tracing_subscriber::fmt().with_max_level(Level::INFO).init();
     println!("{}", "Sandbox CLI initializing ... ".red());
 
-    let db_pool = Arc::new(connect().await.clone());
+    let db_pool = Arc::new(connect(true).await.clone());
 
     let user = TEST_USER.clone().create(&*db_pool).await?;
     let character = TEST_CHARACTER.clone().create(&*db_pool).await?;
@@ -122,6 +122,7 @@ async fn main() -> Result<()> {
                     content_type: voda_runtime::MessageType::Text,
                     content: input.to_string(),
                     created_at: voda_common::get_current_timestamp(),
+                    updated_at: voda_common::get_current_timestamp(),
                 };
 
                 let start_time = Instant::now();

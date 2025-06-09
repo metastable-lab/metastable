@@ -4,12 +4,13 @@ use serde::{Deserialize, Serialize};
 use voda_common::{get_current_timestamp, CryptoHash};
 use voda_database::{SqlxObject, SqlxPopulateId};
 
-use crate::user::BALANCE_CAP;
+use crate::user::{BALANCE_CAP, User};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, SqlxObject)]
 #[table_name = "user_points"]
 pub struct UserPoints {
     #[serde(rename = "_id")]
+    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub id: CryptoHash,
 
     pub running_claimed_balance: i64,
@@ -20,6 +21,9 @@ pub struct UserPoints {
 
     pub free_balance_claimed_at: i64,
     pub last_balance_deduction_at: i64,
+
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 impl SqlxPopulateId for UserPoints {
