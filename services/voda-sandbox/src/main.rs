@@ -13,13 +13,17 @@ use tokio::sync::mpsc;
 use sqlx::PgPool;
 use voda_common::CryptoHash;
 use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery, SqlxPopulateId};
-use voda_runtime::{MessageRole, RuntimeClient, User};
-use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
+use voda_runtime::user::UserProfile;
+use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserUsage};
+use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
 
 mod config;
 use config::{SYSTEM_CONFIG, TEST_CHARACTER, TEST_USER};
 
-init_db_pool!(User, Character, RoleplaySession, RoleplayMessage);
+init_db_pool!(
+    User, UserUsage, UserProfile, SystemConfig,
+    Character, RoleplaySession, RoleplayMessage
+);
 
 fn create_skin() -> MadSkin {
     let mut skin = MadSkin::default_dark();
@@ -63,7 +67,8 @@ async fn get_or_create_session(
             id: CryptoHash::default(),
             public: true,
             owner: user.id.clone(),
-            character_id: character.id.clone(),
+            character: character.id.clone(),
+            system_config: SYSTEM_CONFIG.id.clone(),
             history: vec![],
             updated_at: voda_common::get_current_timestamp(),
             created_at: voda_common::get_current_timestamp(),
@@ -82,16 +87,19 @@ async fn main() -> Result<()> {
 
     let user = TEST_USER.clone().create(&*db_pool).await?;
     let character = TEST_CHARACTER.clone().create(&*db_pool).await?;
-    let mut session = get_or_create_session(&*db_pool, &user, &character).await?;
+    SYSTEM_CONFIG.clone().create(&*db_pool).await?;
+    let session = get_or_create_session(&*db_pool, &user, &character).await?;
+
+    let memory = RoleplayRawMemory::new(db_pool.clone());
 
     let (tx, _rx) = mpsc::channel(100);
     let client =
-        RoleplayRuntimeClient::new(db_pool.clone(), SYSTEM_CONFIG.clone(), tx).await;
+        RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), SYSTEM_CONFIG.clone(), tx).await;
 
     let mut rl = DefaultEditor::new()?;
     println!("{}", "Sandbox CLI Initialized. Type 'exit' or press Ctrl-D to quit.".green());
 
-    // Display character's first message
+    // Display character's first messages
     println!("{}:", "Bot:".yellow());
     let skin = create_skin();
     println!("{}", skin.term_text(&character.prompts_first_message));
@@ -106,27 +114,15 @@ async fn main() -> Result<()> {
 
                 rl.add_history_entry(input)?;
 
-                let mut user_message = RoleplayMessage {
+                let user_message = RoleplayMessage {
                     id: CryptoHash::random(),
                     session_id: session.id.clone(),
                     owner: user.id.clone(),
-                    character_id: character.id.clone(),
                     role: MessageRole::User,
                     content_type: voda_runtime::MessageType::Text,
                     content: input.to_string(),
                     created_at: voda_common::get_current_timestamp(),
                 };
-
-                user_message.sql_populate_id()?;
-                let user_message = user_message.create(&*db_pool).await?;
-
-                session
-                    .append_message_to_history(
-                        &user_message.id,
-                        voda_common::get_current_timestamp(),
-                        &*db_pool,
-                    )
-                    .await?;
 
                 let start_time = Instant::now();
                 let pb = ProgressBar::new_spinner();
@@ -172,27 +168,6 @@ async fn main() -> Result<()> {
                     )
                     .dimmed()
                 );
-
-                let mut assistant_message = RoleplayMessage {
-                    id: CryptoHash::default(),
-                    session_id: session.id.clone(),
-                    owner: user.id.clone(), // Or character creator ID
-                    character_id: character.id.clone(),
-                    role: MessageRole::Assistant,
-                    content_type: voda_runtime::MessageType::Text,
-                    content: response.content,
-                    created_at: voda_common::get_current_timestamp(),
-                };
-                assistant_message.sql_populate_id()?;
-                let assistant_message = assistant_message.create(&*db_pool).await?;
-
-                session
-                    .append_message_to_history(
-                        &assistant_message.id,
-                        voda_common::get_current_timestamp(),
-                        &*db_pool,
-                    )
-                    .await?;
             }
             Err(ReadlineError::Interrupted) => {
                 println!("{}", "Interrupted. Exiting.".red());

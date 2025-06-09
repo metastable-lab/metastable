@@ -6,7 +6,7 @@ use axum::middleware::Next;
 
 use serde::{Deserialize, Serialize};
 use voda_common::{blake3_hash, decrypt, get_current_timestamp, CryptoHash, EnvVars};
-use voda_database::MongoDbObject;
+use voda_database::{QueryCriteria, SqlxFilterQuery};
 use voda_runtime::{RuntimeClient, User, UserRole};
 
 use crate::response::AppError;
@@ -16,7 +16,7 @@ use crate::env::ApiServerEnv;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthenticatedRequest {
     pub user_id: String,
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub origin: String,
 }
 
@@ -46,7 +46,11 @@ pub async fn ensure_account<S: RuntimeClient>(
     admin_only: bool,
     price: u64,
 ) -> Result<Option<User>, AppError> {
-    let user = User::select_one_by_index(&state.get_db(), &user_id).await?;
+    let user = User::find_one_by_criteria(
+        QueryCriteria::by_id(user_id)?,
+        &*state.get_db().clone()
+    ).await?;
+
     if user.is_none() {
         if admin_only {
             return Err(AppError::new(
@@ -64,7 +68,7 @@ pub async fn ensure_account<S: RuntimeClient>(
     }
 
     let user = user.unwrap();
-    User::pay_and_update(&state.get_db(), &user.id, price).await?;
+    // User::pay_and_update(&state.get_db(), &user.id, price).await?;
 
     if admin_only && user.role != UserRole::Admin {
         return Err(AppError::new(

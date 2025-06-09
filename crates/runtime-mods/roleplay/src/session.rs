@@ -3,8 +3,9 @@ use anyhow::Result;
 use sqlx::Postgres;
 
 use voda_database::{SqlxObject, SqlxPopulateId};
-use voda_common::CryptoHash;
-use voda_runtime::User;
+use voda_common::{get_current_timestamp, CryptoHash};
+use voda_runtime::{User, SystemConfig};
+
 use crate::Character;
 use crate::message::RoleplayMessage;
 
@@ -20,7 +21,10 @@ pub struct RoleplaySession {
     pub owner: CryptoHash,
 
     #[foreign_key(referenced_table = "characters", related_rust_type = "Character")]
-    pub character_id: CryptoHash,
+    pub character: CryptoHash,
+
+    #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
+    pub system_config: CryptoHash,
 
     #[foreign_key_many(referenced_table = "roleplay_messages", related_rust_type = "RoleplayMessage")]
     pub history: Vec<CryptoHash>,
@@ -44,7 +48,6 @@ impl RoleplaySession {
     pub async fn append_message_to_history<'e, Exe>(
         &mut self,
         message_id_to_add: &CryptoHash,
-        new_updated_at: i64,
         executor: Exe,
     ) -> Result<(), sqlx::Error>
     where
@@ -63,13 +66,13 @@ impl RoleplaySession {
             "#,
         )
         .bind(message_id_hex)
-        .bind(new_updated_at)
+        .bind(get_current_timestamp())
         .bind(session_id_hex)
         .execute(executor)
         .await?;
 
         self.history.push(message_id_to_add.clone());
-        self.updated_at = new_updated_at;
+        self.updated_at = get_current_timestamp();
 
         Ok(())
     }

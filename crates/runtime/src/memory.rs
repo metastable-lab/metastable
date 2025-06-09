@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
 use voda_common::CryptoHash;
+use crate::LLMRunResponse;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
 pub enum MessageRole {
@@ -42,6 +43,7 @@ pub trait Message: Clone + Send + Sync + 'static {
 
     fn created_at(&self) -> i64;
 
+    fn from_llm_response(response: LLMRunResponse, session_id: &CryptoHash, user_id: &CryptoHash) -> Self;
     fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
         message
             .iter()

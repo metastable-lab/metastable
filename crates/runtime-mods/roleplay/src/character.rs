@@ -58,6 +58,7 @@ pub struct Character {
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub creator: CryptoHash,
+    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub reviewed_by: Option<CryptoHash>,
 
     pub version: i64,

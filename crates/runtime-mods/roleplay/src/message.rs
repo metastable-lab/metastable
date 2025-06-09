@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use voda_common::{get_current_timestamp, CryptoHash};
 use voda_database::{SqlxObject, SqlxPopulateId};
-use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
+use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
 
 use super::{Character, RoleplaySession};
 
@@ -19,12 +19,9 @@ pub struct RoleplayMessage {
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
     pub owner: CryptoHash,
 
-    #[foreign_key(referenced_table = "characters", related_rust_type = "Character")]
-    pub character_id: CryptoHash,
-
     pub role: MessageRole,
     pub content_type: MessageType,
-    
+
     pub content: String,
     pub created_at: i64,
 }
@@ -50,6 +47,18 @@ impl Message for RoleplayMessage {
     fn url_content(&self) -> Option<String> { None }
 
     fn created_at(&self) -> i64 { self.created_at }
+
+    fn from_llm_response(response: LLMRunResponse, session_id: &CryptoHash, user_id: &CryptoHash) -> Self {
+        Self {
+            id: CryptoHash::default(),
+            owner: user_id.clone(),
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: response.content,
+            created_at: get_current_timestamp(),
+            session_id: session_id.clone(),
+        }
+    }
 }
 
 impl RoleplayMessage {
@@ -94,7 +103,6 @@ impl RoleplayMessage {
         Self {
             id: CryptoHash::default(),
             owner: user.id.clone(),
-            character_id: character.id.clone(),
             role: MessageRole::System,
             content_type: MessageType::Text,
             content: system_prompt,
@@ -103,7 +111,9 @@ impl RoleplayMessage {
         }
     }
 
-    pub fn first_message(session: &RoleplaySession, character: &Character, user: &User) -> Self {
+    pub fn first_message(
+        session: &RoleplaySession, character: &Character, user: &User
+    ) -> Self {
         let first_message = Self::replace_placeholders(
             &character.prompts_first_message, 
             &character.name, 
@@ -113,7 +123,6 @@ impl RoleplayMessage {
         Self {
             id: CryptoHash::default(),
             owner: user.id.clone(),
-            character_id: character.id.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: first_message,
@@ -122,70 +131,3 @@ impl RoleplayMessage {
         }
     }
 }
-
-// pub fn prepare_chat_messages(
-//     system_config: &SystemConfig,
-//     character: &Character, user: &User,
-    
-//     history: &[HistoryMessagePair], new_message: &HistoryMessage,
-//     is_new_conversation: bool
-// ) -> Result<Vec<ChatCompletionRequestMessage>> {
-//     // 1. inject the roleplay system prompt
-//     let mut messages = vec![
-//         prepare_system_prompt(system_config, character, user)?,
-//     ];
-
-//     if is_new_conversation {
-//         messages.push(prepare_first_message(character, user)?);
-//     }
-
-//     // 2. add the history
-//     history
-//         .iter()
-//         .for_each(|(user_message, assistant_message)| {
-//             messages.push(
-//                 ChatCompletionRequestMessage::User(
-//                     ChatCompletionRequestUserMessageArgs::default()
-//                         .content(user_message.content.as_str())
-//                         .build()
-//                         .expect("Message should build")
-//                 )
-//             );
-
-//             messages.push(
-//                 ChatCompletionRequestMessage::Assistant(
-//                     ChatCompletionRequestAssistantMessageArgs::default()
-//                         .content(assistant_message.content.as_str())
-//                         .build()
-//                         .expect("Message should build")
-//                 )
-//             );
-
-
-//             for (_, response) in assistant_message
-//                 .function_call_request
-//                 .iter()
-//                 .zip(assistant_message.function_call_response.iter()) 
-//             {
-//                 messages.push(
-//                     ChatCompletionRequestMessage::Tool(
-//                         ChatCompletionRequestToolMessageArgs::default()
-//                             .content(
-//                                 ChatCompletionRequestToolMessageContent::Text(response.to_string())
-//                             )
-//                             .build()
-//                             .expect("Message should build")
-//                     )
-//                 );
-//             }
-//         });
-
-//     messages.push(ChatCompletionRequestMessage::User(
-//         ChatCompletionRequestUserMessageArgs::default()
-//             .content(new_message.content.as_str())
-//             .build()
-//             .expect("Message should build")
-//     ));
-
-//     Ok(messages)
-// }

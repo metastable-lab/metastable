@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use async_openai::config::OpenAIConfig;
 use async_openai::Client;
@@ -5,7 +7,7 @@ use async_openai::types::{
     ChatCompletionToolArgs, ChatCompletionToolChoiceOption, 
     CompletionUsage, CreateChatCompletionRequestArgs, FunctionCall
 };
-
+use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
 
 use crate::{Memory, Message, SystemConfig};
@@ -24,6 +26,8 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     type MemoryType: Memory;
 
     fn system_config(&self) -> &SystemConfig;
+    fn get_db(&self) -> &Arc<PgPool>;
+    fn get_memory(&self) -> &Arc<Self::MemoryType>;
     fn get_price(&self) -> u64;
     fn get_client(&self) -> &Client<OpenAIConfig>;
 
@@ -33,6 +37,7 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     async fn on_new_message(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
     async fn on_tool_call(&self, call: &FunctionCall) -> Result<String>;
 
+    // NOTE: toolcall are sent for execution here, and results are returned here
     async fn send_llm_request(&self, messages: &[<Self::MemoryType as Memory>::MessageType]) -> Result<LLMRunResponse> {
         let system_config = self.system_config();
         let messages = Message::pack(messages)?;

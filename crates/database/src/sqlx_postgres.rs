@@ -1,4 +1,5 @@
 use sqlx::{FromRow, Postgres, Error as SqlxError, postgres::PgArguments, Executor};
+use voda_common::CryptoHash;
 
 /// Trait for custom primary key population logic for SqlxObject.
 pub trait SqlxPopulateId {
@@ -218,6 +219,11 @@ pub struct QueryCriteria {
 }
 
 impl QueryCriteria {
+
+    pub fn by_id(id: &CryptoHash) -> Result<Self, SqlxError> {
+        Self::new().add_filter("id", "=", Some(id.to_hex_string()))
+    }
+
     pub fn new() -> Self {
         Self {
             conditions: Vec::new(),
