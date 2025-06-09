@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::very_permissive();
     let trace = TraceLayer::new_for_http();
 
-    let db_pool = Arc::new(connect(true).await.clone());
+    let db_pool = Arc::new(connect(false).await.clone());
 
     let (executor, _execution_queue) = mpsc::channel(100);
     let memory = RoleplayRawMemory::new(db_pool.clone());

@@ -1,13 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Result;
-use sqlx::PgPool;
+use sqlx::{PgPool, types::Uuid};
 
 use voda_database::{
     SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery
 };
 use voda_runtime::{Memory, SystemConfig};
-use voda_common::CryptoHash;
 
 use crate::RoleplaySession;
 
@@ -40,7 +39,8 @@ impl Memory for RoleplayRawMemory {
 
         // NOTE: ASSUME ALL MESSAGES HAVE THE SAME SESSION_ID
         let mut session = RoleplaySession::find_one_by_criteria(
-            QueryCriteria::by_id(&messages[0].session_id)?,
+            QueryCriteria::new()
+                .add_valued_filter("id", "=", messages[0].session_id)?,
             &mut *tx
         ).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
@@ -55,21 +55,24 @@ impl Memory for RoleplayRawMemory {
         Ok(())
     }
 
-    async fn get_one(&self, message_id: &CryptoHash) -> Result<Option<RoleplayMessage>> {
-        let criteria = QueryCriteria::by_id(message_id)?;
-        let message = RoleplayMessage::find_one_by_criteria(criteria, &*self.db).await?;
+    async fn get_one(&self, message_id: &Uuid) -> Result<Option<RoleplayMessage>> {
+        let message = RoleplayMessage::find_one_by_criteria(
+            QueryCriteria::new()
+                .add_valued_filter("id", "=", message_id.clone())?,
+            &*self.db
+        ).await?;
         Ok(message)
     }
 
-    async fn get_all(&self, user_id: &CryptoHash, limit: u64, offset: u64) -> Result<Vec<RoleplayMessage>> {
-        let user_id_hex = user_id.to_hex_string();
-        let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_hex)?
-            .order_by("created_at", OrderDirection::Desc)?
-            .limit(limit as i64)?
-            .offset(offset as i64)?;
-
-        let messages = RoleplayMessage::find_by_criteria(criteria, &*self.db).await?;
+    async fn get_all(&self, user_id: &Uuid, limit: u64, offset: u64) -> Result<Vec<RoleplayMessage>> {
+        let messages = RoleplayMessage::find_by_criteria(
+            QueryCriteria::new()
+                .add_valued_filter("owner", "=", user_id.clone())?
+                .order_by("created_at", OrderDirection::Desc)?
+                .limit(limit as i64)?
+                .offset(offset as i64)?,
+            &*self.db
+        ).await?;
         Ok(messages)
     }
 
@@ -78,7 +81,8 @@ impl Memory for RoleplayRawMemory {
     > {
         let mut tx = self.db.begin().await?;
 
-        let criteria = QueryCriteria::by_id(&message.session_id)?;
+        let criteria = QueryCriteria::new()
+            .add_valued_filter("id", "=", message.session_id.clone())?;
         let session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::search] Session not found"))?;
 
@@ -112,74 +116,29 @@ impl Memory for RoleplayRawMemory {
         Ok(())
     }
 
-    async fn delete(&self, message_ids: &[CryptoHash]) -> Result<()> {
-        let sqlx_ids = message_ids.iter().map(|id| id.to_hex_string()).collect::<Vec<_>>();
+    async fn delete(&self, message_ids: &[Uuid]) -> Result<()> {
         let criteria = QueryCriteria::new()
-            .add_filter("id", " = ANY($1)", Some(sqlx_ids))?;
+            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()))?;
 
         RoleplayMessage::delete_by_criteria(criteria, &*self.db).await?;
         Ok(())
     }
 
-    async fn reset(&self, user_id: &CryptoHash) -> Result<()> {
+    async fn reset(&self, user_id: &Uuid) -> Result<()> {
         let mut tx = self.db.begin().await?;
-        let user_id_hex = user_id.to_hex_string();
-        let criteria_session = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_hex.clone())?;
-        RoleplaySession::delete_by_criteria(criteria_session, &mut *tx).await?;
+        RoleplaySession::delete_by_criteria(
+            QueryCriteria::new()
+                .add_valued_filter("owner", "=", user_id.clone())?,
+            &mut *tx
+        ).await?;
 
-        let criteria_message = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_hex)?;
-        RoleplayMessage::delete_by_criteria(criteria_message, &mut *tx).await?;
+        RoleplayMessage::delete_by_criteria(
+            QueryCriteria::new()
+                .add_valued_filter("owner", "=", user_id.clone())?,
+            &mut *tx
+        ).await?;
 
         tx.commit().await?;
         Ok(())
-    }
-}
-
-impl RoleplayRawMemory {
-    pub async fn find_public_conversations_by_character(
-        &self, character_id: &CryptoHash, limit: u64, offset: u64
-    ) -> Result<Vec<RoleplaySession>> {
-        let criteria = QueryCriteria::new()
-            .add_valued_filter("character", "=", character_id.to_hex_string())?
-            .add_valued_filter("public", "=", true)?
-            .order_by("updated_at", OrderDirection::Desc)?
-            .limit(limit as i64)?
-            .offset(offset as i64)?;
-
-        let sessions = RoleplaySession::find_by_criteria(criteria, &*self.db).await?;
-        Ok(sessions)
-    }
-
-    pub async fn find_latest_conversations(
-        &self, user_id: &CryptoHash, character_id: &CryptoHash, limit: u64
-    ) -> Result<Vec<RoleplaySession>> {
-        let user_id_hex = user_id.to_hex_string();
-        let character_id_hex = character_id.to_hex_string();
-        let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_hex)?
-            .add_valued_filter("character", "=", character_id_hex)?
-            .order_by("updated_at", OrderDirection::Desc)?
-            .limit(limit as i64)?;
-
-        let sessions = RoleplaySession::find_by_criteria(criteria, &*self.db).await?;
-        Ok(sessions)
-    }
-
-    pub async fn find_character_list_of_user(
-        &self, user_id: &CryptoHash
-    ) -> Result<HashMap<CryptoHash, usize>> {
-        let user_id_hex = user_id.to_hex_string();
-        let criteria = QueryCriteria::new()
-            .add_valued_filter("owner", "=", user_id_hex)?;
-        let sessions = RoleplaySession::find_by_criteria(criteria, &*self.db).await?;
-
-        let mut character_list = HashMap::new();
-        for session in sessions {
-            character_list.entry(session.character).and_modify(|count| *count += 1).or_insert(1);
-        }
-
-        Ok(character_list)
     }
 }

@@ -7,7 +7,7 @@ use async_openai::types::{
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
-use voda_common::CryptoHash;
+use sqlx::types::Uuid;
 use crate::{LLMRunResponse, SystemConfig};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
@@ -31,10 +31,10 @@ pub enum MessageType {
 }
 
 pub trait Message: Clone + Send + Sync + 'static {
-    fn id(&self) -> &CryptoHash;
+    fn id(&self) -> &Uuid;
 
     fn role(&self) -> &MessageRole;
-    fn owner(&self) -> &CryptoHash;
+    fn owner(&self) -> &Uuid;
 
     fn content_type(&self) -> &MessageType;
     fn text_content(&self) -> Option<String>;
@@ -43,7 +43,7 @@ pub trait Message: Clone + Send + Sync + 'static {
 
     fn created_at(&self) -> i64;
 
-    fn from_llm_response(response: LLMRunResponse, session_id: &CryptoHash, user_id: &CryptoHash) -> Self;
+    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self;
     fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
         message
             .iter()
@@ -86,9 +86,9 @@ pub trait Memory: Clone + Send + Sync + 'static {
     async fn initialize(&self) -> Result<()>;
 
     async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
-    async fn get_one(&self, message_id: &CryptoHash) -> Result<Option<Self::MessageType>>;
+    async fn get_one(&self, message_id: &Uuid) -> Result<Option<Self::MessageType>>;
     async fn get_all(
-        &self, user_id: &CryptoHash, limit: u64, offset: u64
+        &self, user_id: &Uuid, limit: u64, offset: u64
     ) -> Result<Vec<Self::MessageType>>;
 
     async fn search(&self, message: &Self::MessageType, limit: u64, offset: u64) -> Result<
@@ -96,7 +96,7 @@ pub trait Memory: Clone + Send + Sync + 'static {
     >;
 
     async fn update(&self, messages: &[Self::MessageType]) -> Result<()>;
-    async fn delete(&self, message_ids: &[CryptoHash]) -> Result<()>;
+    async fn delete(&self, message_ids: &[Uuid]) -> Result<()>;
 
-    async fn reset(&self, user_id: &CryptoHash) -> Result<()>;
+    async fn reset(&self, user_id: &Uuid) -> Result<()>;
 }

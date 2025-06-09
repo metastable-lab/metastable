@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
 
-use voda_common::CryptoHash;
-use voda_database::{SqlxObject, SqlxPopulateId};
+use voda_database::SqlxObject;
 use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
 
 use super::{Character, RoleplaySession};
@@ -10,14 +10,13 @@ use super::{Character, RoleplaySession};
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "roleplay_messages"]
 pub struct RoleplayMessage {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
+    pub id: Uuid,
 
     #[foreign_key(referenced_table = "roleplay_sessions", related_rust_type = "RoleplaySession")]
-    pub session_id: CryptoHash,
+    pub session_id: Uuid,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub owner: CryptoHash,
+    pub owner: Uuid,
 
     pub role: MessageRole,
     pub content_type: MessageType,
@@ -27,20 +26,11 @@ pub struct RoleplayMessage {
     pub updated_at: i64,
 }
 
-impl SqlxPopulateId for RoleplayMessage {
-    fn sql_populate_id(&mut self) -> Result<()> {
-        if self.id == CryptoHash::default() {
-            self.id = CryptoHash::random();
-        }
-        Ok(())
-    }
-}
-
 impl Message for RoleplayMessage {
-    fn id(&self) -> &CryptoHash { &self.id }
+    fn id(&self) -> &Uuid { &self.id }
 
     fn role(&self) -> &MessageRole { &self.role }
-    fn owner(&self) -> &CryptoHash { &self.owner }
+    fn owner(&self) -> &Uuid { &self.owner }
     
     fn content_type(&self) -> &MessageType { &self.content_type }
     fn text_content(&self) -> Option<String> { Some(self.content.clone()) }
@@ -49,9 +39,9 @@ impl Message for RoleplayMessage {
 
     fn created_at(&self) -> i64 { self.created_at }
 
-    fn from_llm_response(response: LLMRunResponse, session_id: &CryptoHash, user_id: &CryptoHash) -> Self {
+    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self {
         Self {
-            id: CryptoHash::default(),
+            id: Uuid::default(),
             owner: user_id.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
@@ -104,7 +94,7 @@ impl RoleplayMessage {
         );
 
         Self {
-            id: CryptoHash::default(),
+            id: Uuid::default(),
             owner: user.id.clone(),
             role: MessageRole::System,
             content_type: MessageType::Text,
@@ -126,7 +116,7 @@ impl RoleplayMessage {
         );
 
         Self {
-            id: CryptoHash::default(),
+            id: Uuid::default(),
             owner: user.id.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
@@ -139,10 +129,10 @@ impl RoleplayMessage {
     }
 
     pub fn user_message(
-        message: &str, session_id: &CryptoHash, user_id: &CryptoHash
+        message: &str, session_id: &Uuid, user_id: &Uuid
     ) -> Self {
         Self {
-            id: CryptoHash::default(),
+            id: Uuid::default(),
             owner: user_id.clone(),
             role: MessageRole::User,
             content_type: MessageType::Text,

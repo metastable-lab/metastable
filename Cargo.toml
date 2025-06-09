@@ -16,7 +16,7 @@ members = [
     "crates/db-macros",
     "crates/runtime",
 
-    "crates/runtime-mods/evm",
+    # "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
 
     "services/voda-sandbox",
@@ -58,3 +58,4 @@ sqlx = { version = "0.8.6", default-features = false, features = [
     "ipnetwork",
     "bigdecimal"
 ] }
+uuid = { version = "1.8.0", features = ["serde", "v4"] }

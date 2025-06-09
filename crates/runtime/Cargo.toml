@@ -16,6 +16,7 @@ tokio.workspace = true
 async-trait.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true }
+uuid.workspace = true
 
 chrono = { version = "0.4", features = ["serde"] }
 strum = "0.26" # Or your desired version

@@ -1,5 +1,5 @@
 {
-  "resource_version": 53,
+  "resource_version": 65,
   "metadata": {
     "version": 3,
     "sources": [
@@ -456,9 +456,9 @@
                 }
               },
               {
-                "name": "userById",
+                "name": "userByUserId",
                 "using": {
-                  "foreign_key_constraint_on": "id"
+                  "foreign_key_constraint_on": "user_id"
                 }
               }
             ],
@@ -508,7 +508,7 @@
               {
                 "name": "user",
                 "using": {
-                  "foreign_key_constraint_on": "id"
+                  "foreign_key_constraint_on": "user_id"
                 }
               }
             ],
@@ -535,7 +535,7 @@
               {
                 "name": "user",
                 "using": {
-                  "foreign_key_constraint_on": "id"
+                  "foreign_key_constraint_on": "user_id"
                 }
               }
             ],
@@ -706,9 +706,12 @@
               {
                 "name": "user_metadatum",
                 "using": {
-                  "foreign_key_constraint_on": {
-                    "column": "id",
-                    "table": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "id": "user_id"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
                       "name": "user_metadata",
                       "schema": "public"
                     }
@@ -718,9 +721,12 @@
               {
                 "name": "user_point",
                 "using": {
-                  "foreign_key_constraint_on": {
-                    "column": "id",
-                    "table": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "id": "user_id"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
                       "name": "user_points",
                       "schema": "public"
                     }
@@ -730,9 +736,12 @@
               {
                 "name": "user_profile",
                 "using": {
-                  "foreign_key_constraint_on": {
-                    "column": "id",
-                    "table": {
+                  "manual_configuration": {
+                    "column_mapping": {
+                      "id": "user_id"
+                    },
+                    "insertion_order": null,
+                    "remote_table": {
                       "name": "user_profiles",
                       "schema": "public"
                     }
@@ -790,12 +799,48 @@
                 }
               },
               {
+                "name": "userMetadataByUserId",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user_id",
+                    "table": {
+                      "name": "user_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "user_metadata",
                 "using": {
                   "foreign_key_constraint_on": {
                     "column": "referred_by",
                     "table": {
                       "name": "user_metadata",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "user_points",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user_id",
+                    "table": {
+                      "name": "user_points",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "user_profiles",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user_id",
+                    "table": {
+                      "name": "user_profiles",
                       "schema": "public"
                     }
                   }
@@ -831,14 +876,14 @@
                 "role": "user",
                 "permission": {
                   "columns": [
-                    "id",
-                    "user_id",
-                    "user_aka",
-                    "role",
-                    "provider",
-                    "last_active",
                     "created_at",
-                    "updated_at"
+                    "id",
+                    "last_active",
+                    "provider",
+                    "role",
+                    "updated_at",
+                    "user_aka",
+                    "user_id"
                   ],
                   "filter": {
                     "id": {

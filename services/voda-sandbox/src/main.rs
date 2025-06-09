@@ -5,14 +5,13 @@ use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
-use sqlx::PgPool;
+use sqlx::{PgPool, types::Uuid};
 use termimad::crossterm::style::{Attribute, Color};
 use termimad::MadSkin;
 use tokio::sync::mpsc;
 // use tracing::Level;
 
-use voda_common::CryptoHash;
-use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery, SqlxPopulateId};
+use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use voda_runtime::user::{UserProfile, UserUrl};
 use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserMetadata, UserPoints, UserUsage};
 use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
@@ -59,21 +58,21 @@ async fn get_or_create_session(
     db: &PgPool,
     user: &User,
     character: &Character,
+    system_config: &SystemConfig,
 ) -> Result<RoleplaySession> {
     if let Some(session) = RoleplaySession::find_one_by_criteria(QueryCriteria::new(), db).await? {
         Ok(session)
     } else {
-        let mut session = RoleplaySession {
-            id: CryptoHash::default(),
+        let session = RoleplaySession {
+            id: Uuid::new_v4(),
             public: true,
             owner: user.id.clone(),
             character: character.id.clone(),
-            system_config: SYSTEM_CONFIG.id.clone(),
+            system_config: system_config.id.clone(),
             history: vec![],
             updated_at: voda_common::get_current_timestamp(),
             created_at: voda_common::get_current_timestamp(),
         };
-        session.sql_populate_id()?;
         session.create(&*db).await.map_err(anyhow::Error::from)
     }
 }
@@ -83,12 +82,16 @@ async fn main() -> Result<()> {
     // tracing_subscriber::fmt().with_max_level(Level::INFO).init();
     println!("{}", "Sandbox CLI initializing ... ".red());
 
-    let db_pool = Arc::new(connect(true).await.clone());
+    let db_pool = Arc::new(connect(false).await.clone());
 
     let user = TEST_USER.clone().create(&*db_pool).await?;
-    let character = TEST_CHARACTER.clone().create(&*db_pool).await?;
-    SYSTEM_CONFIG.clone().create(&*db_pool).await?;
-    let session = get_or_create_session(&*db_pool, &user, &character).await?;
+    
+    let mut character_data = TEST_CHARACTER.clone();
+    character_data.creator = user.id.clone();
+    let character = character_data.create(&*db_pool).await?;
+
+    let system_config = SYSTEM_CONFIG.clone().create(&*db_pool).await?;
+    let session = get_or_create_session(&*db_pool, &user, &character, &system_config).await?;
 
     let memory = RoleplayRawMemory::new(db_pool.clone());
 
@@ -115,7 +118,7 @@ async fn main() -> Result<()> {
                 rl.add_history_entry(input)?;
 
                 let user_message = RoleplayMessage {
-                    id: CryptoHash::random(),
+                    id: Uuid::new_v4(),
                     session_id: session.id.clone(),
                     owner: user.id.clone(),
                     role: MessageRole::User,

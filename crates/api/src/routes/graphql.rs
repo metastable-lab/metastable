@@ -3,7 +3,8 @@ use axum::{
     body::{to_bytes, Body}, extract::{Extension, State}, http::{header::{self, HeaderValue}, Request, StatusCode}, middleware, response::Response, routing::post, Router
 };
 use reqwest::Client;
-use voda_common::{CryptoHash, EnvVars};
+use sqlx::types::Uuid;
+use voda_common::EnvVars;
 use voda_runtime::UserRole;
 
 use crate::{
@@ -20,14 +21,14 @@ pub fn graphql_route() -> Router<GlobalState> {
 
 async fn proxy_to_hasura(
     State(state): State<GlobalState>,
-    Extension(user_id): Extension<CryptoHash>,
+    Extension(user_id_str): Extension<String>,
     req: Request<Body>,
 ) -> Result<Response, AppError> {
     let env = ApiServerEnv::load();
     let hasura_url = env.get_env_var("HASURA_GRAPHQL_URL");
     let client = Client::new();
 
-    let maybe_user = ensure_account(&state.roleplay_client, &user_id, 0).await?;
+    let maybe_user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
 
     let (parts, body) = req.into_parts();
     let body_bytes = to_bytes(body, usize::MAX)
@@ -38,10 +39,9 @@ async fn proxy_to_hasura(
     headers.remove(header::AUTHORIZATION);
     headers.remove(header::HOST);
 
-
     let (user_id, user_role) = match maybe_user {
         None => {
-            (CryptoHash::default(), "anyone")
+            (Uuid::nil(), "anyone")
         }
         Some(ref user) => {
             let role = match user.role {
@@ -60,7 +60,7 @@ async fn proxy_to_hasura(
     headers.insert(
         "X-Hasura-User-Id",
         user_id
-            .to_hex_string()
+            .to_string()
             .parse::<HeaderValue>()
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );

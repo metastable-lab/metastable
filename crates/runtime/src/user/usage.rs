@@ -1,21 +1,21 @@
 use anyhow::Result;
 use async_openai::types::CompletionUsage;
 use serde::{Deserialize, Serialize};
+use sqlx::types::{Json, Uuid};
 
-use sqlx::types::Json;
-use voda_common::{get_current_timestamp, CryptoHash};
-use voda_database::{SqlxObject, SqlxPopulateId};
+use voda_common::get_current_timestamp;
+use voda_database::SqlxObject;
 
 use crate::user::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
 #[table_name = "user_usages"]
 pub struct UserUsage {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
+    pub id: Uuid,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub user_id: CryptoHash,
+    pub user_id: Uuid,
+
     pub model_name: String,
     pub usage: Json<CompletionUsage>,
 
@@ -23,21 +23,10 @@ pub struct UserUsage {
     pub updated_at: i64,
 }
 
-
-impl SqlxPopulateId for UserUsage {
-    fn sql_populate_id(&mut self) -> Result<()> {
-        if self.user_id == CryptoHash::default() {
-            anyhow::bail!("[UserUsage] user_id is not populated");
-        } else {
-            self.id = CryptoHash::random();
-            Ok(())
-        }
-    }
-}
 impl UserUsage {
-    pub fn new(user_id: CryptoHash, model_name: String, usage: CompletionUsage) -> Self {
+    pub fn new(user_id: Uuid, model_name: String, usage: CompletionUsage) -> Self {
         Self {
-            id: CryptoHash::default(),
+            id: Uuid::default(),
 
             user_id,
             model_name,

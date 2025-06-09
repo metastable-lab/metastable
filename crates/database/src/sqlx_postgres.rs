@@ -1,15 +1,8 @@
 use sqlx::{FromRow, Postgres, Error as SqlxError, postgres::PgArguments, Executor};
-use voda_common::CryptoHash;
-
-/// Trait for custom primary key population logic for SqlxObject.
-pub trait SqlxPopulateId {
-    /// Populates the primary key field (`id`) of the struct.
-    fn sql_populate_id(&mut self) -> anyhow::Result<()>;
-}
 
 /// Trait to define the schema of a database object for PostgreSQL.
 // No async_trait needed here as no methods are async by default in the trait itself.
-pub trait SqlxSchema: Send + Sync + Unpin + Clone + std::fmt::Debug + SqlxPopulateId {
+pub trait SqlxSchema: Send + Sync + Unpin + Clone + std::fmt::Debug {
     /// The type of the primary key for this database object.
     type Id: Send + Sync + for<'q> sqlx::Encode<'q, Postgres> + sqlx::Type<Postgres> + Clone;
 
@@ -255,10 +248,6 @@ pub struct QueryCriteria {
 }
 
 impl QueryCriteria {
-
-    pub fn by_id(id: &CryptoHash) -> Result<Self, SqlxError> {
-        Self::new().add_filter("id", "=", Some(id.to_hex_string()))
-    }
 
     pub fn new() -> Self {
         Self {

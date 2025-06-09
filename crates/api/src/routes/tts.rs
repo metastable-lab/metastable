@@ -3,7 +3,7 @@ use axum::{
     extract::{Extension, Path, State}, 
     http::StatusCode, middleware, response::IntoResponse, routing::post, Json, Router
 };
-use voda_common::CryptoHash;
+use sqlx::types::Uuid;
 use voda_runtime::RuntimeClient;
 
 use serde_json::Value;
@@ -28,16 +28,16 @@ pub fn voice_routes() -> Router<GlobalState> {
 
 async fn tts(
     State(state): State<GlobalState>,
-    Extension(user_id): Extension<CryptoHash>,
-    Path(character_id): Path<CryptoHash>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
     Json(value): Json<Value>,
 ) -> Result<impl IntoResponse, AppError> {
-    ensure_account(&state.roleplay_client, &user_id, 5).await?
+    ensure_account(&state.roleplay_client, &user_id_str, 5).await?
         .ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
 
     let message = value["message"].as_str().ok_or(anyhow!("[/tts] message is required"))?.to_string();
     let character = Character::find_one_by_criteria(
-        QueryCriteria::by_id(&character_id)?,
+        QueryCriteria::new().add_valued_filter("id", "=", character_id)?,
         &*state.roleplay_client.get_db().clone()
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[/tts] Character not found")))?;

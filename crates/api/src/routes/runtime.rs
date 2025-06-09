@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode, middleware, 
     routing::post, Json, Router
 };
-use voda_common::CryptoHash;
+use sqlx::types::Uuid;
 use voda_runtime::RuntimeClient;
 use voda_runtime_roleplay::RoleplayMessage;
 
@@ -34,15 +34,15 @@ pub fn runtime_routes() -> Router<GlobalState> {
 pub struct ChatRequest { pub message: String }
 async fn roleplay_chat(
     State(state): State<GlobalState>,
-    Extension(user_id): Extension<CryptoHash>,
-    Path(session_id): Path<CryptoHash>,
+    Extension(user_id_str): Extension<String>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
-    ensure_account(&state.roleplay_client, &user_id, 1).await?
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
         .expect("[roleplay_chat] User not found");
 
     let message = RoleplayMessage::user_message(
-        &payload.message, &session_id,  &user_id
+        &payload.message, &session_id,  &user.id
     );
 
     let response = state.roleplay_client.on_new_message(&message).await?;
@@ -52,15 +52,15 @@ async fn roleplay_chat(
 
 async fn roleplay_rollback(
     State(state): State<GlobalState>,
-    Extension(user_id): Extension<CryptoHash>,
-    Path(session_id): Path<CryptoHash>,
+    Extension(user_id_str): Extension<String>,
+    Path(session_id): Path<Uuid>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
-    ensure_account(&state.roleplay_client, &user_id, 1).await?
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
         .expect("[roleplay_rollback] User not found");
 
     let message = RoleplayMessage::user_message(
-        &payload.message, &session_id,  &user_id
+        &payload.message, &session_id,  &user.id
     );
 
     let response = state.roleplay_client.on_rollback(&message).await?;

@@ -1,17 +1,19 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
 
-use voda_common::{get_current_timestamp, CryptoHash};
-use voda_database::{SqlxObject, SqlxPopulateId};
+use voda_common::get_current_timestamp;
+use voda_database::SqlxObject;
 
 use crate::user::{BALANCE_CAP, User};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq, SqlxObject)]
 #[table_name = "user_points"]
 pub struct UserPoints {
-    #[serde(rename = "_id")]
+    pub id: Uuid,
+
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub id: CryptoHash,
+    pub user_id: Uuid,
 
     pub running_claimed_balance: i64,
     pub running_purchased_balance: i64,
@@ -24,16 +26,6 @@ pub struct UserPoints {
 
     pub created_at: i64,
     pub updated_at: i64,
-}
-
-impl SqlxPopulateId for UserPoints {
-    fn sql_populate_id(&mut self) -> Result<()> {
-        if self.id == CryptoHash::default() {
-            anyhow::bail!("[UserPoints] id is not populated");
-        } else {
-            Ok(())
-        }
-    }
 }
 
 impl UserPoints {

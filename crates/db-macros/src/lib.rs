@@ -58,14 +58,13 @@ fn get_fully_qualified_type_string(ty: &Type) -> String {
 }
 
 /// Determines if a given type is a "simple" type that should not be recursed into.
-/// Simple types are Rust primitives, String, chrono types, Uuid, CryptoHash, Json<T>.
+/// Simple types are Rust primitives, String, chrono types, Uuid, Json<T>.
 fn is_simple_type(ty: &Type) -> bool {
     let type_str = get_fully_qualified_type_string(ty);
     matches!(type_str.as_str(),
         "String" | "i32" | "u32" | "i64" | "u64" | "isize" | "usize" |
         "f32" | "f64" | "bool" | "Vec<u8>" |
         "Uuid" | "::sqlx::types::Uuid" | "sqlx::types::Uuid" |
-        "CryptoHash" | "::voda_common::CryptoHash" | "voda_common::CryptoHash" |
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" |
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" |
         "NaiveDate" | "::chrono::NaiveDate" | "chrono::NaiveDate" |
@@ -80,8 +79,8 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
     if type_str == "Vec<u8>" {
         return "BYTEA".to_string();
     }
-    if type_str == "Vec<::voda_common::CryptoHash>" || type_str == "Vec<voda_common::CryptoHash>" || type_str == "Vec<CryptoHash>" {
-        return "TEXT[]".to_string();
+    if type_str == "Vec<::sqlx::types::Uuid>" || type_str == "Vec<sqlx::types::Uuid>" || type_str == "Vec<Uuid>" {
+        return "UUID[]".to_string();
     }
     if type_str == "Vec<String>" || type_str == "Vec<std::string::String>" {
         return "TEXT[]".to_string();
@@ -90,10 +89,10 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
     if !processing_array_inner {
         if let Some(inner_ty) = get_vec_inner_type(ty) {
             let inner_type_sql = map_rust_type_to_sql(&inner_ty, false, true);
-            if inner_type_sql.ends_with("[]") && !(get_fully_qualified_type_string(&inner_ty).contains("CryptoHash")) {
-                panic!("Multi-dimensional arrays (Vec<Vec<T>>) are not currently supported for SQL mapping beyond Vec<CryptoHash>.");
+            if inner_type_sql.ends_with("[]") && !(get_fully_qualified_type_string(&inner_ty).contains("Uuid")) {
+                panic!("Multi-dimensional arrays (Vec<Vec<T>>) are not currently supported for SQL mapping beyond Vec<Uuid>.");
             }
-            if inner_type_sql == "JSONB" || (inner_type_sql == "BYTEA" && !get_fully_qualified_type_string(&inner_ty).contains("CryptoHash") ) {
+            if inner_type_sql == "JSONB" || (inner_type_sql == "BYTEA" && !get_fully_qualified_type_string(&inner_ty).contains("Uuid") ) {
                  panic!("Vec<{}> mapped to SQL type {} cannot be directly made into an SQL array. Consider Json<Vec<{}>> or a different structure.", quote!(#inner_ty), inner_type_sql, quote!(#inner_ty));
             }
             return format!("{}[]", inner_type_sql);
@@ -110,7 +109,6 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
         "f64" => "DOUBLE PRECISION".to_string(),
         "bool" => "BOOLEAN".to_string(),
         "Uuid" | "::sqlx::types::Uuid" | "sqlx::types::Uuid" => "UUID".to_string(),
-        "CryptoHash" | "::voda_common::CryptoHash" | "voda_common::CryptoHash" => "TEXT".to_string(),
         s if s.starts_with("Json<") || s.starts_with("::sqlx::types::Json<") || s.starts_with("sqlx::types::Json<") => "JSONB".to_string(),
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" => "TIMESTAMPTZ".to_string(),
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" => "TIMESTAMP".to_string(),
@@ -263,12 +261,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 return syn::Error::new_spanned(field.ident.as_ref().unwrap(), "#[derive(SqlxObject)] requires the 'id' field to be public and not skipped.").to_compile_error().into();
             }
             let type_str = get_fully_qualified_type_string(&field.ty);
-            if type_str != "CryptoHash" && type_str != "::voda_common::CryptoHash" && type_str != "voda_common::CryptoHash" {
-                 return syn::Error::new_spanned(&field.ty, format!("#[derive(SqlxObject)] requires the 'id' field to be of type 'CryptoHash' or '::voda_common::CryptoHash', found '{}'.", type_str)).to_compile_error().into();
+            if type_str != "Uuid" && type_str != "::sqlx::types::Uuid" && type_str != "sqlx::types::Uuid" {
+                 return syn::Error::new_spanned(&field.ty, format!("#[derive(SqlxObject)] requires the 'id' field to be of type 'sqlx::types::Uuid', found '{}'.", type_str)).to_compile_error().into();
             }
         }
         None => {
-            return syn::Error::new_spanned(struct_name, "#[derive(SqlxObject)] requires a public field 'id: CryptoHash' that is not marked with #[sqlx_skip_column].").to_compile_error().into();
+            return syn::Error::new_spanned(struct_name, "#[derive(SqlxObject)] requires a public field 'id: sqlx::types::Uuid' that is not marked with #[sqlx_skip_column].").to_compile_error().into();
         }
     }
 
@@ -277,27 +275,13 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let field_ty = &field.ty;
         let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone());
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
-        let fq_field_type_str = get_fully_qualified_type_string(field_ty);
         let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        
-        // Corrected logic for identifying a "leaf" CryptoHash type, also needed for bindings
-        let is_exact_crypto_hash_type_str = |s: &str| {
-            s == "CryptoHash" ||
-            s == "::voda_common::CryptoHash" ||
-            s == "voda_common::CryptoHash"
-        };
-        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
         
         let field_is_option = is_option_type(field_ty);
         
         let mut row_field_ty = field_ty.clone();
 
-        if is_original_leaf_crypto_hash {
-            let ch_string_type: Type = parse_quote!(String);
-            row_field_ty = if field_is_option { parse_quote!(Option<#ch_string_type>) } else { ch_string_type };
-        } else if fq_field_type_str == "Vec<CryptoHash>" || fq_field_type_str == "Vec<::voda_common::CryptoHash>" || fq_field_type_str == "Vec<voda_common::CryptoHash>" {
-            row_field_ty = parse_quote!(Vec<String>);
-        } else if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
+        if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
             row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
             let is_inner_text_mappable_enum = !is_simple_type(&vec_inner_ty) && 
@@ -315,28 +299,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let field_ty = &field.ty;
         let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone());
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
-        let fq_field_type_str = get_fully_qualified_type_string(field_ty);
         let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        
-        let is_exact_crypto_hash_type_str = |s: &str| {
-            s == "CryptoHash" ||
-            s == "::voda_common::CryptoHash" ||
-            s == "voda_common::CryptoHash"
-        };
-        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
         
         let field_is_option = is_option_type(field_ty);
         let row_field_name = field_ident;
 
-        if is_original_leaf_crypto_hash {
-            if field_is_option {
-                quote! { #field_ident: row.#row_field_name.map(|s| s.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string")) }
-            } else {
-                quote! { #field_ident: row.#row_field_name.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string") }
-            }
-        } else if fq_field_type_str == "Vec<CryptoHash>" || fq_field_type_str == "Vec<::voda_common::CryptoHash>" || fq_field_type_str == "Vec<voda_common::CryptoHash>" {
-            quote! { #field_ident: row.#row_field_name.into_iter().map(|s| s.parse::<::voda_common::CryptoHash>().expect("Failed to parse CryptoHash from hex string")).collect() }
-        } else if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
+        if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
             if field_is_option {
                  quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
             } else {
@@ -390,20 +358,10 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     fn get_bind_stream(
         field_access_path: &proc_macro2::TokenStream,
         field_is_option: bool,
-        is_original_leaf_crypto_hash: bool,
-        is_vec_crypto_hash: bool,
         is_standalone_text_mappable_candidate: bool,
         is_vec_text_mappable_enum: bool,
     ) -> proc_macro2::TokenStream {
-        if is_original_leaf_crypto_hash {
-            if field_is_option {
-                quote! { .bind(#field_access_path.as_ref().map(|ch| ch.to_hex_string())) }
-            } else {
-                quote! { .bind(#field_access_path.to_hex_string()) }
-            }
-        } else if is_vec_crypto_hash {
-             quote! { .bind(#field_access_path.iter().map(|ch| ch.to_hex_string()).collect::<Vec<String>>()) }
-        } else if is_standalone_text_mappable_candidate {
+        if is_standalone_text_mappable_candidate {
             if field_is_option {
                  quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
             } else {
@@ -434,7 +392,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         // Candidate for standalone text mapping (e.g. an enum or custom struct expected to be FromStr/ToString/Default)
         let is_standalone_text_mappable_candidate =
             is_type_path_for_analysis &&
-            !is_simple_type(&type_for_analysis) && // Excludes CryptoHash, Uuid, chrono, primitives, Vec<u8>
+            !is_simple_type(&type_for_analysis) && // Excludes Uuid, chrono, primitives, Vec<u8>
             !fq_type_str_for_analysis.starts_with("Json<") &&
             !fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") &&
             !fq_type_str_for_analysis.starts_with("sqlx::types::Json<") &&
@@ -445,7 +403,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             true 
         } else if is_standalone_text_mappable_candidate {
             true 
-        } else if fq_field_type_str.contains("Vec<CryptoHash>") || fq_field_type_str.contains("Vec<::voda_common::CryptoHash>") {
+        } else if fq_field_type_str.contains("Vec<Uuid>") || fq_field_type_str.contains("Vec<::sqlx::types::Uuid>") {
             true 
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) {
             let is_vec_inner_type_path = matches!(&vec_inner_ty, syn::Type::Path(_));
@@ -479,7 +437,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 _ => "other_complex_type"
             };
             return syn::Error::new_spanned(field_ty, 
-                format!("Field '{}': Type '{}' (analyzed as '{}', kind: '{}') is not automatically mappable to SQL. SqlxObject supports simple types (primitives, Uuid, chrono types, Vec<u8>, CryptoHash), Option<Simple>, Json<T>, or concrete structs/enums that implement ToString/FromStr/Default for TEXT mapping (and Vecs of these). Trait objects and 'impl Trait' are not directly supported as text-mappable fields.",
+                format!("Field '{}': Type '{}' (analyzed as '{}', kind: '{}') is not automatically mappable to SQL. SqlxObject supports simple types (primitives, Uuid, chrono types, Vec<u8>), Option<Simple>, Json<T>, or concrete structs/enums that implement ToString/FromStr/Default for TEXT mapping (and Vecs of these). Trait objects and 'impl Trait' are not directly supported as text-mappable fields.",
                         field_ident, fq_field_type_str, fq_type_str_for_analysis, type_kind_for_error)
             ).to_compile_error().into();
         }
@@ -489,7 +447,10 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         
         let mut col_def_parts = vec![format!("\"{}\"", sql_column_name), sql_type_str.clone()];
         let is_pk = sql_column_name == "id";
-        if is_pk { col_def_parts.push("PRIMARY KEY".to_string()); }
+        if is_pk {
+            col_def_parts.push("PRIMARY KEY".to_string());
+            col_def_parts.push("DEFAULT gen_random_uuid()".to_string());
+        }
         else if sql_column_name == "created_at" || sql_column_name == "updated_at" {
             // Handled by default now, but let's ensure the type is what we expect for the DDL
             let idx = col_def_parts.iter().position(|s| s == &sql_type_str).unwrap();
@@ -521,9 +482,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
                     {
                         if let Some(id_val_ref) = &#self_field_access {
-                            let id_value_for_query = id_val_ref.to_hex_string();
                             let criteria = ::voda_database::QueryCriteria::new()
-                                .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
+                                .add_valued_filter(#id_column_name_of_related_type, "=", *id_val_ref)
                                 .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for Option<ForeignKey>.");
                             <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                         } else {
@@ -541,9 +501,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
                         #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
                     {
-                        let id_value_for_query = #self_field_access.to_hex_string();
                         let criteria = ::voda_database::QueryCriteria::new()
-                            .add_valued_filter(#id_column_name_of_related_type, "=", id_value_for_query)
+                            .add_valued_filter(#id_column_name_of_related_type, "=", #self_field_access)
                             .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for ForeignKey.");
                         <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                     }
@@ -551,8 +510,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             }
         } 
         else if let Some(fk_many_info) = parse_foreign_key_many_attr(field) {
-            if !(fq_field_type_str.contains("Vec<CryptoHash>") || fq_field_type_str.contains("Vec<::voda_common::CryptoHash>")) {
-                return syn::Error::new_spanned(field_ty, "foreign_key_many attribute can only be used on fields of type Vec<CryptoHash> or Vec<::voda_common::CryptoHash>.").to_compile_error().into();
+            if !(fq_field_type_str.contains("Vec<Uuid>") || fq_field_type_str.contains("Vec<::sqlx::types::Uuid>")) {
+                return syn::Error::new_spanned(field_ty, "foreign_key_many attribute can only be used on fields of type Vec<Uuid> or Vec<::sqlx::types::Uuid>.").to_compile_error().into();
             }
             let fetch_method_name = format_ident!("fetch_{}", field_ident);
             let related_type = &fk_many_info.related_rust_type;
@@ -569,11 +528,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     if self.#field_ident.is_empty() {
                         return Ok(Vec::new());
                     }
-                    let ids_as_strings: Vec<String> = self.#field_ident.iter().map(|ch| ch.to_hex_string()).collect();
+                    let ids = &self.#field_ident;
                     let sql = format!("SELECT * FROM \"{}\" WHERE \"id\" = ANY($1)", #referenced_table_str);
                     
                     let related_rows = sqlx::query_as::<_, <#related_type as ::voda_database::SqlxSchema>::Row>(&sql)
-                        .bind(ids_as_strings)
+                        .bind(ids)
                         .fetch_all(executor)
                         .await?;
                     
@@ -582,17 +541,16 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             });
         }
         let field_access_path = quote!{ self.#field_ident };
-        let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
-        
-        // Corrected logic for identifying a "leaf" CryptoHash type, also needed for bindings
-        let is_exact_crypto_hash_type_str = |s: &str| {
-            s == "CryptoHash" ||
-            s == "::voda_common::CryptoHash" ||
-            s == "voda_common::CryptoHash"
-        };
-        let is_original_leaf_crypto_hash = is_exact_crypto_hash_type_str(&fq_type_str_for_analysis) && !is_json_type_for_analysis;
 
-        let is_vec_crypto_hash = fq_field_type_str.contains("Vec<CryptoHash>") || fq_field_type_str.contains("Vec<::voda_common::CryptoHash>");
+        // Candidate for standalone text mapping (e.g. an enum or custom struct expected to be FromStr/ToString/Default)
+        let is_standalone_text_mappable_candidate =
+            is_type_path_for_analysis &&
+            !is_simple_type(&type_for_analysis) && // Excludes Uuid, chrono, primitives, Vec<u8>
+            !fq_type_str_for_analysis.starts_with("Json<") &&
+            !fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") &&
+            !fq_type_str_for_analysis.starts_with("sqlx::types::Json<") &&
+            get_vec_inner_type(&type_for_analysis).is_none(); // Ensure it's not a Vec itself
+        
         let is_vec_text_mappable_enum = get_vec_inner_type(field_ty).map_or(false, |vt| 
             !is_simple_type(&vt) && 
             !get_fully_qualified_type_string(&vt).starts_with("Option<") && 
@@ -602,14 +560,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let bind_stream = get_bind_stream(
             &field_access_path,
             field_is_option,
-            is_original_leaf_crypto_hash,
-            is_vec_crypto_hash,
             is_standalone_text_mappable_candidate,
             is_vec_text_mappable_enum
         );
         
-        // Exclude timestamp fields from binding lists
-        if field_ident != "created_at" && field_ident != "updated_at" {
+        // Exclude timestamp fields and id from binding lists
+        if field_ident != "created_at" && field_ident != "updated_at" && !is_pk {
             insert_col_sql_names.push(format!("\"{}\"", sql_column_name));
             insert_bindings_streams.push(bind_stream.clone());
 
@@ -634,7 +590,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let insert_bind_placeholders_sql = (1..=insert_col_sql_names.len()).map(|i| format!("${}", i)).collect::<Vec<String>>().join(", ");
     let insert_sql_query = format!("INSERT INTO \"{}\" ({}) VALUES ({}) RETURNING {}", table_name_str, insert_column_names_joined_sql, insert_bind_placeholders_sql, all_sql_columns_joined_str);
 
-    let pk_binding_for_update = quote! { .bind(self.id.to_hex_string()) };
+    let pk_binding_for_update = quote! { .bind(self.id) };
     let update_set_str_sql = update_set_clauses_sql.join(", ");
     
     let update_by_id_sql_query_is_select = update_set_clauses_sql.is_empty();
@@ -646,9 +602,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     
     let sql_for_delete_instance_by_id = format!("DELETE FROM \"{}\" WHERE \"id\" = $1", table_name_str);
 
-    let final_pk_id_trait_type: Type = parse_quote!(String);
-    let get_id_value_impl = quote! { self.id.to_hex_string() };
-    
+    let final_pk_id_trait_type: Type = parse_quote!(::sqlx::types::Uuid);    
     let trigger_sql_impl = if has_updated_at {
         let trigger_name = format!("set_updated_at_{}", table_name_str);
         format!(
@@ -676,7 +630,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             const ID_COLUMN_NAME: &'static str = "id";
             const COLUMNS: &'static [&'static str] = &[#( #all_sql_column_names_str_lits ),*];
 
-            fn get_id_value(&self) -> Self::Id { #get_id_value_impl }
+            fn get_id_value(&self) -> Self::Id { self.id }
 
             fn from_row(row: Self::Row) -> Self {
                 Self {
@@ -711,26 +665,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 }
             }
 
-            async fn create<'exe, E>(mut self, executor: E) -> Result<Self, ::sqlx::Error>
+            async fn create<'e, E>(self, executor: E) -> Result<Self, ::sqlx::Error>
             where
-                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
-                // Attempt to populate ID. If this trait is not implemented by the user to do
-                // something meaningful (like generating a UUID if id is not set), it might be a no-op.
-                // If it errors, this will propagate the error.
-                if let Err(_e) = self.sql_populate_id() {
-                    // Consider how to handle this error; for now, we assume it might be a
-                    // default no-op or the user handles the ID population before calling create.
-                    // If sql_populate_id returns a proper error that should halt creation,
-                    // convert it to ::sqlx::Error or handle appropriately.
-                    // For simplicity, we'll assume that if sql_populate_id fails, it's critical.
-                    // However, SqlxPopulateId returns anyhow::Result, not directly an sqlx::Error.
-                    // A more robust conversion would be needed if we wanted to return e.g. SqlxError::Io.
-                    // For now, let's assume that an error here means we cannot proceed with this particular
-                    // object's ID logic. The original `create` did not propagate this error.
-                    // Reverting to not explicitly returning error here, assuming ID must be valid for bind_insert.
-                }
                 let sql = <Self as ::voda_database::SqlxSchema>::insert_sql();
                 self.bind_insert(::sqlx::query_as::<_, <Self as ::voda_database::SqlxSchema>::Row>(&sql))
                     .fetch_one(executor)
@@ -738,9 +677,9 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     .map(<Self as ::voda_database::SqlxSchema>::from_row)
             }
 
-            async fn update<'exe, E>(self, executor: E) -> Result<Self, ::sqlx::Error>
+            async fn update<'e, E>(self, executor: E) -> Result<Self, ::sqlx::Error>
             where
-                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
                 let sql = #sql_for_update_instance_by_id;
@@ -750,14 +689,14 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     .map(<Self as ::voda_database::SqlxSchema>::from_row)
             }
 
-            async fn delete<'exe, E>(self, executor: E) -> Result<u64, ::sqlx::Error>
+            async fn delete<'e, E>(self, executor: E) -> Result<u64, ::sqlx::Error>
             where
-                E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
                 let sql = #sql_for_delete_instance_by_id;
                 ::sqlx::query(&sql)
-                    .bind(<Self as ::voda_database::SqlxSchema>::get_id_value(&self))
+                    .bind(self.id)
                     .execute(executor)
                     .await
                     .map(|done| done.rows_affected())
@@ -773,7 +712,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         #[::async_trait::async_trait]
         impl ::voda_database::SqlxFilterQuery for #struct_name {
             async fn find_by_criteria<'exe, E>(
-                mut criteria: ::voda_database::QueryCriteria,
+                criteria: ::voda_database::QueryCriteria,
                 executor: E,
             ) -> Result<Vec<Self>, ::sqlx::Error>
             where
@@ -782,7 +721,6 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             {
                 let mut sql_query_parts: Vec<String> = Vec::new();
                 let mut placeholder_idx = 1;
-                let criteria_arguments = criteria.arguments; // Take ownership to potentially prepend later
 
                 // Use fully qualified path for schema items
                 sql_query_parts.push(format!(
@@ -834,14 +772,14 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 let final_sql = sql_query_parts.join(" ");
                 
                 // criteria.arguments already has all necessary values in order (filters, then limit, then offset)
-                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, criteria_arguments)
+                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, criteria.arguments)
                     .fetch_all(executor)
                     .await
                     .map(|rows| rows.into_iter().map(<Self as ::voda_database::SqlxSchema>::from_row).collect())
             }
 
             async fn delete_by_criteria<'exe, E>(
-                mut criteria: ::voda_database::QueryCriteria,
+                criteria: ::voda_database::QueryCriteria,
                 executor: E,
             ) -> Result<u64, ::sqlx::Error>
             where

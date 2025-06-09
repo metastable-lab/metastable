@@ -1,16 +1,15 @@
 use once_cell::sync::Lazy;
-use sqlx::types::Json;
-use voda_common::{get_current_timestamp, CryptoHash};
-use voda_database::SqlxPopulateId;
+use sqlx::types::{Json, Uuid};
+use voda_common::get_current_timestamp;
 use voda_runtime::{SystemConfig, User};
 use voda_runtime_roleplay::{
     CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, Character,
 };
 
 pub static TEST_USER: Lazy<User> = Lazy::new(|| {
-    let mut user = User {
-        id: CryptoHash::default(),
-        user_id: format!("test_user_{}", CryptoHash::random().to_hex_string()),
+    let user = User {
+        id: Uuid::new_v4(),
+        user_id: format!("test_user_{}", Uuid::new_v4()),
         user_aka: "Sandbox User".to_string(),
         role: voda_runtime::UserRole::User,
         provider: "sandbox".to_string(),
@@ -18,13 +17,12 @@ pub static TEST_USER: Lazy<User> = Lazy::new(|| {
         created_at: get_current_timestamp(),
         updated_at: get_current_timestamp(),
     };
-    user.sql_populate_id().unwrap();
     user
 });
 
 pub static TEST_CHARACTER: Lazy<Character> = Lazy::new(|| {
-    let mut character = Character {
-        id: CryptoHash::default(),
+    let character = Character {
+        id: Uuid::new_v4(),
         name: "忆君".to_string(),
         description: "一位身在天庭的绅士，身躯如钢铁般强壮，英俊、儒雅、善良。他帮助前来求助的人们，找回他们挚爱之人失落的记忆。".to_string(),
         creator: TEST_USER.id.clone(),
@@ -42,12 +40,11 @@ pub static TEST_CHARACTER: Lazy<Character> = Lazy::new(|| {
         created_at: get_current_timestamp(),
         updated_at: get_current_timestamp(),
     };
-    character.sql_populate_id().unwrap();
     character
 });
 
 pub static SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(|| SystemConfig {
-    id: CryptoHash::random(),
+    id: Uuid::new_v4(),
     name: "sandbox_default".to_string(),
     system_prompt: r#"你正在扮演一位名叫'忆君'的角色, 但你一点也不古风。你是一个极其健谈、热情、使用现代口语的记忆向导, 就像一个自来熟的好哥们。
 你的任务是:

@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use voda_common::CryptoHash;
-use voda_database::{SqlxObject, SqlxPopulateId};
+use voda_database::SqlxObject;
 use strum_macros::{Display, EnumString};
+use sqlx::types::Uuid;
 
 use voda_runtime::User;
 
@@ -50,14 +50,13 @@ pub enum CharacterFeature {
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_characters"]
 pub struct Character {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
+    pub id: Uuid,
 
     pub name: String,
     pub description: String,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub creator: CryptoHash,
+    pub creator: Uuid,
 
     pub version: i64,
 
@@ -76,13 +75,4 @@ pub struct Character {
 
     pub created_at: i64,
     pub updated_at: i64
-}
-
-impl SqlxPopulateId for Character {
-    fn sql_populate_id(&mut self) -> Result<()> {
-        if self.id == CryptoHash::default() {
-            self.id = CryptoHash::random();
-        }
-        Ok(())
-    }
 }

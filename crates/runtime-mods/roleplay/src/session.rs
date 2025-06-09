@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
-use sqlx::Postgres;
+use sqlx::{Postgres, types::Uuid};
 
-use voda_database::{SqlxObject, SqlxPopulateId};
-use voda_common::CryptoHash;
+use voda_database::SqlxObject;
 use voda_runtime::{User, SystemConfig};
 
 use crate::Character;
@@ -13,48 +12,36 @@ use crate::message::RoleplayMessage;
 #[table_name = "roleplay_sessions"]
 pub struct RoleplaySession {
     #[serde(rename = "_id")]
-    pub id: CryptoHash,
+    pub id: Uuid,
 
     pub public: bool,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub owner: CryptoHash,
+    pub owner: Uuid,
 
     #[foreign_key(referenced_table = "roleplay_characters", related_rust_type = "Character")]
-    pub character: CryptoHash,
+    pub character: Uuid,
 
     #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
-    pub system_config: CryptoHash,
+    pub system_config: Uuid,
 
     #[foreign_key_many(referenced_table = "roleplay_messages", related_rust_type = "RoleplayMessage")]
-    pub history: Vec<CryptoHash>,
+    pub history: Vec<Uuid>,
 
     pub updated_at: i64,
     pub created_at: i64,
-}
-
-impl SqlxPopulateId for RoleplaySession {
-    fn sql_populate_id(&mut self) -> Result<()> {
-        if self.id == CryptoHash::default() {
-            self.id = CryptoHash::random();
-        }
-        Ok(())
-    }
 }
 
 impl RoleplaySession {
     /// Atomically appends a message ID to the session's history in the database.
     pub async fn append_message_to_history<'e, Exe>(
         &mut self,
-        message_id_to_add: &CryptoHash,
+        message_id_to_add: &Uuid,
         executor: Exe,
     ) -> Result<(), sqlx::Error>
     where
         Exe: sqlx::Executor<'e, Database = Postgres> + Send,
     {
-        let message_id_hex = message_id_to_add.to_hex_string();
-        let session_id_hex = self.id.to_hex_string();
-
         sqlx::query(
             r#"
             UPDATE "roleplay_sessions"
@@ -63,8 +50,8 @@ impl RoleplaySession {
             WHERE id = $2
             "#,
         )
-        .bind(message_id_hex)
-        .bind(session_id_hex)
+        .bind(message_id_to_add)
+        .bind(self.id)
         .execute(executor)
         .await?;
 
