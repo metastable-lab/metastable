@@ -16,6 +16,7 @@ export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
 export FISH_AUDIO_API_KEY := env("FISH_AUDIO_API_KEY")
 export HASURA_GRAPHQL_URL := env("HASURA_GRAPHQL_URL")
 export DATABASE_URL := env("DATABASE_URL")
+export HASURA_GRAPHQL_ADMIN_SECRET := env("HASURA_GRAPHQL_ADMIN_SECRET")
 
 @docs:
     cd docs && bunx mintlify dev

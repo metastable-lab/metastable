@@ -1,5 +1,5 @@
 {
-  "resource_version": 65,
+  "resource_version": 66,
   "metadata": {
     "version": 3,
     "sources": [
@@ -885,11 +885,7 @@
                     "user_aka",
                     "user_id"
                   ],
-                  "filter": {
-                    "id": {
-                      "_eq": "X-Hasura-User-Id"
-                    }
-                  }
+                  "filter": {}
                 }
               }
             ],

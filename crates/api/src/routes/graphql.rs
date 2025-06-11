@@ -64,6 +64,13 @@ async fn proxy_to_hasura(
             .parse::<HeaderValue>()
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );
+    headers.insert(
+        "X-Hasura-Admin-Secret",
+        env.get_env_var("HASURA_GRAPHQL_ADMIN_SECRET")
+            .to_string()
+            .parse::<HeaderValue>()
+            .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
+    );
 
     let hasura_response = client
         .request(parts.method, &hasura_url)
