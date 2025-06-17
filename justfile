@@ -24,5 +24,11 @@ export HASURA_GRAPHQL_ADMIN_SECRET := env("HASURA_GRAPHQL_ADMIN_SECRET")
 @api:
     cargo run --package voda-service --bin voda_service --release
 
-@sandbox:
-    cargo run --package voda-sandbox --release
+@sandbox-init:
+    cargo run --package voda-sandbox --bin init --release
+
+@sandbox-run:
+    cargo run --package voda-sandbox --bin run --release
+
+# @sandbox-reset-db:
+#     cargo run --package voda-sandbox --bin reset_db --release

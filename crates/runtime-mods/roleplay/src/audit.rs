@@ -20,6 +20,7 @@ pub struct AuditLog {
     pub previous_status: CharacterStatus,
     pub new_status: CharacterStatus,
 
+    pub notes: String,
     pub created_at: i64,
 }
 

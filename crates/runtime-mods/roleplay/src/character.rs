@@ -70,6 +70,7 @@ pub struct Character {
     pub prompts_example_dialogue: String,
     pub prompts_first_message: String,
     pub prompts_background_stories: Vec<String>,
+    pub prompts_behavior_traits: Vec<String>,
 
     pub tags: Vec<String>,
 

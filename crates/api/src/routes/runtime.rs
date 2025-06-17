@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -7,7 +8,9 @@ use axum::{
 };
 use sqlx::types::Uuid;
 use voda_runtime::RuntimeClient;
-use voda_runtime_roleplay::RoleplayMessage;
+use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
+use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
+use voda_runtime::SystemConfig;
 
 use crate::{
     ensure_account, 
@@ -15,10 +18,14 @@ use crate::{
     response::{AppError, AppSuccess},
     GlobalState
 };
-// use crate::metrics::*;
 
 pub fn runtime_routes() -> Router<GlobalState> {
     Router::new()
+        .route("/runtime/roleplay/create_session",
+            post(roleplay_create_session)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
         .route("/runtime/roleplay/chat/{session_id}",
             post(roleplay_chat)
             .route_layer(middleware::from_fn(authenticate))
@@ -28,6 +35,38 @@ pub fn runtime_routes() -> Router<GlobalState> {
             post(roleplay_rollback)
             .route_layer(middleware::from_fn(authenticate))
         )
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateSessionRequest { pub character_id: Uuid, pub system_config_id: Uuid }
+async fn roleplay_create_session(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreateSessionRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
+        .expect("[roleplay_create_session] User not found");
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let _character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", payload.character_id.to_string())?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] Character not found")))?;
+    let _system_config = SystemConfig::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", payload.system_config_id.to_string())?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] System config not found")))?;
+
+    let mut session = RoleplaySession::default();
+    session.character = payload.character_id;
+    session.system_config = payload.system_config_id;
+    session.owner = user.id;
+    session.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Session created successfully", json!(())))
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -10,7 +10,8 @@ pub use routes::{
     misc_routes,
     graphql_route,
     voice_routes,
-    runtime_routes
+    runtime_routes,
+    user_routes,
 };
 
 pub use env::ApiServerEnv;

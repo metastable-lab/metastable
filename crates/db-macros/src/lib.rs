@@ -203,11 +203,15 @@ fn parse_foreign_key_many_attr(field: &Field) -> Option<ForeignKeyManyInfo> {
     None
 }
 
+fn has_unique_attr(field: &Field) -> bool {
+    field.attrs.iter().any(|attr| attr.path.is_ident("unique"))
+}
+
 fn has_sqlx_skip_column_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path.is_ident("sqlx_skip_column"))
 }
 
-#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column))]
+#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column, unique))]
 pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
     let struct_name = &input_ast.ident;
@@ -458,6 +462,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             col_def_parts.push("NOT NULL DEFAULT floor(extract(epoch from now()))".to_string());
         }
         else if !field_is_option { col_def_parts.push("NOT NULL".to_string()); }
+
+        if has_unique_attr(field) {
+            col_def_parts.push("UNIQUE".to_string());
+        }
+
         create_table_column_defs.push(col_def_parts.join(" "));
 
         if let Some(fk_info) = parse_foreign_key_attr(field) {

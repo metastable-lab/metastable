@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use axum::{
     body::{to_bytes, Body}, extract::{Extension, State}, http::{header::{self, HeaderValue}, Request, StatusCode}, middleware, response::Response, routing::post, Router
 };
-use reqwest::Client;
 use sqlx::types::Uuid;
 use voda_common::EnvVars;
 use voda_runtime::UserRole;
@@ -26,7 +25,6 @@ async fn proxy_to_hasura(
 ) -> Result<Response, AppError> {
     let env = ApiServerEnv::load();
     let hasura_url = env.get_env_var("HASURA_GRAPHQL_URL");
-    let client = Client::new();
 
     let maybe_user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
 
@@ -72,7 +70,7 @@ async fn proxy_to_hasura(
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );
 
-    let hasura_response = client
+    let hasura_response = state.http_client
         .request(parts.method, &hasura_url)
         .headers(headers)
         .body(body_bytes)
