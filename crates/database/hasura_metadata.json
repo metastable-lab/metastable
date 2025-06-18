@@ -1,5 +1,5 @@
 {
-  "resource_version": 74,
+  "resource_version": 76,
   "metadata": {
     "version": 3,
     "sources": [
@@ -434,14 +434,20 @@
               {
                 "role": "anyone",
                 "permission": {
-                  "columns": "*",
+                  "columns": [
+                    "id",
+                    "name"
+                  ],
                   "filter": {}
                 }
               },
               {
                 "role": "user",
                 "permission": {
-                  "columns": "*",
+                  "columns": [
+                    "id",
+                    "name"
+                  ],
                   "filter": {},
                   "allow_aggregations": true
                 }

@@ -93,13 +93,12 @@ async fn roleplay_rollback(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
     Path(session_id): Path<Uuid>,
-    Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
         .expect("[roleplay_rollback] User not found");
 
     let message = RoleplayMessage::user_message(
-        &payload.message, &session_id,  &user.id
+        "rollback", &session_id,  &user.id
     );
 
     let response = state.roleplay_client.on_rollback(&message).await?;
