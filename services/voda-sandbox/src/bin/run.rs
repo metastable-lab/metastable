@@ -1,23 +1,25 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use colored::*;
 use dialoguer::{theme::ColorfulTheme, Select};
 use indicatif::{ProgressBar, ProgressStyle};
-use reqwest::{header, Client};
+use reqwest::Client;
 use rustyline::{error::ReadlineError, DefaultEditor};
 use termimad::{crossterm::style::Attribute, MadSkin};
 use termimad::crossterm::style::Color;
 use tokio::time::sleep;
+use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use voda_database::init_db_pool;
+use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use voda_runtime::User;
 
 use voda_sandbox::{
     api_client::ApiClient,
     config::get_normal_user,
-    graphql::{GraphQlClient, Session},
+    graphql::{CharacterSummary, GraphQlClient, Session, SystemConfig},
 };
 
 init_db_pool!(
@@ -34,88 +36,216 @@ init_db_pool!(
 );
 
 const BASE_URL: &str = "http://localhost:3033";
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
+const POLL_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Application state holding shared resources.
 struct AppState {
     api_client: ApiClient,
     graphql_client: GraphQlClient,
-    user: User,
 }
 
-/// Main application controller.
-struct App {
-    state: AppState,
-    rl: DefaultEditor,
+struct Tui {
+    rl: Arc<Mutex<DefaultEditor>>,
     skin: MadSkin,
 }
 
-impl App {
-    /// Creates a new App instance, initializing all required components.
+impl Tui {
     fn new() -> Result<Self> {
-        let user = get_normal_user();
-        println!("Welcome, {}!", user.user_aka.cyan());
-        let secret_key = std::env::var("SECRET_SALT").expect("SECRET_SALT must be set");
-
-        let mut headers = header::HeaderMap::new();
-        let token = user.generate_auth_token(&secret_key);
-        headers.insert(
-            header::AUTHORIZATION,
-            format!("Bearer {}", token).parse().unwrap(),
-        );
-
-        let http_client = Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("Failed to build reqwest client");
-
-        let api_client = ApiClient::new(BASE_URL.to_string(), http_client.clone());
-        let graphql_client = GraphQlClient::new(BASE_URL.to_string(), http_client.clone());
-
-        let state = AppState {
-            api_client,
-            graphql_client,
-            user,
-        };
-
         Ok(Self {
-            state,
-            rl: DefaultEditor::new()?,
-            skin: create_skin(),
+            rl: Arc::new(Mutex::new(DefaultEditor::new()?)),
+            skin: Self::create_skin(),
         })
     }
 
-    /// The main application loop.
+    #[instrument(skip(self, items))]
+    async fn select_item<S: ToString + std::fmt::Debug>(
+        &self,
+        prompt: &str,
+        items: &[S],
+    ) -> Result<usize> {
+        let theme = ColorfulTheme::default();
+        let owned_items: Vec<String> = items.iter().map(|s| s.to_string()).collect();
+        let prompt_owned = prompt.to_string();
+
+        let selection = tokio::task::spawn_blocking(move || {
+            Select::with_theme(&theme)
+                .with_prompt(&prompt_owned)
+                .default(0)
+                .items(&owned_items)
+                .interact()
+        })
+        .await?
+        .context("User did not make a selection")?;
+        Ok(selection)
+    }
+
+    #[instrument(skip(self))]
+    fn get_user_input(&self, prompt: &str) -> Result<String, ReadlineError> {
+        let rl_clone = Arc::clone(&self.rl);
+        tokio::task::block_in_place(move || {
+            let mut rl = rl_clone.lock().unwrap();
+            let line = rl.readline(prompt)?;
+            if !line.trim().is_empty() {
+                rl.add_history_entry(line.as_str().trim())?;
+            }
+            Ok(line)
+        })
+    }
+
+    fn print_history(&self, session: &Session) {
+        println!("\n--- Chat History for Session {} ---", session.id);
+        for message in &session.roleplay_messages {
+            if message.role == "user" {
+                self.print_user_message(&message.content);
+            } else {
+                self.print_bot_message(&message.content);
+            }
+        }
+        println!("--- (type '/exit' or '/quit' to end session) ---");
+    }
+
+    fn print_user_message(&self, content: &str) {
+        println!("{}", "You:".green());
+        self.skin.print_text(content);
+    }
+
+    fn print_bot_message(&self, content: &str) {
+        println!("{}", "Bot:".yellow());
+        self.skin.print_text(content);
+    }
+
+    fn create_spinner(&self, msg: &str) -> ProgressBar {
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(120));
+        pb.set_style(
+            ProgressStyle::with_template("{spinner:.blue} {msg}")
+                .unwrap()
+                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+        );
+        pb.set_message(msg.to_string());
+        pb
+    }
+
+    fn create_skin() -> MadSkin {
+        let mut skin = MadSkin::default_dark();
+        skin.bold.set_fg(Color::Rgb { r: 255, g: 255, b: 85 });
+        skin.italic.set_fg(Color::AnsiValue(245));
+        skin.italic.add_attr(Attribute::Italic);
+        skin.bullet = termimad::StyledChar::from_fg_char(Color::Rgb { r: 255, g: 215, b: 0 }, '❯');
+        skin.paragraph.set_fg(Color::AnsiValue(252));
+        skin
+    }
+}
+
+async fn get_or_create_user(pool: &sqlx::PgPool) -> Result<User> {
+    let template_user = get_normal_user();
+    let user_id = template_user.user_id.clone();
+    let criteria = QueryCriteria::new()
+        .add_filter("user_id", "=", Some(user_id))?
+        .limit(1)?;
+
+    match User::find_one_by_criteria(criteria, pool).await? {
+        Some(user) => {
+            info!(
+                "Found existing user in DB: {} ({})",
+                user.user_aka.cyan(),
+                user.id
+            );
+            Ok(user)
+        }
+        None => {
+            info!("User not found, creating a new one in the database...");
+            let new_user = template_user.create(pool).await?;
+            info!(
+                "Created new user in DB: {} ({})",
+                new_user.user_aka.cyan(),
+                new_user.id
+            );
+            Ok(new_user)
+        }
+    }
+}
+
+struct App {
+    state: AppState,
+    tui: Tui,
+}
+
+impl App {
+    async fn new(pool: &sqlx::PgPool) -> Result<Self> {
+        let user = get_or_create_user(pool).await?;
+        info!("Welcome, {}! (ID: {})", user.user_aka.cyan(), user.id);
+        let secret_key = std::env::var("SECRET_SALT").expect("SECRET_SALT must be set");
+
+        let http_client = Client::new();
+        let api_client = ApiClient::new(
+            BASE_URL.to_string(),
+            user.clone(),
+            secret_key.clone(),
+            http_client.clone(),
+        );
+        let graphql_client =
+            GraphQlClient::new(BASE_URL.to_string(), user.clone(), secret_key, http_client);
+
+        Ok(Self {
+            state: AppState {
+                api_client,
+                graphql_client,
+            },
+            tui: Tui::new()?,
+        })
+    }
+
+    #[instrument(skip(self))]
     async fn run(&mut self) -> Result<()> {
         loop {
-            let session = self.select_or_create_session().await?;
-            self.chat_loop(session).await?;
+            match self.select_or_create_session().await {
+                Ok(session) => {
+                    if let Err(e) = self.chat_loop(session).await {
+                        error!("Chat loop ended with error: {:#}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to select or create session: {:#}", e);
+                    println!("{}", "Could not start a session. Please try again.".red());
+                    sleep(Duration::from_secs(1)).await;
+                }
+            }
             println!("\n{}\n", "Returning to session selection...".bold());
         }
     }
 
-    /// Guides the user through selecting an existing session or creating a new one.
+    #[instrument(skip(self))]
     async fn select_or_create_session(&self) -> Result<Session> {
-        match self.select_session().await? {
-            Some(session) => Ok(session),
-            None => self.create_new_session().await,
+        info!("Starting session selection process");
+        let sessions = self.fetch_sessions().await?;
+        if sessions.is_empty() {
+            println!("No existing sessions found.");
+            return self.create_new_session().await;
+        }
+
+        match self.select_from_existing_sessions(&sessions).await? {
+            Some(session) => {
+                info!("Selected existing session {}", session.id);
+                Ok(session)
+            },
+            None => {
+                info!("User opted to create a new session");
+                self.create_new_session().await
+            }
         }
     }
 
-    /// Fetches sessions and prompts the user to select one.
-    async fn select_session(&self) -> Result<Option<Session>> {
-        println!("Fetching sessions...");
-        let sessions = self
-            .state
-            .graphql_client
-            .get_my_sessions_and_messages(&self.state.user.id)
-            .await?
-            .roleplay_sessions;
+    #[instrument(skip(self))]
+    async fn fetch_sessions(&self) -> Result<Vec<Session>> {
+        let pb = self.tui.create_spinner("Fetching sessions...");
+        let sessions = self.state.graphql_client.get_my_sessions_and_messages().await?.roleplay_sessions;
+        pb.finish_and_clear();
+        Ok(sessions)
+    }
 
-        if sessions.is_empty() {
-            println!("No existing sessions found. Creating a new one.");
-            return Ok(None);
-        }
-
+    #[instrument(skip(self, sessions))]
+    async fn select_from_existing_sessions(&self, sessions: &[Session]) -> Result<Option<Session>> {
         let mut selection_items: Vec<String> = sessions
             .iter()
             .map(|s| {
@@ -130,17 +260,10 @@ impl App {
         selection_items.push("Create a new session".to_string());
         selection_items.push("Exit".to_string());
 
-        let selection = tokio::task::spawn_blocking(move || {
-            Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Select a session to continue, or create a new one")
-                .default(0)
-                .items(&selection_items)
-                .interact()
-        })
-        .await??;
+        let selection = self.tui.select_item("Select a session", &selection_items).await?;
 
         match selection {
-            i if i < sessions.len() => Ok(Some(sessions.into_iter().nth(i).unwrap())),
+            i if i < sessions.len() => Ok(Some(sessions[i].clone())),
             i if i == sessions.len() => Ok(None),
             _ => {
                 println!("{}", "Exiting.".red());
@@ -149,196 +272,214 @@ impl App {
         }
     }
 
-    /// Guides the user through creating a new chat session.
+    #[instrument(skip(self))]
     async fn create_new_session(&self) -> Result<Session> {
-        println!("Fetching characters...");
+        println!("Starting new session creation...");
+        let character = self.select_character().await?;
+        let system_config = self.select_system_config().await?;
+
+        let pb = self.tui.create_spinner("Creating session on the server...");
+        self.state.api_client
+            .create_session(character.id.to_string(), system_config.id.to_string())
+            .await
+            .context("API call to create session failed")?;
+        pb.finish_with_message("Session creation initiated. Waiting for it to be ready...");
+
+        let new_session = self.poll_for_new_session(character.id).await?;
+        println!("{}", "New session created successfully!".green());
+        info!("Created new session {}", new_session.id);
+        Ok(new_session)
+    }
+    
+    #[instrument(skip(self))]
+    async fn select_character(&self) -> Result<CharacterSummary> {
+        let pb = self.tui.create_spinner("Fetching characters...");
         let characters = self
             .state
             .graphql_client
             .get_all_characters()
             .await?
             .roleplay_characters;
-        
+        pb.finish_and_clear();
+
         if characters.is_empty() {
-            println!("{}", "No characters found. Please create a character first.".yellow());
-            // Exit gracefully
-            std::process::exit(0);
+            return Err(anyhow!(
+                "No characters found on the server. Please create one first."
+            ));
         }
-        
+
         let character_names: Vec<String> = characters.iter().map(|c| c.name.clone()).collect();
-
-        let char_selection = tokio::task::spawn_blocking(move || {
-            Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Select a character")
-                .default(0)
-                .items(&character_names)
-                .interact()
-        })
-        .await??;
-        let selected_character = &characters[char_selection];
-
-        println!("Fetching system configs...");
-        let system_configs = self
-            .state
-            .graphql_client
-            .get_all_system_configs()
-            .await?
-            .system_configs;
-        let config_names: Vec<String> = system_configs.iter().map(|c| c.name.clone()).collect();
-
-        let config_selection = tokio::task::spawn_blocking(move || {
-            Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Select a system configuration")
-                .default(0)
-                .items(&config_names)
-                .interact()
-        })
-        .await??;
-        let selected_config = &system_configs[config_selection];
-
-        println!("Creating new session...");
-        self.state
-            .api_client
-            .create_session(
-                selected_character.id.to_string(),
-                selected_config.id.to_string(),
-            )
+        let selection = self
+            .tui
+            .select_item("Select a character", &character_names)
             .await?;
-
-        // Poll for the new session to appear
-        let new_session = self.poll_for_new_session(selected_character.id).await?;
-
-        println!("{}", "New session created!".green());
-        Ok(new_session)
+        Ok(characters[selection].clone())
     }
 
-    /// Polls the server until the newly created session is available.
-    async fn poll_for_new_session(&self, character_id: Uuid) -> Result<Session> {
-        loop {
-            let sessions = self
-                .state
-                .graphql_client
-                .get_my_sessions_and_messages(&self.state.user.id)
-                .await?
-                .roleplay_sessions;
-            if let Some(session) = sessions.into_iter().find(|s| s.character == character_id) {
-                return Ok(session);
-            }
-            sleep(Duration::from_millis(500)).await;
+    #[instrument(skip(self))]
+    async fn select_system_config(&self) -> Result<SystemConfig> {
+        let pb = self.tui.create_spinner("Fetching system configurations...");
+        let configs = self.state.graphql_client.get_all_system_configs().await?.system_configs;
+        pb.finish_and_clear();
+
+        if configs.is_empty() {
+            return Err(anyhow!("No system configs found on the server."));
         }
+
+        let config_names: Vec<String> = configs.iter().map(|c| c.name.clone()).collect();
+        let selection = self.tui.select_item("Select a system configuration", &config_names).await?;
+        Ok(configs[selection].clone())
     }
 
-    /// Handles the main chat interaction loop for a given session.
+    #[instrument(skip_all, fields(session_id = %session.id))]
     async fn chat_loop(&mut self, mut session: Session) -> Result<()> {
-        println!("\n--- Entering Chat with Session {} ---", session.id);
-        for message in &session.roleplay_messages {
-            let speaker = if message.role == "user" { "You:".green() } else { "Bot:".yellow() };
-            println!("{speaker}");
-            self.skin.print_text(&message.content);
-        }
-        println!("--- (type 'exit' to end) ---");
+        self.tui.print_history(&session);
 
         loop {
-            let readline = self.rl.readline(&format!("{} ", "You:".green()));
-            match readline {
+            let prompt = format!("{} ", "You:".green());
+            match self.tui.get_user_input(&prompt) {
                 Ok(line) => {
                     let input = line.trim();
-                    if input.is_empty() { continue; }
-                    if input.eq_ignore_ascii_case("exit") { break; }
-
-                    self.rl.add_history_entry(input)?;
-                    let message_count_before = session.roleplay_messages.len();
-
-                    let pb = create_spinner("Bot is thinking...");
-                    self.state
-                        .api_client
-                        .chat(session.id.to_string(), input.to_string())
-                        .await?;
-
-                    // Poll for new messages
-                    let updated_session = self.poll_for_new_messages(session.id, message_count_before).await?;
-                    let new_messages = updated_session.roleplay_messages;
-                    
-                    pb.finish_and_clear();
-
-                    // Display only new assistant messages
-                    for message in new_messages.iter().skip(message_count_before) {
-                        if message.role != "user" {
-                            println!("{}:", "Bot:".yellow());
-                            self.skin.print_text(&message.content);
-                        }
+                    if input.is_empty() {
+                        continue;
                     }
-                    session.roleplay_messages = new_messages;
+                    if self.handle_command(input, &mut session).await? {
+                        break;
+                    }
                 }
                 Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
                     println!("{}", "\nExiting session.".red());
                     break;
                 }
                 Err(err) => {
-                    println!("{} {:?}", "Error:".red(), err);
-                    break;
+                    error!("Readline error: {:?}", err);
+                    return Err(err.into());
                 }
             }
         }
+        info!("Exiting chat loop for session {}", session.id);
         Ok(())
     }
 
-    /// Polls the server until new messages are received for the session.
-    async fn poll_for_new_messages(&self, session_id: Uuid, old_count: usize) -> Result<Session> {
+    #[instrument(skip(self, session))]
+    async fn handle_command(&self, input: &str, session: &mut Session) -> Result<bool> {
+        match input.to_lowercase().as_str() {
+            "/exit" | "/quit" => return Ok(true),
+            "/rollback" => {
+                info!("Performing rollback for session {}", session.id);
+                let pb = self.tui.create_spinner("Rolling back last message...");
+                let message_count_before = session.roleplay_messages.len();
+                
+                self.state.api_client.rollback(session.id.to_string(), "".to_string()).await?;
+                
+                let updated_session = self.poll_for_message_change(session.id, message_count_before).await?;
+                pb.finish_with_message("Rollback successful.");
+                
+                *session = updated_session;
+                self.tui.print_history(session);
+            },
+            _ => {
+                let pb = self.tui.create_spinner("Bot is thinking...");
+                let message_count_before = session.roleplay_messages.len();
+
+                self.state.api_client.chat(session.id.to_string(), input.to_string()).await?;
+
+                let updated_session = self.poll_for_message_change(session.id, message_count_before).await?;
+                let new_messages = &updated_session.roleplay_messages[message_count_before..];
+
+                pb.finish_and_clear();
+                
+                for message in new_messages {
+                    if message.role != "user" {
+                        self.tui.print_bot_message(&message.content);
+                    }
+                }
+                *session = updated_session;
+            }
+        }
+        Ok(false)
+    }
+
+    #[instrument(skip(self))]
+    async fn poll_for_new_session(&self, character_id: Uuid) -> Result<Session> {
+        info!("Polling for new session with character_id: {}", character_id);
+        let start_time = tokio::time::Instant::now();
         loop {
-            let sessions = self
+            if start_time.elapsed() > POLL_TIMEOUT {
+                return Err(anyhow!("Timeout waiting for new session to appear."));
+            }
+            let mut sessions = self
                 .state
                 .graphql_client
-                .get_my_sessions_and_messages(&self.state.user.id)
+                .get_session_by_character(character_id)
                 .await?
                 .roleplay_sessions;
+
+            if let Some(session) = sessions.pop() {
+                info!("Found new session {}", session.id);
+                return Ok(session);
+            }
+            debug!(
+                "Session not found yet, polling again in {:?}...",
+                POLL_INTERVAL
+            );
+            sleep(POLL_INTERVAL).await;
+        }
+    }
+
+    #[instrument(skip(self))]
+    async fn poll_for_message_change(&self, session_id: Uuid, old_count: usize) -> Result<Session> {
+        info!("Polling for message changes in session {}, old count: {}", session_id, old_count);
+        let start_time = tokio::time::Instant::now();
+        loop {
+            if start_time.elapsed() > POLL_TIMEOUT {
+                return Err(anyhow!("Timeout waiting for new messages."));
+            }
+            let sessions = self.state.graphql_client.get_my_sessions_and_messages().await?.roleplay_sessions;
             if let Some(updated_session) = sessions.into_iter().find(|s| s.id == session_id) {
-                if updated_session.roleplay_messages.len() > old_count {
+                if updated_session.roleplay_messages.len() != old_count {
+                    info!("Found {} new/changed messages in session {}", updated_session.roleplay_messages.len() as i64 - old_count as i64, session_id);
                     return Ok(updated_session);
                 }
             }
-            sleep(Duration::from_millis(200)).await;
+            debug!("No message change detected, polling again in {:?}...", POLL_INTERVAL);
+            sleep(POLL_INTERVAL).await;
         }
     }
-}
-
-/// Creates a default skin for styling terminal output.
-fn create_skin() -> MadSkin {
-    let mut skin = MadSkin::default_dark();
-    skin.bold.set_fg(Color::Rgb { r: 255, g: 255, b: 85 });
-    skin.italic.set_fg(Color::AnsiValue(245));
-    skin.italic.add_attr(Attribute::Italic);
-    skin.bullet = termimad::StyledChar::from_fg_char(Color::Rgb { r: 255, g: 215, b: 0 }, '❯');
-    skin.paragraph.set_fg(Color::AnsiValue(252));
-    skin
-}
-
-/// Creates and configures a new `ProgressBar` spinner.
-fn create_spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.enable_steady_tick(Duration::from_millis(120));
-    pb.set_style(
-        ProgressStyle::with_template("{spinner:.blue} {msg}")
-            .unwrap()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    pb.set_message(msg.to_string());
-    pb
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG) // Set to INFO for cleaner output
-        .init();
+    // tracing_subscriber::fmt()
+    //     .with_max_level(tracing::Level::INFO)
+    //     .with_target(true)
+    //     .with_line_number(true)
+    //     .init();
 
-    println!("{}", "Sandbox CLI initializing...".bold());
-    
-    let mut app = App::new()?;
-    if let Err(e) = app.run().await {
-        eprintln!("{} {:#}", "Application error:".red().bold(), e);
-        std::process::exit(1);
+    info!("{}", "Sandbox CLI initializing...".bold());
+    let pool = connect(false, false).await;
+    info!("Database pool initialized.");
+
+    match App::new(pool).await {
+        Ok(mut app) => {
+            if let Err(e) = app.run().await {
+                error!(
+                    "{} {:#}",
+                    "Application exited with a critical error:".red().bold(),
+                    e
+                );
+                std::process::exit(1);
+            }
+        }
+        Err(e) => {
+            error!(
+                "{} {:#}",
+                "Failed to initialize application:".red().bold(),
+                e
+            );
+            std::process::exit(1);
+        }
     }
-    
+
     Ok(())
 }

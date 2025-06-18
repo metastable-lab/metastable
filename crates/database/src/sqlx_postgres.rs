@@ -132,21 +132,6 @@ macro_rules! init_db_pool {
                 let pool = sqlx::PgPool::connect(&database_url).await
                     .expect("Failed to connect to Postgres. Ensure DB is running and POSTGRES_URI is correct.");
 
-                // Create the timestamp helper function globally
-                let trigger_func_sql = r#"
-                CREATE OR REPLACE FUNCTION set_updated_at_unix_timestamp()
-                RETURNS TRIGGER AS $$
-                BEGIN
-                   NEW.updated_at = floor(extract(epoch from now()));
-                   RETURN NEW;
-                END;
-                $$ language 'plpgsql';
-                "#;
-                sqlx::query(trigger_func_sql)
-                    .execute(&pool)
-                    .await
-                    .expect("Failed to create timestamp helper function.");
-
                 // Drop tables first to ensure a clean schema for tests
                 if drop_tables {
                 $( 
@@ -173,6 +158,22 @@ macro_rules! init_db_pool {
 
                 // Create tables for each specified type
                 if create_tables {
+                    // Create the timestamp helper function globally
+                    let trigger_func_sql = r#"
+                    CREATE OR REPLACE FUNCTION set_updated_at_unix_timestamp()
+                    RETURNS TRIGGER AS $$
+                    BEGIN
+                    NEW.updated_at = floor(extract(epoch from now()));
+                    RETURN NEW;
+                    END;
+                    $$ language 'plpgsql';
+                    "#;
+
+                    sqlx::query(trigger_func_sql)
+                        .execute(&pool)
+                        .await
+                        .expect("Failed to create timestamp helper function.");
+
                     $( 
                         let create_table_sql_str = <$target_type as $crate::SqlxSchema>::create_table_sql();
                         if !create_table_sql_str.trim().is_empty() { // Basic check to avoid empty SQL

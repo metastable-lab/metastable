@@ -81,14 +81,27 @@ async fn proxy_to_hasura(
     let mut response_builder = Response::builder().status(hasura_response.status());
 
     if let Some(res_headers) = response_builder.headers_mut() {
-        res_headers.extend(hasura_response.headers().clone());
+        for (key, value) in hasura_response.headers() {
+            if key != header::CONNECTION
+                && key != header::TRANSFER_ENCODING
+                && key != header::CONTENT_LENGTH
+                && key != "keep-alive"
+                && key != header::UPGRADE
+                && key != header::PROXY_AUTHENTICATE
+                && key != header::PROXY_AUTHORIZATION
+                && key != header::TE
+                && key != header::TRAILER
+            {
+                res_headers.insert(key.clone(), value.clone());
+            }
+        }
     }
 
     let response_body = hasura_response
         .bytes()
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?;
-
+    
     response_builder
         .body(Body::from(response_body))
         .map_err(|e: axum::http::Error| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))

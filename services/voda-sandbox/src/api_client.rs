@@ -1,15 +1,23 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
+use voda_runtime::User;
 
 pub struct ApiClient {
     client: Client,
     base_url: String,
+    user: User,
+    secret_key: String,
 }
 
 impl ApiClient {
-    pub fn new(base_url: String, client: Client) -> Self {
-        Self { client, base_url }
+    pub fn new(base_url: String, user: User, secret_key: String, client: Client) -> Self {
+        Self {
+            client,
+            base_url,
+            user,
+            secret_key,
+        }
     }
 
     pub async fn create_session(
@@ -17,6 +25,7 @@ impl ApiClient {
         character_id: String,
         system_config_id: String,
     ) -> Result<()> {
+        let token = self.user.generate_auth_token(&self.secret_key);
         let response = self
             .client
             .post(format!(
@@ -27,6 +36,7 @@ impl ApiClient {
                 "character_id": character_id,
                 "system_config_id": system_config_id,
             }))
+            .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
         if !response.status().is_success() {
@@ -45,6 +55,7 @@ impl ApiClient {
     }
 
     pub async fn chat(&self, session_id: String, message: String) -> Result<()> {
+        let token = self.user.generate_auth_token(&self.secret_key);
         let response = self
             .client
             .post(format!(
@@ -52,6 +63,7 @@ impl ApiClient {
                 self.base_url, session_id
             ))
             .json(&json!({ "message": message }))
+            .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
         if !response.status().is_success() {
@@ -70,6 +82,7 @@ impl ApiClient {
     }
 
     pub async fn rollback(&self, session_id: String, message: String) -> Result<()> {
+        let token = self.user.generate_auth_token(&self.secret_key);
         let response = self
             .client
             .post(format!(
@@ -77,6 +90,7 @@ impl ApiClient {
                 self.base_url, session_id
             ))
             .json(&json!({ "message": message }))
+            .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
         if !response.status().is_success() {
