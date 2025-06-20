@@ -66,10 +66,18 @@ async fn try_login(
             let _ = user.try_claim_free_balance(100); // whatever, we don't care about the error
             user.update(&mut *tx).await?;
             tx.commit().await?;
-            return Ok(AppSuccess::new(StatusCode::OK, "User already exists", json!(())));
+            return Ok(AppSuccess::new(
+                StatusCode::OK, 
+                "User already exists", 
+                json!({ "registration_required": false })
+            ));
         }
         None => {
-            return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[/user/try_login] User not found")));
+            return Ok(AppSuccess::new(
+                StatusCode::OK, 
+                "[/user/try_login] User not found", 
+                json!({ "registration_required": true })
+            ));
         }
     }
 }
