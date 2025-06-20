@@ -107,4 +107,28 @@ impl ApiClient {
         }
         Ok(())
     }
+
+    pub async fn buy_referral(&self, count: u32) -> Result<()> {
+        let token = self.user.generate_auth_token(&self.secret_key);
+        let response = self
+            .client
+            .post(format!("{}/user/referral/buy", self.base_url))
+            .json(&json!({ "count": count }))
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Could not read error body".to_string());
+            return Err(anyhow::anyhow!(
+                "Failed to buy referral. Status: {}. Body: {}",
+                status,
+                text
+            ));
+        }
+        Ok(())
+    }
 }

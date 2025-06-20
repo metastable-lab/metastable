@@ -112,7 +112,7 @@ async fn register(
     user.user_aka = CryptoHash::random().to_hex_string();
     user.provider = payload.provider.clone();
     let _ = user.try_claim_free_balance(100); // infallable
-    user.clone().create(&mut *tx).await?;
+    let user = user.create(&mut *tx).await?;
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());

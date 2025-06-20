@@ -83,6 +83,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
     async fn on_rollback(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
         let (mut messages, system_config) = self.memory
             .search(&message, 100, 0).await?;
+        messages.pop(); // pop the placeholder message
         let mut last_assistant_message = messages.pop()
             .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last message found"))?;
 

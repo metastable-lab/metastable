@@ -7,7 +7,7 @@ use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
 use reqwest;
 
 use voda_service_api::{
-    graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, GlobalState
+    graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, GlobalState
 };
 
 use voda_database::init_db_pool;
@@ -42,6 +42,7 @@ async fn main() -> Result<()> {
         .merge(runtime_routes())
         .merge(voice_routes())
         .merge(graphql_route())
+        .merge(user_routes())
         .layer(TimeoutLayer::new(std::time::Duration::from_secs(3600)))
         .layer(cors)
         .layer(trace)
