@@ -1,8 +1,8 @@
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
-use voda_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
+use crate::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
 
-pub fn get_characters(user_id: Uuid) -> Vec<Character> {
+pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
     vec![
         Character {
             id: Uuid::new_v4(),

@@ -39,11 +39,16 @@ pub enum CharacterLanguage {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Display, EnumString, Default)]
 pub enum CharacterFeature {
     #[default]
-    Roleplay,
+    DefaultRoleplay,
+    Roleplay(Vec<Uuid>), // system_configs
+    CharacterCreation(Vec<Uuid>), // system_configs
+
     BackgroundImage(String),
     AvatarImage(String),
+
     Voice(String),
-    DynamicImage,
+
+    DynamicImage(Vec<String>),
     Others(String),
 }
 

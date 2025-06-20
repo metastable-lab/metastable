@@ -4,6 +4,7 @@ mod character;
 mod memory;
 mod session;
 mod audit;
+mod preload;
 
 pub use client::RoleplayRuntimeClient;
 pub use character::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};

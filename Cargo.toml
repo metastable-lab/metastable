@@ -18,6 +18,7 @@ members = [
 
     # "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
+    "crates/runtime-mods/character-creation",
 
     "services/voda-sandbox",
     "services/voda-service",
