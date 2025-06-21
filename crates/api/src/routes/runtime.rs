@@ -127,5 +127,6 @@ async fn character_creation_create(
         &payload.roleplay_session_id, &user.id
     );
     let response = state.character_creation_client.on_new_message(&message).await?;
-    Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", json!(response)))
+    let misc_value = response.misc_value.ok_or(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[character_creation_create] Character creation response misc value not found")))?;
+    Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", misc_value))
 }

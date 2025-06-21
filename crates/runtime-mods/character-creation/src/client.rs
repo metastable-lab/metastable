@@ -4,11 +4,13 @@ use anyhow::Result;
 use async_openai::types::FunctionCall;
 use async_openai::{config::OpenAIConfig, Client};
 
+use serde_json::json;
 use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
 use voda_common::EnvVars;
 use voda_runtime::{define_function_types, FunctionExecutor, LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
+use voda_runtime_roleplay::Character;
 
 use crate::memory::CharacterCreationMemory;
 use crate::{CharacterCreationMessage, preload, SummarizeCharacterFunctionCall};
@@ -78,6 +80,22 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
                     db_config.functions = preload_config.functions.clone();
                     updated = true;
                 }
+                if db_config.openai_model != preload_config.openai_model {
+                    db_config.openai_model = preload_config.openai_model;
+                    updated = true;
+                }
+                if db_config.openai_temperature != preload_config.openai_temperature {
+                    db_config.openai_temperature = preload_config.openai_temperature;
+                    updated = true;
+                }
+                if db_config.openai_max_tokens != preload_config.openai_max_tokens {
+                    db_config.openai_max_tokens = preload_config.openai_max_tokens;
+                    updated = true;
+                }
+                if db_config.openai_base_url != preload_config.openai_base_url {
+                    db_config.openai_base_url = preload_config.openai_base_url;
+                    updated = true;
+                }
 
                 if updated {
                     db_config.update(&mut *tx).await?;
@@ -107,22 +125,35 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
             .memory
             .search(&message, 100, 0).await?;
 
-        let response = self.send_llm_request(&system_config, &messages).await?;
+        let mut response = self.send_llm_request(&system_config, &messages).await?;
         let mut assistant_message = CharacterCreationMessage::from_llm_response(
             response.clone(), 
             &message.roleplay_session_id, 
             &message.owner
         );
-        assistant_message.character_creation_system_config = system_config.id;
 
-        self.memory.add_messages(&[assistant_message.clone()]).await?;
+        let mut tx = self.db.begin().await?;
+        assistant_message.character_creation_system_config = system_config.id;
+        if let Some(character_str) = assistant_message.character_creation_maybe_character_str.clone() {
+            let mut character = serde_json::from_str::<Character>(&character_str)?;
+            character.creator = message.owner.clone();
+            let char = character.create(&mut *tx).await?;
+            assistant_message.character_creation_maybe_character_id = Some(char.id);
+        }
+        let assistant_message = assistant_message.create(&mut *tx).await?;
 
         let user_usage = UserUsage::new(
             message.owner.clone(),
             system_config.openai_model.clone(),
             response.usage.clone()
         );
-        user_usage.create(&*self.db).await?;
+        user_usage.create(&mut *tx).await?;
+
+        tx.commit().await?;
+
+        response.misc_value = Some(json!({
+            "character_id": assistant_message.character_creation_maybe_character_id,
+        }));
 
         Ok(response)
     }

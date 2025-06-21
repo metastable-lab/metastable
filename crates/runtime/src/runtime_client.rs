@@ -7,6 +7,7 @@ use async_openai::types::{
     ChatCompletionToolArgs, ChatCompletionToolChoiceOption, 
     CompletionUsage, CreateChatCompletionRequestArgs, FunctionCall
 };
+use serde_json::Value;
 use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
@@ -19,6 +20,7 @@ pub struct LLMRunResponse {
     pub usage: CompletionUsage,
     pub maybe_function_call: Vec<FunctionCall>,
     pub maybe_results: Vec<String>,
+    pub misc_value: Option<Value>,
 }
 
 #[async_trait::async_trait]
@@ -109,6 +111,7 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
             usage,
             maybe_function_call,
             maybe_results,
+            misc_value: None,
         })
     }
 }

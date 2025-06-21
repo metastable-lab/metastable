@@ -25,9 +25,8 @@ pub struct CharacterCreationMessage {
     pub content_type: MessageType,
 
     pub character_creation_call: Json<Vec<FunctionCall>>,
-    pub character_creation_result: Json<Vec<String>>,
-    pub character_creation_maybe_character: Json<Option<Character>>,
-
+    
+    pub character_creation_maybe_character_str: Option<String>,
     #[foreign_key(referenced_table = "roleplay_characters", related_rust_type = "Character")]
     pub character_creation_maybe_character_id: Option<Uuid>,
 
@@ -56,7 +55,7 @@ impl Message for CharacterCreationMessage {
     ) -> Self {
         let maybe_character = response.maybe_results
             .first()
-            .and_then(|result| serde_json::from_str::<Character>(result).ok());
+            .map(|r| r.clone());
 
         Self {
             id: Uuid::default(),
@@ -67,8 +66,7 @@ impl Message for CharacterCreationMessage {
             roleplay_session_id: roleplay_session_id.clone(),
             character_creation_system_config: Uuid::default(), // to be populated later
             character_creation_call: Json(response.maybe_function_call),
-            character_creation_result: Json(response.maybe_results),
-            character_creation_maybe_character: Json(maybe_character),
+            character_creation_maybe_character_str: maybe_character,
             character_creation_maybe_character_id: None,
             created_at: 0,
             updated_at: 0,
@@ -90,8 +88,7 @@ impl CharacterCreationMessage {
             roleplay_session_id: roleplay_session_id.clone(),
             character_creation_system_config: Uuid::default(),
             character_creation_call: Json(vec![]),
-            character_creation_result: Json(vec![]),
-            character_creation_maybe_character: Json(None),
+            character_creation_maybe_character_str: None,
             character_creation_maybe_character_id: None,
             created_at: 0,
             updated_at: 0,
@@ -112,8 +109,7 @@ impl CharacterCreationMessage {
             roleplay_session_id: session_id.clone(),
             character_creation_system_config: system_config.id,
             character_creation_call: Json(vec![]),
-            character_creation_result: Json(vec![]),
-            character_creation_maybe_character: Json(None),
+            character_creation_maybe_character_str: None,
             character_creation_maybe_character_id: None,
             created_at: 0,
             updated_at: 0,
@@ -166,8 +162,7 @@ impl CharacterCreationMessage {
             roleplay_session_id: session_id,
             character_creation_system_config: Uuid::default(), // to be populated later
             character_creation_call: Json(vec![]),
-            character_creation_result: Json(vec![]),
-            character_creation_maybe_character: Json(None),
+            character_creation_maybe_character_str: None,
             character_creation_maybe_character_id: None,
             created_at: 0,
             updated_at: 0,

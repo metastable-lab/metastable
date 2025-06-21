@@ -21,16 +21,16 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let db = Arc::new(connect(true, true).await.clone());
-    let mut tx = db.begin().await?;
+    let db = Arc::new(connect(false, false).await.clone());
+    // let mut tx = db.begin().await?;
 
-    // start dumping shit into the db
-    let admin = get_admin_user();
-    admin.create(&mut *tx).await?;
+    // // start dumping shit into the db
+    // let admin = get_admin_user();
+    // admin.create(&mut *tx).await?;
 
-    let normal_user = get_normal_user();
-    normal_user.create(&mut *tx).await?;
-    tx.commit().await?;
+    // let normal_user = get_normal_user();
+    // normal_user.create(&mut *tx).await?;
+    // tx.commit().await?;
 
     RoleplayRuntimeClient::preload(db.clone()).await?;
     CharacterCreationRuntimeClient::preload(db.clone()).await?;
