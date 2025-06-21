@@ -3,24 +3,22 @@ use std::sync::Arc;
 use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
-use voda_database::{
-    SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery
-};
+use voda_database::{SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery};
 use voda_runtime::{Memory, SystemConfig};
 use voda_runtime_roleplay::{RoleplayMessage, RoleplaySession};
 
 use crate::CharacterCreationMessage;
 
-
 #[derive(Clone)]
 pub struct CharacterCreationMemory {
     db: Arc<PgPool>,
+    system_config_name: String,
     system_config: SystemConfig,
 }
 
 impl CharacterCreationMemory {
-    pub fn new(db: Arc<PgPool>, system_config: SystemConfig) -> Self {
-        Self { db, system_config }
+    pub fn new(db: Arc<PgPool>, system_config_name: String) -> Self {
+        Self { db, system_config_name, system_config: SystemConfig::default() }
     }
 }
 
@@ -28,7 +26,15 @@ impl CharacterCreationMemory {
 impl Memory for CharacterCreationMemory {
     type MessageType = CharacterCreationMessage;
 
-    async fn initialize(&self) -> Result<()> { Ok(()) }
+    async fn initialize(&mut self) -> Result<()> {
+        let system_config = SystemConfig::find_one_by_criteria(
+            QueryCriteria::new().add_filter("name", "=", Some(self.system_config_name.clone()))?,
+            &*self.db
+        ).await?;
+        self.system_config = system_config
+            .ok_or(anyhow::anyhow!("[CharacterCreationMemory::initialize] System config not found"))?;
+        Ok(())
+    }
 
     async fn add_messages(&self, messages: &[CharacterCreationMessage]) -> Result<()> {
         if messages.len() == 0 {

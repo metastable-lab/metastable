@@ -11,12 +11,14 @@ use voda_service_api::{
 };
 
 use voda_database::init_db_pool;
-use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage};
-use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRawMemory, RoleplayRuntimeClient, RoleplaySession};
+use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage, RuntimeClient};
+use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
+use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
 
 init_db_pool!(
     User, UserUsage, UserUrl, UserReferral, UserBadge, SystemConfig,
-    Character, RoleplaySession, RoleplayMessage, AuditLog
+    Character, RoleplaySession, RoleplayMessage, AuditLog,
+    CharacterCreationMessage
 );
 
 #[tokio::main]
@@ -28,12 +30,21 @@ async fn main() -> Result<()> {
 
     let db_pool = Arc::new(connect(false, false).await.clone());
 
-    let (executor, _execution_queue) = mpsc::channel(100);
-    let memory = RoleplayRawMemory::new(db_pool.clone());
-    let client = RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), executor).await;
+    let (roleplay_executor, _execution_queue) = mpsc::channel(100);
+    let roleplay_client = RoleplayRuntimeClient::new(db_pool.clone(), roleplay_executor).await?;
+    let (character_creation_executor, character_creation_queue) = mpsc::channel(100);
+    let character_creation_client = CharacterCreationRuntimeClient::new(
+        db_pool.clone(), "character_creation_v0".to_string(), 
+        character_creation_executor
+    ).await?;
+
+    tokio::spawn(async move { 
+        let _ = CharacterCreationRuntimeClient::init_function_executor(character_creation_queue).await; 
+    });
 
     let global_state = GlobalState {
-        roleplay_client: client,
+        roleplay_client: roleplay_client,
+        character_creation_client: character_creation_client,
         http_client: reqwest::Client::new(),
     };
 

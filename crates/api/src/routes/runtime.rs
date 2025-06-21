@@ -8,6 +8,7 @@ use axum::{
 };
 use sqlx::types::Uuid;
 use voda_runtime::RuntimeClient;
+use voda_runtime_character_creation::CharacterCreationMessage;
 use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
 use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use voda_runtime::SystemConfig;
@@ -33,6 +34,11 @@ pub fn runtime_routes() -> Router<GlobalState> {
 
         .route("/runtime/roleplay/rollback/{session_id}",
             post(roleplay_rollback)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/character-creation/create",
+            post(character_creation_create)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -104,4 +110,22 @@ async fn roleplay_rollback(
     let response = state.roleplay_client.on_rollback(&message).await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(response)))
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCharacterRequest { pub roleplay_session_id: Uuid }
+async fn character_creation_create(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreateCharacterRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
+        .expect("[character_creation_create] User not found");
+
+    let message = CharacterCreationMessage::blank_user_message(
+        &payload.roleplay_session_id, &user.id
+    );
+    let response = state.character_creation_client.on_new_message(&message).await?;
+    Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", json!(response)))
 }

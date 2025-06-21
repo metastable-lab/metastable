@@ -28,7 +28,7 @@ impl RoleplayRawMemory {
 impl Memory for RoleplayRawMemory {
     type MessageType = RoleplayMessage;
 
-    async fn initialize(&self) -> Result<()> { Ok(()) }
+    async fn initialize(&mut self) -> Result<()> { Ok(()) }
 
     async fn add_messages(&self, messages: &[RoleplayMessage]) -> Result<()> {
         if messages.len() == 0 {

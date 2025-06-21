@@ -40,8 +40,8 @@ pub enum CharacterLanguage {
 pub enum CharacterFeature {
     #[default]
     DefaultRoleplay,
-    Roleplay(Vec<Uuid>), // system_configs
-    CharacterCreation(Vec<Uuid>), // system_configs
+    Roleplay,
+    CharacterCreation,
 
     BackgroundImage(String),
     AvatarImage(String),

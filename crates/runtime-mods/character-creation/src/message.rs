@@ -28,7 +28,7 @@ pub struct CharacterCreationMessage {
     pub character_creation_result: Json<Vec<String>>,
     pub character_creation_maybe_character: Json<Option<Character>>,
 
-    #[foreign_key(referenced_table = "characters", related_rust_type = "Character")]
+    #[foreign_key(referenced_table = "roleplay_characters", related_rust_type = "Character")]
     pub character_creation_maybe_character_id: Option<Uuid>,
 
     pub content: String,

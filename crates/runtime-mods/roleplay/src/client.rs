@@ -22,10 +22,9 @@ pub struct RoleplayRuntimeClient {
 
 impl RoleplayRuntimeClient {
     pub async fn new(
-        db: Arc<PgPool>,
-        memory: Arc<RoleplayRawMemory>,
+        db: Arc<PgPool>, 
         executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
-    ) -> Self {
+    ) -> Result<Self> {
         let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
             .with_api_key(env.get_env_var("OPENAI_API_KEY"))
@@ -37,7 +36,8 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        Self { client, db, memory, executor }
+        let memory = RoleplayRawMemory::new(db.clone());
+        Ok(Self { client, db, memory: Arc::new(memory), executor })
     }
 }
 
@@ -51,13 +51,13 @@ impl RuntimeClient for RoleplayRuntimeClient {
     fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
     fn get_memory(&self) -> &Arc<RoleplayRawMemory> { &self.memory }
 
-    async fn on_init(&self) -> Result<()> { 
-        tracing::info!("[RoleplayRuntimeClient::on_init] Initializing roleplay runtime client");
-        let mut tx = self.db.begin().await?;
+    async fn preload(db: Arc<PgPool>) -> Result<()> { 
+        tracing::info!("[RoleplayRuntimeClient::preload] Preloading roleplay runtime client");
+        let mut tx = db.begin().await?;
 
         // 1. upsert system config
         let preload_config = preload::get_system_configs_for_char_creation();
-        let system_config_id = match SystemConfig::find_one_by_criteria(
+        let _system_config_id = match SystemConfig::find_one_by_criteria(
             QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
             &mut *tx
         ).await? {
@@ -84,9 +84,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
         // 3. upsert characters
         let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
         for mut preload_char in preload_chars {
-            preload_char.features = vec![
-                CharacterFeature::CharacterCreation(vec![system_config_id])
-            ];
+            preload_char.features = vec![ CharacterFeature::CharacterCreation ];
 
             match Character::find_one_by_criteria(
                 QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone()))?,
@@ -114,7 +112,14 @@ impl RuntimeClient for RoleplayRuntimeClient {
         }
 
         tx.commit().await?;
-        tracing::info!("[RoleplayRuntimeClient::on_init] Roleplay runtime client initialized");
+        tracing::info!("[RoleplayRuntimeClient::preload] Roleplay runtime client preloaded");
+        Ok(())
+    }
+
+    async fn init_function_executor(
+        _queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
+    ) -> Result<()> {
+        tracing::info!("[RoleplayRuntimeClient::init_function_executor] Starting function executor");
         Ok(())
     }
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }

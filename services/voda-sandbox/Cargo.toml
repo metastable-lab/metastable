@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 voda-runtime = { path = "../../crates/runtime" }
 voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
+voda-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
 voda-database = { path = "../../crates/database" }
 voda-common = { path = "../../crates/common" }
 

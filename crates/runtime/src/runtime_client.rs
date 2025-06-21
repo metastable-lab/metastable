@@ -9,6 +9,7 @@ use async_openai::types::{
 };
 use sqlx::PgPool;
 use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{Memory, Message, SystemConfig};
 
@@ -30,9 +31,12 @@ pub trait RuntimeClient: Clone + Send + Sync + 'static {
     fn get_price(&self) -> u64;
     fn get_client(&self) -> &Client<OpenAIConfig>;
 
-    async fn on_init(&self) -> Result<()>;
-    async fn on_shutdown(&self) -> Result<()>;
+    async fn preload(db: Arc<PgPool>) -> Result<()>;
+    async fn init_function_executor(
+        queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
+    ) -> Result<()>;
 
+    async fn on_shutdown(&self) -> Result<()>;
     async fn on_new_message(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
     async fn on_rollback(&self, message: &<Self::MemoryType as Memory>::MessageType) -> Result<LLMRunResponse>;
     async fn on_tool_call(&self, call: &FunctionCall) -> Result<String>;

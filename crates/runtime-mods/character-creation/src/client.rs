@@ -7,16 +7,20 @@ use async_openai::{config::OpenAIConfig, Client};
 use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
 use voda_common::EnvVars;
-use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage};
-use voda_database::SqlxCrud;
+use voda_runtime::{define_function_types, FunctionExecutor, LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
+use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 
 use crate::memory::CharacterCreationMemory;
-use crate::CharacterCreationMessage;
+use crate::{CharacterCreationMessage, preload, SummarizeCharacterFunctionCall};
+
+define_function_types!(
+    SummarizeCharacterFunctionCall(SummarizeCharacterFunctionCall, "summarize_character")
+);
 
 #[derive(Clone)]
 pub struct CharacterCreationRuntimeClient {
     db: Arc<PgPool>,
-    character_creation_memory: Arc<CharacterCreationMemory>,
+    memory: Arc<CharacterCreationMemory>,
     client: Client<OpenAIConfig>,
     executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
 }
@@ -24,9 +28,9 @@ pub struct CharacterCreationRuntimeClient {
 impl CharacterCreationRuntimeClient {
     pub async fn new(
         db: Arc<PgPool>,
-        character_creation_memory: Arc<CharacterCreationMemory>,
+        system_config_name: String,
         executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
-    ) -> Self {
+    ) -> Result<Self> {
         let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
             .with_api_key(env.get_env_var("OPENAI_API_KEY"))
@@ -38,7 +42,10 @@ impl CharacterCreationRuntimeClient {
             Default::default()
         );
 
-        Self { client, db, character_creation_memory, executor }
+        let mut character_creation_memory = CharacterCreationMemory::new(db.clone(), system_config_name.clone());
+        character_creation_memory.initialize().await?;
+
+        Ok(Self { client, db, memory: Arc::new(character_creation_memory), executor })
     }
 }
 
@@ -50,14 +57,54 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
     fn get_price(&self) -> u64 { 1 }
     fn get_db(&self) -> &Arc<PgPool> { &self.db }
     fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
-    fn get_memory(&self) -> &Arc<CharacterCreationMemory> { &self.character_creation_memory }
+    fn get_memory(&self) -> &Arc<CharacterCreationMemory> { &self.memory }
 
-    async fn on_init(&self) -> Result<()> { Ok(()) }
+    async fn preload(db: Arc<PgPool>) -> Result<()> {
+        tracing::info!("[CharacterCreationRuntimeClient::preload] Preloading character creation runtime client");
+        let mut tx = db.begin().await?;
+
+        let preload_config = preload::get_system_configs_for_char_creation();
+        match SystemConfig::find_one_by_criteria(
+            QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
+            &mut *tx
+        ).await? {
+            Some(mut db_config) => {
+                let mut updated = false;
+                if db_config.system_prompt != preload_config.system_prompt {
+                    db_config.system_prompt = preload_config.system_prompt;
+                    updated = true;
+                }
+                if db_config.functions != preload_config.functions {
+                    db_config.functions = preload_config.functions.clone();
+                    updated = true;
+                }
+
+                if updated {
+                    db_config.update(&mut *tx).await?;
+                }
+            }
+            None => {
+                preload_config.create(&mut *tx).await?;
+            }
+        };
+        tx.commit().await?;
+        tracing::info!("[CharacterCreationRuntimeClient::on_init] Character creation runtime client initialized");
+        Ok(())
+    }
+    async fn init_function_executor(
+        queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
+    ) -> Result<()> {        
+        tracing::info!("[CharacterCreationRuntimeClient::init_function_executor] Starting function executor");
+        let mut function_executor = FunctionExecutor::<RuntimeFunctionType>::new(queue);
+        function_executor.run().await;
+
+        Ok(())
+    }
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &CharacterCreationMessage) -> Result<LLMRunResponse> {
         let (messages, system_config) = self
-            .character_creation_memory
+            .memory
             .search(&message, 100, 0).await?;
 
         let response = self.send_llm_request(&system_config, &messages).await?;
@@ -68,10 +115,7 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
         );
         assistant_message.character_creation_system_config = system_config.id;
 
-        self.character_creation_memory.add_messages(&[
-            message.clone(),
-            assistant_message.clone(),
-        ]).await?;
+        self.memory.add_messages(&[assistant_message.clone()]).await?;
 
         let user_usage = UserUsage::new(
             message.owner.clone(),

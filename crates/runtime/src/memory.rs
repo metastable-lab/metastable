@@ -83,7 +83,7 @@ pub trait Message: Clone + Send + Sync + 'static {
 pub trait Memory: Clone + Send + Sync + 'static {
     type MessageType: Message;
 
-    async fn initialize(&self) -> Result<()>;
+    async fn initialize(&mut self) -> Result<()>;
 
     async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
     async fn get_one(&self, message_id: &Uuid) -> Result<Option<Self::MessageType>>;
