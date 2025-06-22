@@ -20,6 +20,7 @@ pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
             prompts_first_message: "*你推开一扇沉重的木门，房间里光线柔和，空气中弥漫着旧书和墨水的味道。一个男人正坐在一张巨大的书桌后，面前悬浮着几块发光的碎片，似乎是某种灵感的结晶。他看到你，挥手散去碎片，对你做了一个“请坐”的手势。*\n*内心OS：哦？新的客人。看起来有点紧张。是灵感枯竭了，还是想法太多太乱了？不管怎样，来我这儿就对了。就没有我“忆君”捏不出来的角色！*\n**你好。我是忆君。别站着，找个舒服的椅子坐下。我知道你为何而来——为了一个尚未成形的故事，一个还在你脑中徘徊的角色。**\n*他微微一笑，眼神里带着一丝洞察一切的了然。*\n**准备好开始这场奇妙的创造之旅了吗？**".to_string(),
             prompts_background_stories: vec![],
             prompts_behavior_traits: vec![],
+            creator_notes: None,
             tags: vec!["创造".to_string(), "引导".to_string(), "脑洞".to_string(), "角色设计".to_string()],
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),

@@ -221,8 +221,10 @@ async fn create_url(
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
     let url = UserUrl::new(user.id, payload.path, payload.url_type);
-    url.create(&mut *tx).await?;
+    let url = url.create(&mut *tx).await?;
     tx.commit().await?;
 
-    Ok(AppSuccess::new(StatusCode::OK, "URL created successfully", json!(())))
+    Ok(AppSuccess::new(StatusCode::OK, "URL created successfully", json!({
+        "url_id": url.id,
+    })))
 }

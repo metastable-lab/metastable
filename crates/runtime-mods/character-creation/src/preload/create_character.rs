@@ -49,6 +49,7 @@ impl ExecutableFunctionCall for SummarizeCharacterFunctionCall {
             creator: Uuid::new_v4(),
             version: 1,
             status: CharacterStatus::Draft,
+            creator_notes: None,
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         };

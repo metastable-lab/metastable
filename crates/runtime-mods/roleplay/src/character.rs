@@ -77,6 +77,8 @@ pub struct Character {
     pub prompts_background_stories: Vec<String>,
     pub prompts_behavior_traits: Vec<String>,
 
+    pub creator_notes: Option<String>,
+
     pub tags: Vec<String>,
 
     pub created_at: i64,
