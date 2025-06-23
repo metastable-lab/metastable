@@ -1,5 +1,5 @@
 {
-  "resource_version": 76,
+  "resource_version": 106,
   "metadata": {
     "version": 3,
     "sources": [
@@ -7,6 +7,65 @@
         "name": "Main",
         "kind": "postgres",
         "tables": [
+          {
+            "table": {
+              "name": "character_creation_messages",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "roleplay_character",
+                "using": {
+                  "foreign_key_constraint_on": "character_creation_maybe_character_id"
+                }
+              },
+              {
+                "name": "roleplay_session",
+                "using": {
+                  "foreign_key_constraint_on": "roleplay_session_id"
+                }
+              },
+              {
+                "name": "system_config",
+                "using": {
+                  "foreign_key_constraint_on": "character_creation_system_config"
+                }
+              },
+              {
+                "name": "user",
+                "using": {
+                  "foreign_key_constraint_on": "owner"
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "character_creation_call",
+                    "character_creation_maybe_character_str",
+                    "content",
+                    "content_type",
+                    "role",
+                    "character_creation_maybe_character_id",
+                    "character_creation_system_config",
+                    "id",
+                    "owner",
+                    "roleplay_session_id"
+                  ],
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                },
+                "comment": ""
+              }
+            ]
+          },
           {
             "table": {
               "name": "roleplay_character_audit_logs",
@@ -65,6 +124,18 @@
             ],
             "array_relationships": [
               {
+                "name": "character_creation_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character_creation_maybe_character_id",
+                    "table": {
+                      "name": "character_creation_messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_character_audit_logs",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -115,7 +186,8 @@
                     "prompts_first_message",
                     "tags",
                     "prompts_background_stories",
-                    "prompts_behavior_traits"
+                    "prompts_behavior_traits",
+                    "creator_notes"
                   ]
                 }
               }
@@ -125,24 +197,26 @@
                 "role": "anyone",
                 "permission": {
                   "columns": [
-                    "id",
-                    "name",
-                    "description",
-                    "creator",
-                    "version",
-                    "status",
-                    "gender",
-                    "language",
-                    "features",
-                    "tags",
                     "created_at",
-                    "updated_at"
+                    "creator",
+                    "creator_notes",
+                    "description",
+                    "features",
+                    "gender",
+                    "id",
+                    "language",
+                    "name",
+                    "status",
+                    "tags",
+                    "updated_at",
+                    "version"
                   ],
                   "filter": {
                     "status": {
                       "_eq": "Published"
                     }
-                  }
+                  },
+                  "allow_aggregations": true
                 }
               },
               {
@@ -172,19 +246,20 @@
                 "role": "user",
                 "permission": {
                   "columns": [
-                    "name",
+                    "creator_notes",
                     "description",
-                    "version",
+                    "features",
                     "gender",
                     "language",
-                    "features",
-                    "prompts_scenario",
-                    "prompts_personality",
+                    "name",
+                    "prompts_background_stories",
+                    "prompts_behavior_traits",
                     "prompts_example_dialogue",
                     "prompts_first_message",
+                    "prompts_personality",
+                    "prompts_scenario",
                     "tags",
-                    "prompts_background_stories",
-                    "prompts_behavior_traits"
+                    "version"
                   ],
                   "filter": {
                     "creator": {
@@ -324,6 +399,18 @@
             ],
             "array_relationships": [
               {
+                "name": "character_creation_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "roleplay_session_id",
+                    "table": {
+                      "name": "character_creation_messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_messages",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -418,6 +505,18 @@
             },
             "array_relationships": [
               {
+                "name": "character_creation_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character_creation_system_config",
+                    "table": {
+                      "name": "character_creation_messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_sessions",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -485,6 +584,76 @@
                 "using": {
                   "foreign_key_constraint_on": "user_id"
                 }
+              }
+            ],
+            "insert_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "check": {
+                    "user_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "used_at",
+                    "code",
+                    "code_seed",
+                    "id",
+                    "used_by",
+                    "user_id"
+                  ]
+                },
+                "comment": ""
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "used_at",
+                    "code",
+                    "code_seed",
+                    "id",
+                    "used_by",
+                    "user_id"
+                  ],
+                  "filter": {
+                    "user_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                },
+                "comment": ""
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "used_at",
+                    "code",
+                    "code_seed",
+                    "id",
+                    "used_by",
+                    "user_id"
+                  ],
+                  "filter": {
+                    "user_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                },
+                "comment": ""
               }
             ]
           },
@@ -617,6 +786,18 @@
             },
             "array_relationships": [
               {
+                "name": "character_creation_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "owner",
+                    "table": {
+                      "name": "character_creation_messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_character_audit_logs",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -726,6 +907,20 @@
               }
             ],
             "select_permissions": [
+              {
+                "role": "anyone",
+                "permission": {
+                  "columns": [
+                    "id",
+                    "user_aka",
+                    "avatar",
+                    "bio"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              },
               {
                 "role": "user",
                 "permission": {
