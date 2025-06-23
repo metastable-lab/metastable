@@ -9,7 +9,7 @@ use axum::{
 use sqlx::types::Uuid;
 use voda_runtime::RuntimeClient;
 use voda_runtime_character_creation::CharacterCreationMessage;
-use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
+use voda_runtime_roleplay::{Character, CharacterStatus, RoleplayMessage, RoleplaySession};
 use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use voda_runtime::SystemConfig;
 
@@ -39,6 +39,11 @@ pub fn runtime_routes() -> Router<GlobalState> {
 
         .route("/runtime/character-creation/create",
             post(character_creation_create)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/character-creation/review/{character_id}",
+            post(character_creation_review)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -129,4 +134,26 @@ async fn character_creation_create(
     let response = state.character_creation_client.on_new_message(&message).await?;
     let misc_value = response.misc_value.ok_or(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[character_creation_create] Character creation response misc value not found")))?;
     Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", misc_value))
+}
+
+async fn character_creation_review(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let _user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
+        .expect("[character_creation_review] User not found");
+
+    let mut tx = state.character_creation_client.get_db().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_filter("id", "=", Some(character_id))?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] Character not found")))?;
+
+    character.status = CharacterStatus::Reviewing;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character creation review completed successfully", json!(())))
 }
