@@ -7,7 +7,7 @@ edition = "2021"
 voda-runtime = { path = "../../runtime" }
 voda-common = { path = "../../common" }
 voda-database = { path = "../../database" }
-
+voda-db-macros = { path = "../../db-macros" }
 serde.workspace = true
 serde_json.workspace = true
 
@@ -17,3 +17,7 @@ reqwest.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
+sqlx.workspace = true
+
+strum = "0.26"
+strum_macros = "0.26"

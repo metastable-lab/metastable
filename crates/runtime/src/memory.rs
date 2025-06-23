@@ -1,141 +1,102 @@
-use std::collections::HashMap;
-use async_openai::types::FunctionCall;
-use mongodb::{bson::{self, doc, Document}, options::FindOptions};
+use anyhow::{anyhow, Result};
+use async_openai::types::{
+    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, 
+    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, 
+    ChatCompletionRequestUserMessageArgs
+};
 use serde::{Deserialize, Serialize};
-use futures::StreamExt;
+use strum_macros::{Display, EnumString};
 
-use anyhow::Result;
-use voda_database::{Database, MongoDbObject};
-use voda_common::{get_current_timestamp, CryptoHash};
+use sqlx::types::Uuid;
+use crate::{LLMRunResponse, SystemConfig};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
 pub enum MessageRole {
     System,
+
     #[default]
     User,
+
     Assistant,
     ToolCall,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
 pub enum MessageType {
     #[default]
     Text,
-    Image,
-    Audio,
+
+    Image(String),
+    Audio(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct HistoryMessage {
-    pub owner: CryptoHash,
-    pub character_id: CryptoHash,
+pub trait Message: Clone + Send + Sync + 'static {
+    fn id(&self) -> &Uuid;
 
-    pub role: MessageRole,
-    pub content_type: MessageType,
-    
-    pub content: String,
-    pub function_call_request: Vec<FunctionCall>,
-    pub function_call_response: Vec<String>,
-    pub created_at: u64,
+    fn role(&self) -> &MessageRole;
+    fn owner(&self) -> &Uuid;
+
+    fn content_type(&self) -> &MessageType;
+    fn text_content(&self) -> Option<String>;
+    fn binary_content(&self) -> Option<Vec<u8>>;
+    fn url_content(&self) -> Option<String>;
+
+    fn created_at(&self) -> i64;
+
+    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self;
+    fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
+        message
+            .iter()
+            .map(|m| {
+                Ok(match m.role() {
+                    MessageRole::System => ChatCompletionRequestMessage::System(
+                        ChatCompletionRequestSystemMessageArgs::default()
+                            .content(m.text_content().unwrap_or_default())
+                            .build()
+                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
+                    ),
+                    MessageRole::User => ChatCompletionRequestMessage::User(
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(m.text_content().unwrap_or_default())
+                            .build()
+                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
+                    ),
+                    MessageRole::Assistant => ChatCompletionRequestMessage::Assistant(
+                        ChatCompletionRequestAssistantMessageArgs::default()
+                            .content(m.text_content().unwrap_or_default())
+                            .build()
+                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
+                    ),
+                    MessageRole::ToolCall => ChatCompletionRequestMessage::Tool(
+                        ChatCompletionRequestToolMessageArgs::default()
+                            .content(m.text_content().unwrap_or_default())
+                            .build()
+                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
+                    ),
+                })
+            })
+            .collect()
+    }
 }
 
-pub type HistoryMessagePair = (HistoryMessage, HistoryMessage);
+#[async_trait::async_trait]
+pub trait Memory: Clone + Send + Sync + 'static {
+    type MessageType: Message;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct ConversationMemory {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
-    pub public: bool,
-    pub is_concluded: bool,
+    async fn initialize(&mut self) -> Result<()>;
 
-    pub owner_id: CryptoHash,
-    pub character_id: CryptoHash,
+    async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
+    async fn get_one(&self, message_id: &Uuid) -> Result<Option<Self::MessageType>>;
+    async fn get_all(
+        &self, user_id: &Uuid, limit: u64, offset: u64
+    ) -> Result<Vec<Self::MessageType>>;
 
-    pub history: Vec<HistoryMessagePair>,
-    pub updated_at: u64,
-    pub created_at: u64,
-}
+    async fn search(&self, message: &Self::MessageType, limit: u64, offset: u64) -> Result<
+        (Vec<Self::MessageType>, SystemConfig)
+    >;
 
-impl MongoDbObject for ConversationMemory {
-    const COLLECTION_NAME: &'static str = "conversation_memories";
-    type Error = anyhow::Error;
+    async fn update(&self, messages: &[Self::MessageType]) -> Result<()>;
+    async fn delete(&self, message_ids: &[Uuid]) -> Result<()>;
 
-    fn populate_id(&mut self) {  }
-    fn get_id(&self) -> CryptoHash { self.id.clone() }
-}
-
-impl ConversationMemory {
-    pub fn new(is_public: bool, owner_id: CryptoHash, character_id: CryptoHash) -> Self {
-        Self { 
-            id: CryptoHash::random(), 
-            public: is_public,
-            is_concluded: false,
-            owner_id,
-            character_id,
-
-            history: vec![],
-            updated_at: get_current_timestamp(), 
-            created_at: get_current_timestamp()
-        }
-    }
-
-    pub async fn find_public_conversations_by_character(
-        db: &Database, 
-        character_id: &CryptoHash, 
-        limit: u64, offset: u64
-    ) -> Result<Vec<Self>> {
-        let col = db.collection::<Document>(Self::COLLECTION_NAME);
-        let options = FindOptions::builder()
-            .sort(doc! { "updated_at": -1 })  // Sort by nonce in descending order
-            .limit(limit as i64)
-            .skip(offset)
-            .build();
-
-        let filter = doc! { "public": true, "character_id": character_id.to_string() };
-        let mut docs = col.find(filter, Some(options)).await?;
-        
-        let mut conversations = vec![]; 
-        while let Some(doc) = docs.next().await {
-            let convo = bson::from_document::<Self>(doc?)
-                .map_err(anyhow::Error::from)?;
-            conversations.push(convo);
-        }
-        Ok(conversations)
-    }
-
-    pub async fn find_latest_conversations(db: &Database, user_id: &CryptoHash, character_id: &CryptoHash, limit: u64) -> Result<Vec<Self>> {
-        let col = db.collection::<Document>(Self::COLLECTION_NAME);
-        let options = FindOptions::builder()
-            .sort(doc! { "updated_at": -1 })  // Sort by nonce in descending order
-            .limit(limit as i64)
-            .build();
-
-        let filter = doc! { "owner_id": user_id.to_string(), "character_id": character_id.to_string() };
-        let mut docs = col.find(filter, Some(options)).await?;
-
-        let mut conversations = vec![];
-        while let Some(doc) = docs.next().await {
-            let convo = bson::from_document::<Self>(doc?)
-                .map_err(anyhow::Error::from)?;
-            conversations.push(convo);
-        }
-        Ok(conversations)
-    }
-
-    // get character list of user, with the number of conversations
-    pub async fn find_character_list_of_user(db: &Database, user_id: &CryptoHash) -> Result<HashMap<CryptoHash, usize>> {
-        let col = db.collection::<Document>(Self::COLLECTION_NAME);
-        let filter = doc! { "owner_id": user_id.to_string() };
-        let mut docs = col.find(filter, None).await?;
-
-        let mut conversations = HashMap::new();
-        while let Some(doc) = docs.next().await {
-            let convo = bson::from_document::<Self>(doc?)
-                .map_err(anyhow::Error::from)?;
-            conversations.entry(convo.character_id).and_modify(|count| *count += 1).or_insert(1);
-        }
-        Ok(conversations)
-    }
+    async fn reset(&self, user_id: &Uuid) -> Result<()>;
 }

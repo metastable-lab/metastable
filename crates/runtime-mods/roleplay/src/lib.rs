@@ -1,6 +1,14 @@
 mod client;
-mod env;
 mod message;
+mod character;
+mod memory;
+mod session;
+mod audit;
+mod preload;
 
 pub use client::RoleplayRuntimeClient;
-pub use env::RoleplayEnv;
+pub use character::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
+pub use message::RoleplayMessage;
+pub use session::RoleplaySession;
+pub use memory::RoleplayRawMemory;
+pub use audit::AuditLog;

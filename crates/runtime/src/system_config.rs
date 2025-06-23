@@ -1,35 +1,26 @@
+use anyhow::Result;
 use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
+use sqlx::types::{Json, Uuid};
 
-use voda_common::{blake3_hash, CryptoHash};
-use voda_database::MongoDbObject;
+use voda_database::SqlxObject;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
+#[table_name = "system_configs"]
 pub struct SystemConfig {
-    #[serde(rename = "_id")]
-    pub id: CryptoHash,
+    pub id: Uuid,
 
     pub name: String,
     
     pub system_prompt: String,
-    pub system_prompt_version: u64,
+    pub system_prompt_version: i64,
 
     pub openai_base_url: String,
     pub openai_model: String,
     pub openai_temperature: f32,
-    pub openai_max_tokens: u16,
+    pub openai_max_tokens: i32,
 
-    pub functions: Vec<FunctionObject>,
-    pub updated_at: u64,
-}
-
-impl MongoDbObject for SystemConfig {
-    const COLLECTION_NAME: &'static str = "system_config";
-    type Error = anyhow::Error;
-
-    fn populate_id(&mut self) { 
-        self.name = self.name.to_lowercase().trim().to_string();
-        self.id = blake3_hash(self.name.as_bytes()); 
-    }
-    fn get_id(&self) -> CryptoHash { self.id.clone() }
+    pub functions: Json<Vec<FunctionObject>>,
+    pub updated_at: i64,
+    pub created_at: i64,
 }

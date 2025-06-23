@@ -15,40 +15,47 @@ impl CryptoHash {
     }
 
     pub fn random() -> Self {
-        Self::new(rand::random())
+        let mut arr = [0u8; 32];
+        rand::Rng::fill(&mut rand::thread_rng(), &mut arr[..]);
+        Self::new(arr)
     }
 
-    pub fn hash(&self) -> [u8; 32] {
-        self.hash
+    pub fn hash(&self) -> &[u8; 32] {
+        &self.hash
     }
 
-    pub fn to_string(&self) -> String {
-        hex::encode(self.hash())
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.hash.to_vec()
     }
 
-    pub fn from_string(str: &str) -> Result<Self> {
-        let hash = hex::decode(str)?;
+    pub fn to_hex_string(&self) -> String {
+        hex::encode(self.hash)
+    }
+
+    pub fn from_hex_string(s: &str) -> Result<Self> {
+        let decoded_hash = hex::decode(s)?;
+        if decoded_hash.len() != 32 {
+            return Err(anyhow!("Wrong length for CryptoHash from hex string: expected 32 bytes, got {}", decoded_hash.len()));
+        }
         Ok(
-            Self::new(hash
+            Self::new(decoded_hash
                 .try_into()
-                .map_err(|_| anyhow!("Wrong Length for CryptoHash"))?
-        ))
+                .expect("Slice with checked length 32 should convert to [u8; 32]")
+            )
+        )
+    }
+}
+
+impl std::str::FromStr for CryptoHash {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::from_hex_string(s)
     }
 }
 
 impl Hash for CryptoHash {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write(&self.hash());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_crypto_hash() {
-        let hash = CryptoHash::random();
-        println!("{}", hash.to_string());
+        state.write(self.hash());
     }
 }

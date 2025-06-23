@@ -1,37 +1,31 @@
-use anyhow::{anyhow, Result};
-use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionToolArgs, 
-    ChatCompletionToolChoiceOption, CompletionUsage, FunctionCall
-};
-use async_openai::{
-    config::OpenAIConfig, types::CreateChatCompletionRequestArgs, Client
-};
+use std::sync::Arc;
 
+use anyhow::Result;
+use async_openai::types::FunctionCall;
+use async_openai::{config::OpenAIConfig, Client};
+
+use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
-use voda_common::{blake3_hash, EnvVars, get_current_timestamp};
-use voda_database::{get_db, Database, MongoDbEnv, MongoDbObject};
-use voda_runtime::{
-    Character, ConversationMemory, HistoryMessage, MessageRole, MessageType, RuntimeClient, SystemConfig, User
-};
+use voda_common::EnvVars;
+use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole};
+use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 
-use super::env::RoleplayEnv;
-use super::message::prepare_chat_messages;
+use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character, CharacterFeature};
 
 #[derive(Clone)]
 pub struct RoleplayRuntimeClient {
-    db: Database,
+    db: Arc<PgPool>,
+    memory: Arc<RoleplayRawMemory>,
     client: Client<OpenAIConfig>,
     executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
 }
 
 impl RoleplayRuntimeClient {
     pub async fn new(
+        db: Arc<PgPool>, 
         executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
-    ) -> Self {
-        let env = MongoDbEnv::load();
-        let db = get_db(&env.get_env_var("MONGODB_URI"), "voda_is").await;
-
-        let env = RoleplayEnv::load();
+    ) -> Result<Self> {
+        let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
             .with_api_key(env.get_env_var("OPENAI_API_KEY"))
             .with_api_base(env.get_env_var("OPENAI_BASE_URL"));
@@ -42,165 +36,147 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        Self { client, db, executor }
-    }
-
-    pub async fn send_request(
-        &self, 
-        system_config: &SystemConfig,
-        messages: Vec<ChatCompletionRequestMessage>, 
-    ) -> Result<(
-        String, CompletionUsage, 
-        Vec<FunctionCall>, Vec<String>
-    )> {
-
-        let tools = system_config.functions.iter()
-            .map(|function| ChatCompletionToolArgs::default()
-                .function(function.clone())
-                .build()
-                .expect("Message should build")
-            )
-            .collect::<Vec<_>>();
-
-        // Create chat completion request
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&system_config.openai_model)
-            .messages(messages)
-            .tools(tools)
-            .tool_choice(ChatCompletionToolChoiceOption::Auto)
-            .temperature(system_config.openai_temperature)
-            .max_tokens(system_config.openai_max_tokens)
-            .build()?;
-
-        // Send request to OpenAI
-        let response = self.client
-            .chat()
-            .create(request)
-            .await?;
-
-        let content = response
-            .choices
-            .first()
-            .ok_or_else(|| anyhow!("No response from AI inference server"))?
-            .message
-            .content
-            .clone()
-            .unwrap_or_default();
-
-        let maybe_function_call = response
-            .choices
-            .first()
-            .ok_or_else(|| anyhow!("No response from AI inference server"))?
-            .message
-            .clone()
-            .tool_calls
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tool_call| tool_call.function)
-            .collect::<Vec<_>>();
-
-
-        let mut maybe_results = Vec::new();
-        for maybe_function in maybe_function_call.iter() {
-            let result = self.execute_function_call(maybe_function).await?;
-            maybe_results.push(result);
-        }
-
-        let usage = response.usage.ok_or(|| {
-            tracing::warn!("Model {} returned no usage", system_config.openai_model);
-        }).map_err(|_| anyhow!("Model {} returned no usage", system_config.openai_model))?;
-
-        Ok((content, usage, maybe_function_call, maybe_results))
+        let memory = RoleplayRawMemory::new(db.clone());
+        Ok(Self { client, db, memory: Arc::new(memory), executor })
     }
 }
 
 #[async_trait::async_trait]
 impl RuntimeClient for RoleplayRuntimeClient {
+    const NAME: &'static str = "rolplay";
+    type MemoryType = RoleplayRawMemory;
+
     fn get_price(&self) -> u64 { 1 }
-    fn get_db(&self) -> &Database { &self.db }
+    fn get_db(&self) -> &Arc<PgPool> { &self.db }
+    fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
+    fn get_memory(&self) -> &Arc<RoleplayRawMemory> { &self.memory }
 
-    async fn run(
-        &self, 
-        character: &Character, user: &mut User, system_config: &SystemConfig,
-        memory: &mut ConversationMemory, message: &HistoryMessage
-    ) -> Result<HistoryMessage> {
-        let is_new_conversation = memory.history.is_empty();
+    async fn preload(db: Arc<PgPool>) -> Result<()> { 
+        tracing::info!("[RoleplayRuntimeClient::preload] Preloading roleplay runtime client");
+        let mut tx = db.begin().await?;
 
-        // this will be used to send to OpenAI
-        let chat_messages = prepare_chat_messages(
-            system_config, 
-            character, user, 
-            &memory.history, message, 
-            is_new_conversation
-        )?;
-
-        let (
-            content, 
-            usage, 
-            maybe_function_call,
-            maybe_results
-        ) = self.send_request( system_config, chat_messages).await?;
-
-        let response_message = HistoryMessage {
-            owner: user.id.clone(),
-            character_id: character.id.clone(),
-            role: MessageRole::Assistant,
-            content,
-            content_type: MessageType::Text,
-            function_call_request: maybe_function_call,
-            function_call_response: maybe_results,
-            created_at: get_current_timestamp(),
-        };
-
-        memory.history.push((message.clone(), response_message.clone()));
-        user.add_usage(usage, system_config.openai_model.clone());
-
-        Ok(response_message)
-    }
-
-    async fn regenerate(
-        &self, 
-        character: &Character, user: &mut User, system_config: &SystemConfig,
-        memory: &mut ConversationMemory
-    ) -> Result<HistoryMessage> {
-        let last_message = memory
-            .history
-            .pop()
-            .ok_or(anyhow!("No history found"))?;
-        let (new_message, _) = last_message;
-        self.run(character, user, system_config, memory, &new_message).await
-    }
-
-    async fn find_system_config_by_character(
-        &self, character: &Character
-    ) -> Result<SystemConfig> {
-        let tags = character.tags.clone();
-        let config_name = {
-            if tags.contains(&"gitcoin".to_string()) {
-                "gitcoin-screening".to_string()
-            } else {
-                match tags[0].as_str() {
-                    "zh" => "roleplay-zh".to_string(),
-                    "kr" => "roleplay-kr".to_string(),
-                    _ => "roleplay".to_string(),
+        // 1. upsert system config
+        let preload_config = preload::get_system_configs_for_char_creation();
+        let _system_config_id = match SystemConfig::find_one_by_criteria(
+            QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
+            &mut *tx
+        ).await? {
+            Some(mut db_config) => {
+                if db_config.system_prompt != preload_config.system_prompt {
+                    db_config.system_prompt = preload_config.system_prompt;
+                    db_config = db_config.update(&mut *tx).await?;
                 }
+                db_config.id
+            }
+            None => {
+                let new_config = preload_config.create(&mut *tx).await?;
+                new_config.id
             }
         };
 
-        let config_hash = blake3_hash(config_name.as_bytes());
+        // 2. find admin user
+        let admin_user = User::find_one_by_criteria(
+            QueryCriteria::new().add_filter("role", "=", Some(UserRole::Admin.to_string()))?,
+            &mut *tx
+        ).await?
+            .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_init] No admin user found"))?;
 
-        let config = SystemConfig::select_one_by_index(&self.db, &config_hash).await?
-            .ok_or(anyhow!("System config not found"))?;
+        // 3. upsert characters
+        let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
+        for mut preload_char in preload_chars {
+            preload_char.features = vec![ CharacterFeature::CharacterCreation ];
 
-        Ok(config)
+            match Character::find_one_by_criteria(
+                QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone()))?,
+                &mut *tx
+            ).await? {
+                Some(mut db_char) => {
+                    let mut updated = false;
+                    if db_char.description != preload_char.description {
+                        db_char.description = preload_char.description;
+                        updated = true;
+                    }
+                    if db_char.features != preload_char.features {
+                        db_char.features = preload_char.features.clone();
+                        updated = true;
+                    }
+
+                    if updated {
+                        db_char.update(&mut *tx).await?;
+                    }
+                }
+                None => {
+                    preload_char.create(&mut *tx).await?;
+                }
+            }
+        }
+
+        tx.commit().await?;
+        tracing::info!("[RoleplayRuntimeClient::preload] Roleplay runtime client preloaded");
+        Ok(())
     }
 
-    async fn execute_function_call(
+    async fn init_function_executor(
+        _queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
+    ) -> Result<()> {
+        tracing::info!("[RoleplayRuntimeClient::init_function_executor] Starting function executor");
+        Ok(())
+    }
+    async fn on_shutdown(&self) -> Result<()> { Ok(()) }
+
+    async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
+        let (messages, system_config) = self.memory
+            .search(&message, 100, 0).await?;
+
+        let response = self.send_llm_request(&system_config, &messages).await?;
+        let assistant_message = RoleplayMessage::from_llm_response(
+            response.clone(), 
+            &message.session_id, 
+            &message.owner
+        );
+
+        self.memory.add_messages(&[
+            message.clone(),
+            assistant_message.clone(),
+        ]).await?;
+
+        let user_usage = UserUsage::new(
+            message.owner.clone(),
+            system_config.openai_model.clone(),
+            response.usage.clone()
+        );
+        user_usage.create(&*self.db).await?;
+
+        Ok(response)
+    }
+
+    async fn on_rollback(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
+        let (mut messages, system_config) = self.memory
+            .search(&message, 100, 0).await?;
+        messages.pop(); // pop the placeholder message
+        let mut last_assistant_message = messages.pop()
+            .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last message found"))?;
+
+        let response = self.send_llm_request(&system_config, &messages).await?;
+        last_assistant_message.content = response.content.clone();
+        self.memory.update(&[last_assistant_message]).await?;
+
+        let user_usage = UserUsage::new(
+            message.owner.clone(),
+            system_config.openai_model.clone(),
+            response.usage.clone()
+        );
+        user_usage.create(&*self.db).await?;
+
+        Ok(response)
+    }
+
+    async fn on_tool_call(
         &self, call: &FunctionCall
     ) -> Result<String> {
         let (tx, rx) = oneshot::channel();
         self.executor.send((call.clone(), tx)).await?;
         let result = rx.await?;
         result
-    }
+    }    
 }

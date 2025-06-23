@@ -8,7 +8,8 @@ voda-common = { path = "../common" }
 voda-database = { path = "../database" }
 voda-runtime = { path = "../runtime" }
 voda-runtime-roleplay = { path = "../runtime-mods/roleplay" }
-voda-runtime-evm = { path = "../runtime-mods/evm" }
+voda-runtime-character-creation = { path = "../runtime-mods/character-creation" }
+# voda-runtime-evm = { path = "../runtime-mods/evm" }
 
 axum.workspace = true
 tokio.workspace = true
@@ -28,6 +29,4 @@ rand.workspace = true
 hex.workspace = true
 tracing-subscriber.workspace = true
 async-trait.workspace = true
-
-prometheus = { version = "0.14.0" }
-lazy_static.workspace = true
+sqlx.workspace = true

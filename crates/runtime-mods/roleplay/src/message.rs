@@ -1,133 +1,153 @@
 use anyhow::Result;
-use async_openai::types::{
-    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, 
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, 
-    ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessageArgs
-};
+use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
 
-use voda_runtime::{
-    Character, SystemConfig, User, 
-    HistoryMessage, HistoryMessagePair
-};
+use voda_database::SqlxObject;
+use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
 
-pub fn replace_placeholders(
-    text: &str, character_name: &str, user_name: &str,
-) -> String {
-    text.replace("{{char}}", character_name)
-        .replace("{{user}}", user_name)
+use super::{Character, RoleplaySession};
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
+#[table_name = "roleplay_messages"]
+pub struct RoleplayMessage {
+    pub id: Uuid,
+
+    #[foreign_key(referenced_table = "roleplay_sessions", related_rust_type = "RoleplaySession")]
+    pub session_id: Uuid,
+
+    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
+    pub owner: Uuid,
+
+    pub role: MessageRole,
+    pub content_type: MessageType,
+
+    pub content: String,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
-fn replace_placeholders_system_prompt(
-    character_name: &str, user_name: &str,
-    system_prompt: &str,
-    character_personality: &str, character_example_dialogue: &str, character_scenario: &str
-) -> String {
-    let character_personality = replace_placeholders(character_personality, character_name, user_name);
-    let character_example_dialogue = replace_placeholders(character_example_dialogue, character_name, user_name);
-    let character_scenario = replace_placeholders(character_scenario, character_name, user_name);
+impl Message for RoleplayMessage {
+    fn id(&self) -> &Uuid { &self.id }
 
-    let system_prompt = system_prompt
-        .replace("{{char}}", character_name)
-        .replace("{{user}}", user_name)
-        .replace("{{char_personality}}", &character_personality)
-        .replace("{{char_example_dialogue}}", &character_example_dialogue)
-        .replace("{{char_scenario}}", &character_scenario);
-
-    system_prompt
-}
-
-fn prepare_system_prompt(system_config: &SystemConfig, character: &Character, user: &User) -> Result<ChatCompletionRequestMessage> {
-    let system_prompt = replace_placeholders_system_prompt(
-        &character.name, 
-        &user.profile.first_name,
-        &system_config.system_prompt, 
-        &character.prompts.personality_prompt,
-        &character.prompts.example_dialogue,
-        &character.prompts.scenario_prompt
-    );
-
-    Ok(ChatCompletionRequestMessage::System(
-        ChatCompletionRequestSystemMessageArgs::default()
-            .content(system_prompt)
-            .build()?
-    ))
-}
-
-pub fn prepare_first_message(character: &Character, user: &User) -> Result<ChatCompletionRequestMessage> {
-    Ok(ChatCompletionRequestMessage::User(
-        ChatCompletionRequestUserMessageArgs::default()
-            .content(replace_placeholders(
-                &character.prompts.first_message, 
-                &character.name, 
-                &user.profile.first_name
-            ))
-            .build()?
-    ))
-}
-
-pub fn prepare_chat_messages(
-    system_config: &SystemConfig,
-    character: &Character, user: &User,
+    fn role(&self) -> &MessageRole { &self.role }
+    fn owner(&self) -> &Uuid { &self.owner }
     
-    history: &[HistoryMessagePair], new_message: &HistoryMessage,
-    is_new_conversation: bool
-) -> Result<Vec<ChatCompletionRequestMessage>> {
-    // 1. inject the roleplay system prompt
-    let mut messages = vec![
-        prepare_system_prompt(system_config, character, user)?,
-    ];
+    fn content_type(&self) -> &MessageType { &self.content_type }
+    fn text_content(&self) -> Option<String> { Some(self.content.clone()) }
+    fn binary_content(&self) -> Option<Vec<u8>> { None }
+    fn url_content(&self) -> Option<String> { None }
 
-    if is_new_conversation {
-        messages.push(prepare_first_message(character, user)?);
+    fn created_at(&self) -> i64 { self.created_at }
+
+    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self {
+        Self {
+            id: Uuid::default(),
+            owner: user_id.clone(),
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: response.content,
+            session_id: session_id.clone(),
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+}
+
+impl RoleplayMessage {
+    fn replace_placeholders(
+        text: &str, character_name: &str, user_name: &str,
+    ) -> String {
+        text.replace("{{char}}", character_name)
+            .replace("{{user}}", user_name)
+    }
+    
+    fn replace_placeholders_system_prompt(
+        character_name: &str, user_name: &str,
+        system_prompt: &str,
+        character_personality: &str, character_example_dialogue: &str, character_scenario: &str,
+        character_background_stories: &Vec<String>, character_behavior_traits: &Vec<String>
+    ) -> String {
+        let character_personality = Self::replace_placeholders(character_personality, character_name, user_name);
+        let character_example_dialogue = Self::replace_placeholders(character_example_dialogue, character_name, user_name);
+        let character_scenario = Self::replace_placeholders(character_scenario, character_name, user_name);
+        let character_background_stories = character_background_stories.join("\n- ");
+        let character_behavior_traits = character_behavior_traits.join("\n- ");
+    
+        let system_prompt = system_prompt
+            .replace("{{char}}", character_name)
+            .replace("{{user}}", user_name)
+            .replace("{{char_personality}}", &character_personality)
+            .replace("{{char_example_dialogue}}", &character_example_dialogue)
+            .replace("{{char_scenario}}", &character_scenario)
+            .replace("{{char_background_stories}}", &character_background_stories)
+            .replace("{{char_behavior_traits}}", &character_behavior_traits);
+    
+        system_prompt
     }
 
-    // 2. add the history
-    history
-        .iter()
-        .for_each(|(user_message, assistant_message)| {
-            messages.push(
-                ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessageArgs::default()
-                        .content(user_message.content.as_str())
-                        .build()
-                        .expect("Message should build")
-                )
-            );
+    pub fn system(
+        session: &RoleplaySession, system_config: &SystemConfig, character: &Character, user: &User,
+    ) -> Self {
+        let system_prompt = Self::replace_placeholders_system_prompt(
+            &character.name, 
+            &user.user_aka,
+            &system_config.system_prompt, 
+            &character.prompts_personality,
+            &character.prompts_example_dialogue,
+            &character.prompts_scenario,
+            &character.prompts_background_stories,
+            &character.prompts_behavior_traits
+        );
 
-            messages.push(
-                ChatCompletionRequestMessage::Assistant(
-                    ChatCompletionRequestAssistantMessageArgs::default()
-                        .content(assistant_message.content.as_str())
-                        .build()
-                        .expect("Message should build")
-                )
-            );
+        Self {
+            id: Uuid::default(),
+            owner: user.id.clone(),
+            role: MessageRole::System,
+            content_type: MessageType::Text,
+            content: system_prompt,
+            session_id: session.id.clone(),
 
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
 
-            for (_, response) in assistant_message
-                .function_call_request
-                .iter()
-                .zip(assistant_message.function_call_response.iter()) 
-            {
-                messages.push(
-                    ChatCompletionRequestMessage::Tool(
-                        ChatCompletionRequestToolMessageArgs::default()
-                            .content(
-                                ChatCompletionRequestToolMessageContent::Text(response.to_string())
-                            )
-                            .build()
-                            .expect("Message should build")
-                    )
-                );
-            }
-        });
+    pub fn first_message(
+        session: &RoleplaySession, character: &Character, user: &User
+    ) -> Self {
+        let first_message = Self::replace_placeholders(
+            &character.prompts_first_message, 
+            &character.name, 
+            &user.user_aka
+        );
 
-    messages.push(ChatCompletionRequestMessage::User(
-        ChatCompletionRequestUserMessageArgs::default()
-            .content(new_message.content.as_str())
-            .build()
-            .expect("Message should build")
-    ));
+        Self {
+            id: Uuid::default(),
+            owner: user.id.clone(),
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: first_message,
+            session_id: session.id.clone(),
 
-    Ok(messages)
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn user_message(
+        message: &str, session_id: &Uuid, user_id: &Uuid
+    ) -> Self {
+        Self {
+            id: Uuid::default(),
+            owner: user_id.clone(),
+            role: MessageRole::User,
+            content_type: MessageType::Text,
+            content: message.to_string(),
+            session_id: session_id.clone(),
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
 }

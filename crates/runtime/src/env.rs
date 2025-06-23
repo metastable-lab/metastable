@@ -2,12 +2,12 @@ use std::env;
 
 use voda_common::EnvVars;
 
-pub struct RoleplayEnv {
+pub struct RuntimeEnv {
     pub openai_api_key: String,
     pub openai_base_url: String,
 }
 
-impl EnvVars for RoleplayEnv {
+impl EnvVars for RuntimeEnv {
     fn load() -> Self {
         Self {
             openai_api_key: env::var("OPENAI_API_KEY").unwrap(),

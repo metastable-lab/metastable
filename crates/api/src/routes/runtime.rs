@@ -6,124 +6,154 @@ use axum::{
     http::StatusCode, middleware, 
     routing::post, Json, Router
 };
-use voda_common::CryptoHash;
-use voda_database::MongoDbObject;
-use voda_runtime::{Character, ConversationMemory, HistoryMessage, RuntimeClient};
+use sqlx::types::Uuid;
+use voda_runtime::RuntimeClient;
+use voda_runtime_character_creation::CharacterCreationMessage;
+use voda_runtime_roleplay::{Character, CharacterStatus, RoleplayMessage, RoleplaySession};
+use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
+use voda_runtime::SystemConfig;
 
-use crate::{ensure_account, middleware::authenticate, response::{AppError, AppSuccess}};
-use crate::metrics::*;
+use crate::{
+    ensure_account, 
+    middleware::authenticate, 
+    response::{AppError, AppSuccess},
+    GlobalState
+};
 
-pub fn runtime_routes<S: RuntimeClient>() -> Router<S> {
+pub fn runtime_routes() -> Router<GlobalState> {
     Router::new()
-        .route("/runtime/chat/{conversation_id}",
-            post(chat::<S>)
+        .route("/runtime/roleplay/create_session",
+            post(roleplay_create_session)
             .route_layer(middleware::from_fn(authenticate))
         )
 
-        .route("/runtime/regenerate_last_message/{conversation_id}",
-            post(regenerate::<S>)
+        .route("/runtime/roleplay/chat/{session_id}",
+            post(roleplay_chat)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/roleplay/rollback/{session_id}",
+            post(roleplay_rollback)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/character-creation/create",
+            post(character_creation_create)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/character-creation/review/{character_id}",
+            post(character_creation_review)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChatRequest { pub message: String }
-async fn chat<S: RuntimeClient>(
-    State(state): State<S>,
-    Extension(user_id): Extension<CryptoHash>,
-    Path(conversation_id): Path<CryptoHash>,
-    Json(payload): Json<ChatRequest>,
+pub struct CreateSessionRequest { pub character_id: Uuid, pub system_config_id: Uuid }
+async fn roleplay_create_session(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreateSessionRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = ensure_account(&state, &user_id, false, false, state.get_price()).await?
-        .expect("user must have been registered");
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
+        .expect("[roleplay_create_session] User not found");
 
-    let mut conversation_memory = ConversationMemory::select_one_by_index(&state.get_db(), &conversation_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Conversation not found")))?;
-    
-    if !conversation_memory.public && conversation_memory.owner_id != user_id {
-        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("You are not allowed to chat in this conversation")));
-    }
-    let character = Character::select_one_by_index(&state.get_db(), &conversation_memory.character_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let _character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", payload.character_id)?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] Character not found")))?;
+    let _system_config = SystemConfig::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", payload.system_config_id)?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] System config not found")))?;
 
-    println!("conversation_memory.history.len(): {}", conversation_memory.history.len());
-    /* ALL PRE-RUN CHECKS DONE! */
-    if conversation_memory.history.is_empty() {
-        CHARACTER_NON_EMPTY_SESSIONS.with_label_values(&[&character.id.to_string()]).inc();
-    }
+    let mut session = RoleplaySession::default();
+    session.character = payload.character_id;
+    session.system_config = payload.system_config_id;
+    session.owner = user.id;
+    session.create(&mut *tx).await?;
+    tx.commit().await?;
 
-    let mut new_message = HistoryMessage::default();
-    new_message.content = payload.message;
-    new_message.owner = user_id;
-    new_message.character_id = conversation_memory.character_id.clone();
-
-    let system_config = state.find_system_config_by_character(&character).await?;
-    let response_message = state
-        .run(
-            &character, &mut user, &system_config, 
-            &mut conversation_memory, &new_message
-        ).await?;
-
-    conversation_memory.update(&state.get_db()).await?;
-
-    CHARACTER_MESSAGES.with_label_values(&[&character.id.to_string()]).inc();    
-    // SAFETY: user.usage is not empty
-    let token_usage = user.usage.last().unwrap().clone();
-    TOKEN_USAGE.with_label_values(&[
-        &system_config.openai_model.clone(), 
-        &character.id.to_string()
-    ]).inc_by(token_usage.usage.total_tokens as u64);
-
-
-    Ok(AppSuccess::new(StatusCode::OK, "Chat completed successfully", json!(response_message)))
+    Ok(AppSuccess::new(StatusCode::OK, "Session created successfully", json!(())))
 }
 
-async fn regenerate<S: RuntimeClient>(
-    State(state): State<S>,
-    Extension(user_id): Extension<CryptoHash>,
-    Path(conversation_id): Path<CryptoHash>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatRequest { pub message: String }
+async fn roleplay_chat(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(session_id): Path<Uuid>,
+    Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = ensure_account(&state, &user_id, false, false, state.get_price()).await?
-        .expect("user must have been registered");
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
+        .expect("[roleplay_chat] User not found");
 
-    let mut conversation_memory = ConversationMemory::select_one_by_index(&state.get_db(), &conversation_id).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Conversation not found")))?;
+    let message = RoleplayMessage::user_message(
+        &payload.message, &session_id,  &user.id
+    );
 
-    if !conversation_memory.public && conversation_memory.owner_id != user_id {
-        return Err(AppError::new(
-            StatusCode::FORBIDDEN, 
-            anyhow!("You are not allowed to regenerate messages in this conversation")
-        ));
-    }
+    let response = state.roleplay_client.on_new_message(&message).await?;
 
-    if conversation_memory.history.is_empty() {
-        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("No messages to regenerate")));
-    }
+    Ok(AppSuccess::new(StatusCode::OK, "Chat completed successfully", json!(response)))
+}
 
-    let character = Character::select_one_by_index(&state.get_db(), &conversation_memory.character_id)
-        .await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("Character not found")))?;
+async fn roleplay_rollback(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(session_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
+        .expect("[roleplay_rollback] User not found");
 
-    let system_config = state
-        .find_system_config_by_character(&character).await?;
+    let message = RoleplayMessage::user_message(
+        "rollback", &session_id,  &user.id
+    );
+
+    let response = state.roleplay_client.on_rollback(&message).await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(response)))
+}
 
 
-    let response_message = state
-        .regenerate(
-            &character, &mut user, &system_config, 
-            &mut conversation_memory
-        ).await?;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCharacterRequest { pub roleplay_session_id: Uuid }
+async fn character_creation_create(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreateCharacterRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
+        .expect("[character_creation_create] User not found");
 
-    conversation_memory.update(&state.get_db()).await?;
+    let message = CharacterCreationMessage::blank_user_message(
+        &payload.roleplay_session_id, &user.id
+    );
+    let response = state.character_creation_client.on_new_message(&message).await?;
+    let misc_value = response.misc_value.ok_or(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[character_creation_create] Character creation response misc value not found")))?;
+    Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", misc_value))
+}
 
-    CHARACTER_REGENERATIONS.with_label_values(&[&character.id.to_string()]).inc();
+async fn character_creation_review(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let _user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
+        .expect("[character_creation_review] User not found");
 
-    // SAFETY: user.usage is not empty
-    let token_usage = user.usage.last().unwrap().clone();
-    TOKEN_USAGE.with_label_values(&[
-        &system_config.openai_model.clone(), 
-        &character.id.to_string()
-    ]).inc_by(token_usage.usage.total_tokens as u64);
+    let mut tx = state.character_creation_client.get_db().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_filter("id", "=", Some(character_id))?,
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] Character not found")))?;
 
-    Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(response_message)))
+    character.status = CharacterStatus::Reviewing;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character creation review completed successfully", json!(())))
 }
