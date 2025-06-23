@@ -70,6 +70,10 @@ async fn proxy_to_hasura(
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );
 
+
+    tracing::debug!("hasura_role: {}", user_role);
+    tracing::debug!("hasura_user_id: {}", user_id);
+
     let hasura_response = state.http_client
         .request(parts.method, &hasura_url)
         .headers(headers)
