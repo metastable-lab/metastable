@@ -22,7 +22,7 @@ impl<F: ExecutableFunctionCall> FunctionExecutor<F> {
         while let Some((call, tx)) = self.execution_queue.recv().await {
             if let Ok(f) = F::from_function_call(call.clone()) {
                 let result = f.execute().await;
-                tx.send(result).expect("message channel closed");
+                let _ = tx.send(result);
             } else {
                 tracing::error!("Invalid function call: {:?}", call);
                 tx.send(Err(anyhow!("Invalid function call"))).expect("message channel closed");

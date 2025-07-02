@@ -81,7 +81,7 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
 ///   and runs the table creation logic. Subsequent calls return the existing pool.
 ///
 /// # Panics
-/// - If the `POSTGRES_URI` environment variable is not set or is invalid.
+/// - If the `DATABASE_URL` environment variable is not set or is invalid.
 /// - If connecting to the PostgreSQL database fails.
 /// - If any of the table creation SQL queries fail to execute. The panic message will
 ///   include the type for which table creation failed and the problematic SQL query.
@@ -130,7 +130,7 @@ macro_rules! init_db_pool {
                 let database_url = std::env::var("DATABASE_URL").unwrap();
                 
                 let pool = sqlx::PgPool::connect(&database_url).await
-                    .expect("Failed to connect to Postgres. Ensure DB is running and POSTGRES_URI is correct.");
+                    .expect("Failed to connect to Postgres. Ensure DB is running and DATABASE_URL is correct.");
 
                 // Drop tables first to ensure a clean schema for tests
                 if drop_tables {

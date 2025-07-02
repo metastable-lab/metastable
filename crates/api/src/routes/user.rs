@@ -146,7 +146,7 @@ async fn update_profile(
     Json(payload): Json<UpdateProfileRequest>,
 ) -> Result<AppSuccess, AppError> {
     let mut user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?
-        .expect("[update_profile] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[update_profile] User not found")))?;
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
     user.user_aka = payload.user_aka.clone().unwrap_or(user.user_aka.clone());
@@ -169,7 +169,7 @@ async fn claim_free(
     Extension(user_id_str): Extension<String>,
 ) -> Result<AppSuccess, AppError> {
     let mut user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?
-        .expect("[claim_free] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[claim_free] User not found")))?;
 
     // TODO: technicaly - we should not use roleplay_client but a user db directly
     let mut tx = state.roleplay_client.get_db().begin().await?;
@@ -191,7 +191,7 @@ async fn buy_referral(
 ) -> Result<AppSuccess, AppError> {
     let count = payload.count.unwrap_or(1);
     let mut user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?
-        .expect("[buy_referral] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[buy_referral] User not found")))?;
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
 
@@ -217,7 +217,7 @@ async fn create_url(
     Json(payload): Json<CreateUrlRequest>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?
-        .expect("[create_url] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_url] User not found")))?;
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
     let url = UserUrl::new(user.id, payload.path, payload.url_type);

@@ -56,7 +56,7 @@ async fn roleplay_create_session(
     Json(payload): Json<CreateSessionRequest>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
-        .expect("[roleplay_create_session] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] User not found")))?;
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
     let _character = Character::find_one_by_criteria(
@@ -89,7 +89,7 @@ async fn roleplay_chat(
     Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
-        .expect("[roleplay_chat] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] User not found")))?;
 
     let message = RoleplayMessage::user_message(
         &payload.message, &session_id,  &user.id
@@ -106,7 +106,7 @@ async fn roleplay_rollback(
     Path(session_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.roleplay_client, &user_id_str, 1).await?
-        .expect("[roleplay_rollback] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_rollback] User not found")))?;
 
     let message = RoleplayMessage::user_message(
         "rollback", &session_id,  &user.id
@@ -126,7 +126,7 @@ async fn character_creation_create(
     Json(payload): Json<CreateCharacterRequest>,
 ) -> Result<AppSuccess, AppError> {
     let user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
-        .expect("[character_creation_create] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_create] User not found")))?;
 
     let message = CharacterCreationMessage::blank_user_message(
         &payload.roleplay_session_id, &user.id
@@ -142,7 +142,7 @@ async fn character_creation_review(
     Path(character_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
     let _user = ensure_account(&state.character_creation_client, &user_id_str, 1).await?
-        .expect("[character_creation_review] User not found");
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] User not found")))?;
 
     let mut tx = state.character_creation_client.get_db().begin().await?;
     let mut character = Character::find_one_by_criteria(
