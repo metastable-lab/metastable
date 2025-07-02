@@ -18,6 +18,15 @@ export HASURA_GRAPHQL_URL := env("HASURA_GRAPHQL_URL")
 export DATABASE_URL := env("DATABASE_URL")
 export HASURA_GRAPHQL_ADMIN_SECRET := env("HASURA_GRAPHQL_ADMIN_SECRET")
 
+export GRAPH_URI := env("GRAPH_URI")
+export GRAPH_USER := env("GRAPH_USER")
+export GRAPH_PASSWORD := env("GRAPH_PASSWORD")
+
+export EMBEDDING_API_KEY := env("EMBEDDING_API_KEY")
+export EMBEDDING_BASE_URL := env("EMBEDDING_BASE_URL")
+export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
+
+
 @docs:
     cd docs && bunx mintlify dev
 
@@ -26,3 +35,6 @@ export HASURA_GRAPHQL_ADMIN_SECRET := env("HASURA_GRAPHQL_ADMIN_SECRET")
 
 @sandbox:
     cargo run --package voda-sandbox --release
+
+@graph:
+    cargo test --package voda-graph -- --no-capture
