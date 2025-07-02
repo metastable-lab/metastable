@@ -26,7 +26,7 @@ macro_rules! define_function_types {
             $($variant($type)),*
         }
 
-        impl ExecutableFunctionCall for RuntimeFunctionType {
+        impl ::voda_runtime::ExecutableFunctionCall for RuntimeFunctionType {
             fn name() -> &'static str { "runtime_function_calls" }
 
             fn from_function_call(function_call: FunctionCall) -> Result<Self> {

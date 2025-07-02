@@ -3,22 +3,33 @@ mod relation;
 mod add;
 mod del;
 mod search;
+mod llm;
 
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_openai::{config::OpenAIConfig, Client, types::CreateEmbeddingRequestArgs};
+use async_openai::{config::OpenAIConfig, Client};
+use async_openai::types::{
+    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionToolArgs, ChatCompletionToolChoiceOption, CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs
+};
 use neo4rs::{ConfigBuilder, Graph};
 use voda_common::EnvVars;
+use voda_runtime::{define_function_types, ExecutableFunctionCall};
 
-use crate::env::GraphEnv;
+use crate::{env::GraphEnv, llm::LlmConfig};
 pub type Embedding = Vec<f32>;
 
 const EMBEDDING_DIMS: i32 = 1024;
 
+define_function_types!(
+    EntitiesToolcall(crate::llm::EntitiesToolcall, "extract_entities"),
+    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "establish_relations")
+);
+
 pub struct GraphDatabase {
     db: Arc<Graph>,
     embeder: Client<OpenAIConfig>,
+    llm: Client<OpenAIConfig>,
 }
 
 impl GraphDatabase {
@@ -35,6 +46,10 @@ impl GraphDatabase {
         let db = Graph::connect(config).await.unwrap();
 
         let embeder_config = OpenAIConfig::new()
+            .with_api_base(env.get_env_var("EMBEDDING_BASE_URL"))
+            .with_api_key(env.get_env_var("EMBEDDING_API_KEY"));
+
+        let llm_config = OpenAIConfig::new()
             .with_api_base(env.get_env_var("OPENAI_BASE_URL"))
             .with_api_key(env.get_env_var("OPENAI_API_KEY"));
 
@@ -43,7 +58,13 @@ impl GraphDatabase {
             embeder_config,
             Default::default()
         );
-        Self { db: Arc::new(db), embeder }
+        let llm = Client::build(    
+            reqwest::Client::new(),
+            llm_config,
+            Default::default()
+        );
+
+        Self { db: Arc::new(db), embeder, llm }
     }
 
     pub async fn init(&self) -> Result<()> {
@@ -66,7 +87,7 @@ impl GraphDatabase {
         let env = GraphEnv::load();
         let response = self.embeder.embeddings().create(
             CreateEmbeddingRequestArgs::default()
-                .model(&env.get_env_var("OPENAI_EMBEDDING_MODEL"))
+                .model(&env.get_env_var("EMBEDDING_EMBEDDING_MODEL"))
                 .input(text)
                 .build()?
         ).await?;
@@ -76,6 +97,51 @@ impl GraphDatabase {
             .collect();
 
         Ok(embeddings)
+    }
+
+    pub async fn llm(&self, config: &LlmConfig, user_message: &str) -> Result<String> {
+        let messages = [
+            ChatCompletionRequestMessage::System(
+                ChatCompletionRequestSystemMessageArgs::default()
+                    .content(config.system_prompt.clone())
+                    .build()?
+            ),
+            ChatCompletionRequestMessage::User(
+                ChatCompletionRequestUserMessageArgs::default()
+                    .content(user_message.to_string())
+                    .build()?
+            ),
+        ];
+
+        let tools = config.tools.iter()
+            .map(|function| ChatCompletionToolArgs::default()
+                .function(function.clone())
+                .build()
+                .expect("Message should build")
+            )
+            .collect::<Vec<_>>();
+
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(&config.model)
+            .messages(messages)
+            .tools(tools)
+            .temperature(config.temperature)
+            .max_tokens(config.max_tokens as u32)
+            .tool_choice(ChatCompletionToolChoiceOption::Auto)
+            .build()?;
+
+        let response = self.llm.chat().create(request).await?;
+        let content = response.choices.first().unwrap().message.content.clone().unwrap_or_default();
+
+        response.choices.first().unwrap()
+            .message.tool_calls.clone().unwrap_or_default()
+            .iter()
+            .for_each(|t| {
+                let tc = RuntimeFunctionType::from_function_call(t.function.clone()).unwrap();
+                println!("tc: {:#?}", tc);
+            });
+
+        Ok(content)
     }
 }
 

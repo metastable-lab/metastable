@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 voda-common = { path = "../common" }
+voda-runtime = { path = "../runtime" }
 
 serde.workspace = true
 serde_json.workspace = true

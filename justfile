@@ -38,3 +38,6 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 
 @graph:
     cargo test --package voda-graph -- --no-capture
+
+@graph-llm:
+    cargo test --package voda-graph --lib -- llm::tests::test_extract_entity_config --exact --show-output
