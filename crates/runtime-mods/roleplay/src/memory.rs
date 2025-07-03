@@ -49,6 +49,7 @@ impl Memory for RoleplayRawMemory {
             let m = message.clone();
             let created_m = m.create(&mut *tx).await?;
             session.append_message_to_history(&created_m.id, &mut *tx).await?;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
 
         tx.commit().await?;

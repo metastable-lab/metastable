@@ -143,8 +143,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let (messages, system_config) = self.memory
             .search(&message, 100, 0).await?;
 
-        self.memory.add_messages(&messages).await?;
-
         let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
             response.clone(), 
@@ -152,7 +150,10 @@ impl RuntimeClient for RoleplayRuntimeClient {
             &message.owner
         );
 
-        self.memory.add_messages(&[assistant_message.clone()]).await?;
+        self.memory.add_messages(&[
+            message.clone(),
+            assistant_message.clone(),
+        ]).await?;
 
         let user_usage = UserUsage::new(
             message.owner.clone(),
