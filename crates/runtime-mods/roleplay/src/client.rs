@@ -66,6 +66,21 @@ impl RuntimeClient for RoleplayRuntimeClient {
                     db_config.system_prompt = preload_config.system_prompt;
                     db_config = db_config.update(&mut *tx).await?;
                 }
+
+                if db_config.openai_model != preload_config.openai_model {
+                    db_config.openai_model = preload_config.openai_model;
+                    db_config = db_config.update(&mut *tx).await?;
+                }
+
+                if db_config.openai_temperature != preload_config.openai_temperature {
+                    db_config.openai_temperature = preload_config.openai_temperature;
+                    db_config = db_config.update(&mut *tx).await?;
+                }
+
+                if db_config.openai_max_tokens != preload_config.openai_max_tokens {
+                    db_config.openai_max_tokens = preload_config.openai_max_tokens;
+                    db_config = db_config.update(&mut *tx).await?;
+                }
                 db_config.id
             }
             None => {
@@ -128,6 +143,8 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let (messages, system_config) = self.memory
             .search(&message, 100, 0).await?;
 
+        self.memory.add_messages(&messages).await?;
+
         let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
             response.clone(), 
@@ -135,10 +152,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
             &message.owner
         );
 
-        self.memory.add_messages(&[
-            message.clone(),
-            assistant_message.clone(),
-        ]).await?;
+        self.memory.add_messages(&[assistant_message.clone()]).await?;
 
         let user_usage = UserUsage::new(
             message.owner.clone(),
