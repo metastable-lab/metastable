@@ -1,5 +1,6 @@
 mod extract_entity;
 mod extract_relationship;
+mod del_relationship;
 
 use async_openai::types::FunctionObject;
 
@@ -13,6 +14,7 @@ pub struct LlmConfig {
 
 pub use crate::llm::extract_entity::{EntitiesToolcall, SingleEntityToolcall, get_extract_entity_config};
 pub use crate::llm::extract_relationship::{RelationshipsToolcall, SingleRelationshipToolcall, get_extract_relationship_config};
+pub use crate::llm::del_relationship::{DeleteGraphMemoryToolcall, SingleDelRelationshipToolcall, get_delete_graph_memory_config};
 
 #[cfg(test)]
 mod tests {
@@ -24,6 +26,7 @@ mod tests {
     async fn test_extract_entity_config() {
         let config = get_extract_entity_config("123".to_string());
         let config2 = get_extract_relationship_config("123".to_string());
+        let config3 = get_delete_graph_memory_config("123".to_string());
 
         let db = GraphDatabase::new().await;
 
@@ -34,8 +37,10 @@ Let me know what you all think! Should we head to the blacksmith first or go dra
 
         let response = db.llm(&config, text).await.unwrap();
         let response2 = db.llm(&config2, text).await.unwrap();
+        let response3 = db.llm(&config3, text).await.unwrap();
 
         println!("response: {}", response);
         println!("response2: {}", response2);
+        println!("response3: {}", response3);
     }
 }

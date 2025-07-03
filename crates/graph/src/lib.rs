@@ -23,7 +23,8 @@ const EMBEDDING_DIMS: i32 = 1024;
 
 define_function_types!(
     EntitiesToolcall(crate::llm::EntitiesToolcall, "extract_entities"),
-    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "establish_relations")
+    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "establish_relations"),
+    DeleteGraphMemoryToolcall(crate::llm::DeleteGraphMemoryToolcall, "delete_graph_memory")
 );
 
 pub struct GraphDatabase {
