@@ -18,29 +18,40 @@ pub use crate::llm::del_relationship::{DeleteGraphMemoryToolcall, SingleDelRelat
 
 #[cfg(test)]
 mod tests {
-    use crate::{GraphDatabase};
-
     use super::*;
+    use crate::GraphDatabase;
 
     #[tokio::test]
-    async fn test_extract_entity_config() {
-        let config = get_extract_entity_config("123".to_string());
-        let config2 = get_extract_relationship_config("123".to_string());
-        let config3 = get_delete_graph_memory_config("123".to_string());
+    async fn test_graph_update_flow() {
+        let user_id = "123".to_string();
+        let existing_memories = "xiaoming -- works_at -- beijing".to_string();
+        let old_text = "xiaoming works_at beijing".to_string();
+        let new_text = "xiaoming works_at shanghai".to_string();
 
         let db = GraphDatabase::new().await;
 
-        let text = r#"Hey everyone! So, I just finished exploring the ancient ruins we stumbled upon last session, and I found this really cool artifact that looks like it might be a key to unlocking the hidden chamber we heard about in the tavern. I’m thinking it’s some kind of magical relic, but I’m not sure what it does yet.
-Also, I overheard some NPCs talking about a dragon sighting near the mountains, and I think we should check it out. I mean, who wouldn’t want to face a dragon, right? But we should probably gather some more supplies first—maybe hit up the blacksmith for some better weapons and armor.
-Oh, and I’ve been working on my character’s backstory a bit more. Turns out, my rogue used to be part of a thieves' guild, but they betrayed him, and now he’s on a quest for revenge. I think it could add some interesting dynamics to our party, especially if we run into any old guild members.
-Let me know what you all think! Should we head to the blacksmith first or go dragon hunting? I’m down for either, but I think we should be prepared for whatever comes our way. Can’t wait to hear your thoughts"#;
+        let entity_config = get_extract_entity_config(user_id.clone());
+        let entity_result = db.llm(&entity_config, &old_text).await.unwrap();
+        println!("extracted entities: {}", entity_result);
 
-        let response = db.llm(&config, text).await.unwrap();
-        let response2 = db.llm(&config2, text).await.unwrap();
-        let response3 = db.llm(&config3, text).await.unwrap();
+        let rel_config = get_extract_relationship_config(user_id.clone());
+        let rel_result = db.llm(&rel_config, &old_text).await.unwrap();
+        println!("extracted relationships: {}", rel_result);
 
-        println!("response: {}", response);
-        println!("response2: {}", response2);
-        println!("response3: {}", response3);
+        let (delete_config, delete_prompt) = get_delete_graph_memory_config(
+            user_id.clone(),
+            existing_memories,
+            new_text.to_string()
+        );
+
+        let delete_result = db.llm(&delete_config, &delete_prompt).await.unwrap();
+        println!("need to delete: {}", delete_result);
+
+        let new_entity_result = db.llm(&entity_config, &new_text).await.unwrap();
+        println!("new extracted entities: {}", new_entity_result);
+
+        let final_result = db.llm(&rel_config, &new_text).await.unwrap();
+        println!("final result: {}", final_result);
+
     }
 }

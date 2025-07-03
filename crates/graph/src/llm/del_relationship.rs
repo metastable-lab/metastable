@@ -18,14 +18,11 @@ pub struct DeleteGraphMemoryToolcall {
     relationships: Vec<SingleDelRelationshipToolcall>,
 }
 
-
-pub fn get_delete_graph_memory_config(user_id: String) -> LlmConfig {
-    let system_prompt = format!(
-        r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
+const DELETE_RELATIONS_SYSTEM_PROMPT: &str = r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
 Input:
 1. Existing Graph Memories: A list of current graph memories, each containing source, relationship, and destination information.
 2. New Text: The new information to be integrated into the existing graph structure.
-3. Use "{}" as node for any self-references (e.g., "I," "me," "my," etc.) in user messages.
+3. Use "{user_id}" as node for any self-references (e.g., "I," "me," "my," etc.) in user messages.
 
 Guidelines:
 1. Identification: Use the new information to evaluate existing relationships in the memory graph.
@@ -53,9 +50,12 @@ Do not delete in the above example because there is a possibility that Alice lov
 Memory Format:
 source -- relationship -- destination
 
-Provide a list of deletion instructions, each specifying the relationship to be deleted."#,
-        user_id
-    );
+Provide a list of deletion instructions, each specifying the relationship to be deleted."#;
+
+
+pub fn get_delete_graph_memory_config(user_id: String, existing_memories: String, new_text: String) -> (LlmConfig, String) {
+    let system_prompt = DELETE_RELATIONS_SYSTEM_PROMPT.replace("{user_id}", &user_id);
+    let user_prompt = format!("Here are the existing memories: {} \n\n New Information: {}", existing_memories, new_text);
 
     let delete_graph_memory_tool = FunctionObject {
         name: "delete_graph_memory".to_string(),
@@ -78,18 +78,22 @@ Provide a list of deletion instructions, each specifying the relationship to be 
                     "description": "An array of relationships.",
                 }
             },
+            "required": ["relationships"],
+            "additionalProperties": false,
         })),
         strict: Some(true),
     };
 
     let tools = vec![delete_graph_memory_tool];
 
-    LlmConfig {
+    let config = LlmConfig {
         model: "mistralai/ministral-8b".to_string(),
         temperature: 0.7,
         max_tokens: 5000,
         system_prompt, tools,
-    }
+    };
+
+    (config, user_prompt)
 }
 
 impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
