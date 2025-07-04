@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode, middleware, 
     routing::post, Json, Router
 };
-use voda_common::{get_current_timestamp, CryptoHash};
+use voda_common::get_current_timestamp;
 use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use voda_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User};
 
