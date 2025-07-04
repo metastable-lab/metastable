@@ -134,7 +134,16 @@ impl Vector for PgVector {
         let mut tx = self.pool.begin().await?;
         
         let mut ids = Vec::new();
+        let mut seen_contents = std::collections::HashSet::new();
+        
         for embedding_data in embeddings {
+            // deduplicate: if content already exists, skip
+            if let Some(content) = &embedding_data.content {
+                if !seen_contents.insert(content.clone()) {
+                    continue;
+                }
+            }
+            
             sqlx::query(r#"
                 INSERT INTO embeddings (id, user_id, model_id, embedding, content, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -161,15 +170,19 @@ impl Vector for PgVector {
             SELECT id, user_id, model_id, embedding, content, created_at, updated_at,
                    1 - (embedding <=> $1) as similarity
             FROM embeddings
+            WHERE user_id = $3
             ORDER BY embedding <=> $1
             LIMIT $2
         "#)
         .bind(&query_embedding.embedding)
         .bind(limit as i64)
+        .bind(query_embedding.user_id)
         .fetch_all(&*self.pool)
         .await?;
         
         let mut results = Vec::new();
+        let mut seen_contents = std::collections::HashSet::new();
+        
         for row in rows {
             let embedding_data = EmbeddingData {
                 id: row.get("id"),
@@ -181,6 +194,14 @@ impl Vector for PgVector {
                 updated_at: row.get("updated_at"),
             };
             let similarity: f64 = row.get("similarity");
+            
+            // deduplicate: if content already exists, skip
+            if let Some(content) = &embedding_data.content {
+                if !seen_contents.insert(content.clone()) {
+                    continue;
+                }
+            }
+            
             results.push(SearchResult { embedding_data, similarity });
         }
         
@@ -383,6 +404,22 @@ impl PgVector {
         
         let count: i64 = row.get("count");
         Ok(count as u64)
+    }
+    
+    /// Delete embeddings by content (for a specific user)
+    pub async fn delete_embeddings_by_content(&self, user_id: &str, content_keyword: &str) -> Result<u64> {
+        let user_uuid = sqlx::types::Uuid::parse_str(user_id)?;
+        
+        let result = sqlx::query(r#"
+            DELETE FROM embeddings 
+            WHERE user_id = $1 AND content ILIKE $2
+        "#)
+        .bind(user_uuid)
+        .bind(format!("%{}%", content_keyword))
+        .execute(&*self.pool)
+        .await?;
+        
+        Ok(result.rows_affected())
     }
     
     /// Reset all embeddings (for testing)

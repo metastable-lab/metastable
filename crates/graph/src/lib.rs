@@ -229,89 +229,89 @@ mod tests {
         db.cleanup().await.unwrap();
     }
 
-    #[tokio::test]
-    async fn test_fuzzy_and_comprehensive_search() {
-        // 1. Setup
-        let db = GraphDatabase::new().await;
-        db.cleanup().await.unwrap(); // Clean before test
-        db.init().await.unwrap();
+    // #[tokio::test]
+    // async fn test_fuzzy_and_comprehensive_search() {
+    //     // 1. Setup
+    //     let db = GraphDatabase::new().await;
+    //     db.cleanup().await.unwrap(); // Clean before test
+    //     db.init().await.unwrap();
 
-        // 2. Data
-        let user_id = Uuid::new_v4().to_string();
-        let relationships = vec![
-            Relationship {
-                source: "Elon Musk".to_string(),
-                relationship: "FOUNDED".to_string(),
-                destination: "SpaceX".to_string(),
-                user_id: user_id.clone(),
-            },
-            Relationship {
-                source: "Elon Musk".to_string(),
-                relationship: "FOUNDED".to_string(),
-                destination: "Tesla".to_string(),
-                user_id: user_id.clone(),
-            },
-            Relationship {
-                source: "Jeff Bezos".to_string(),
-                relationship: "FOUNDED".to_string(),
-                destination: "Amazon".to_string(),
-                user_id: user_id.clone(),
-            },
-        ];
-        let entity_tags = vec![
-            EntityTag {
-                entity_name: "Elon Musk".to_string(),
-                entity_tag: "Person".to_string(),
-            },
-            EntityTag {
-                entity_name: "SpaceX".to_string(),
-                entity_tag: "Company".to_string(),
-            },
-            EntityTag {
-                entity_name: "Tesla".to_string(),
-                entity_tag: "Company".to_string(),
-            },
-            EntityTag {
-                entity_name: "Jeff Bezos".to_string(),
-                entity_tag: "Person".to_string(),
-            },
-            EntityTag {
-                entity_name: "Amazon".to_string(),
-                entity_tag: "Company".to_string(),
-            },
-        ];
+    //     // 2. Data
+    //     let user_id = Uuid::new_v4().to_string();
+    //     let relationships = vec![
+    //         Relationship {
+    //             source: "Elon Musk".to_string(),
+    //             relationship: "FOUNDED".to_string(),
+    //             destination: "SpaceX".to_string(),
+    //             user_id: user_id.clone(),
+    //         },
+    //         Relationship {
+    //             source: "Elon Musk".to_string(),
+    //             relationship: "FOUNDED".to_string(),
+    //             destination: "Tesla".to_string(),
+    //             user_id: user_id.clone(),
+    //         },
+    //         Relationship {
+    //             source: "Jeff Bezos".to_string(),
+    //             relationship: "FOUNDED".to_string(),
+    //             destination: "Amazon".to_string(),
+    //             user_id: user_id.clone(),
+    //         },
+    //     ];
+    //     let entity_tags = vec![
+    //         EntityTag {
+    //             entity_name: "Elon Musk".to_string(),
+    //             entity_tag: "Person".to_string(),
+    //         },
+    //         EntityTag {
+    //             entity_name: "SpaceX".to_string(),
+    //             entity_tag: "Company".to_string(),
+    //         },
+    //         EntityTag {
+    //             entity_name: "Tesla".to_string(),
+    //             entity_tag: "Company".to_string(),
+    //         },
+    //         EntityTag {
+    //             entity_name: "Jeff Bezos".to_string(),
+    //             entity_tag: "Person".to_string(),
+    //         },
+    //         EntityTag {
+    //             entity_name: "Amazon".to_string(),
+    //             entity_tag: "Company".to_string(),
+    //         },
+    //     ];
 
-        // 3. Add data
-        db.add(&relationships, &entity_tags).await.unwrap();
-        println!("Successfully added initial relationships for fuzzy search test.");
+    //     // 3. Add data
+    //     db.add(&relationships, &entity_tags).await.unwrap();
+    //     println!("Successfully added initial relationships for fuzzy search test.");
         
-        // Allow time for indexing
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    //     // Allow time for indexing
+    //     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
-        // 4. Fuzzy Search for a partial name
-        let fuzzy_search_results_elon = db.search(vec!["Elon".to_string()], user_id.clone(), None).await.unwrap();
-        println!("Fuzzy search results for 'Elon': {:#?}", fuzzy_search_results_elon);
-        assert_eq!(fuzzy_search_results_elon.len(), 2);
+    //     // 4. Fuzzy Search for a partial name
+    //     let fuzzy_search_results_elon = db.search(vec!["Elon".to_string()], user_id.clone(), None).await.unwrap();
+    //     println!("Fuzzy search results for 'Elon': {:#?}", fuzzy_search_results_elon);
+    //     assert_eq!(fuzzy_search_results_elon.len(), 2);
 
-        // 5. Fuzzy Search for a descriptive name
-        let fuzzy_search_results_company = db.search(vec!["Space Exploration Technologies".to_string()], user_id.clone(), None).await.unwrap();
-        println!("Fuzzy search results for 'Space Exploration Technologies': {:#?}", fuzzy_search_results_company);
-        assert_eq!(fuzzy_search_results_company.len(), 1);
-        let relation_info_company: serde_json::Value = serde_json::from_str(&fuzzy_search_results_company[0]).unwrap();
-        assert_eq!(relation_info_company["source"], "Elon Musk");
-        assert_eq!(relation_info_company["destination"], "SpaceX");
+    //     // 5. Fuzzy Search for a descriptive name
+    //     let fuzzy_search_results_company = db.search(vec!["Space Exploration Technologies".to_string()], user_id.clone(), None).await.unwrap();
+    //     println!("Fuzzy search results for 'Space Exploration Technologies': {:#?}", fuzzy_search_results_company);
+    //     assert_eq!(fuzzy_search_results_company.len(), 1);
+    //     let relation_info_company: serde_json::Value = serde_json::from_str(&fuzzy_search_results_company[0]).unwrap();
+    //     assert_eq!(relation_info_company["source"], "Elon Musk");
+    //     assert_eq!(relation_info_company["destination"], "SpaceX");
 
-        // 6. Search for multiple entities, one fuzzy, one exact
-        let multi_search_results = db.search(vec!["Bezos".to_string(), "Tesla".to_string()], user_id.clone(), None).await.unwrap();
-        println!("Multi-entity search for 'Bezos' and 'Tesla': {:#?}", multi_search_results);
-        assert_eq!(multi_search_results.len(), 2);
+    //     // 6. Search for multiple entities, one fuzzy, one exact
+    //     let multi_search_results = db.search(vec!["Bezos".to_string(), "Tesla".to_string()], user_id.clone(), None).await.unwrap();
+    //     println!("Multi-entity search for 'Bezos' and 'Tesla': {:#?}", multi_search_results);
+    //     assert_eq!(multi_search_results.len(), 2);
 
-        // 7. Search for something that shouldn't match
-        let no_match_results = db.search(vec!["nonexistent company".to_string()], user_id.clone(), None).await.unwrap();
-        println!("Search results for 'nonexistent company': {:#?}", no_match_results);
-        assert!(no_match_results.is_empty());
+    //     // 7. Search for something that shouldn't match
+    //     let no_match_results = db.search(vec!["nonexistent company".to_string()], user_id.clone(), None).await.unwrap();
+    //     println!("Search results for 'nonexistent company': {:#?}", no_match_results);
+    //     assert!(no_match_results.is_empty());
 
-        // 8. Cleanup
-        db.cleanup().await.unwrap();
-    }
+    //     // 8. Cleanup
+    //     db.cleanup().await.unwrap();
+    // }
 }

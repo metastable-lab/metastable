@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_openai::types::{FunctionCall, FunctionObject};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 use voda_runtime::ExecutableFunctionCall;
 
 use crate::llm::LlmConfig;
@@ -18,7 +19,7 @@ pub struct RelationshipsToolcall {
     relationships: Vec<SingleRelationshipToolcall>,
 }
 
-pub fn get_extract_relationship_config(user_id: String) -> LlmConfig {
+pub fn get_extract_relationship_config(user_id: String, entity_type_map: std::collections::HashMap<String, String>, data: String) -> (LlmConfig, String) {
     let system_prompt = format!(
         r#"You are an advanced algorithm designed to extract structured information from text to construct knowledge graphs. Your goal is to capture comprehensive and accurate information. Follow these key principles:
 
@@ -40,6 +41,8 @@ Strive to construct a coherent and easily understandable knowledge graph by esht
 Adhere strictly to these guidelines to ensure high-quality knowledge graph extraction."#,
         user_id
     );
+
+    let user_prompt = format!("List of entities: {:?}. \n\nText: {}", entity_type_map.keys().collect::<Vec<_>>(), data);
 
     let establish_relations_tool = FunctionObject {
         name: "establish_relations".to_string(),
@@ -70,12 +73,14 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
 
     let tools = vec![establish_relations_tool];
 
-    LlmConfig {
-        model: "x-ai/grok-3-mini".to_string(),
+    let config = LlmConfig {
+        model: "mistralai/ministral-8b".to_string(),
         temperature: 0.7,
         max_tokens: 5000,
         system_prompt, tools,
-    }
+    };
+
+    (config, user_prompt)
 }
 
 impl ExecutableFunctionCall for RelationshipsToolcall {

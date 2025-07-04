@@ -17,11 +17,13 @@ pub struct EntitiesToolcall {
     entities: Vec<SingleEntityToolcall>,
 }
 
-pub fn get_extract_entity_config(user_id: String) -> LlmConfig {
+pub fn get_extract_entity_config(user_id: String, data: String) -> (LlmConfig, String) {
     let system_prompt = format!(
         "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
         user_id
     );
+
+    let user_prompt = format!("{{\"role\": \"user\", \"content\": \"{}\"}}", data);
 
     let extract_entity_tool = FunctionObject {
         name: "extract_entities".to_string(),
@@ -51,12 +53,14 @@ pub fn get_extract_entity_config(user_id: String) -> LlmConfig {
 
     let tools = vec![extract_entity_tool];
 
-    LlmConfig {
+    let config = LlmConfig {
         model: "mistralai/ministral-8b".to_string(),
         temperature: 0.7,
         max_tokens: 5000,
         system_prompt, tools,
-    }
+    };
+
+    (config, user_prompt)
 }
 
 impl ExecutableFunctionCall for EntitiesToolcall {
