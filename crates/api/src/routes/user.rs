@@ -117,7 +117,7 @@ async fn register(
 
     let mut user = User::default();
     user.user_id = payload.user_id.clone();
-    user.user_aka = CryptoHash::random().to_hex_string();
+    user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
     let _ = user.try_claim_free_balance(100); // infallable
     let user = user.create(&mut *tx).await?;
