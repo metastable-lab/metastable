@@ -10,7 +10,7 @@ use voda_common::EnvVars;
 use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 
-use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character, CharacterFeature};
+use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
 
 #[derive(Clone)]
 pub struct RoleplayRuntimeClient {
@@ -98,9 +98,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         // 3. upsert characters
         let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
-        for mut preload_char in preload_chars {
-            preload_char.features = vec![ CharacterFeature::CharacterCreation ];
-
+        for preload_char in preload_chars {
             match Character::find_one_by_criteria(
                 QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone()))?,
                 &mut *tx
@@ -113,6 +111,10 @@ impl RuntimeClient for RoleplayRuntimeClient {
                     }
                     if db_char.features != preload_char.features {
                         db_char.features = preload_char.features.clone();
+                        updated = true;
+                    }
+                    if db_char.version != preload_char.version {
+                        db_char.version = preload_char.version;
                         updated = true;
                     }
 
