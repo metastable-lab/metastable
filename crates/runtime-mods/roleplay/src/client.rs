@@ -51,43 +51,52 @@ impl RuntimeClient for RoleplayRuntimeClient {
     fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
     fn get_memory(&self) -> &Arc<RoleplayRawMemory> { &self.memory }
 
-    async fn preload(db: Arc<PgPool>) -> Result<()> { 
+    async fn preload(db: Arc<PgPool>) -> Result<()> {
         tracing::info!("[RoleplayRuntimeClient::preload] Preloading roleplay runtime client");
         let mut tx = db.begin().await?;
 
-        // 1. upsert system config
-        let preload_config = preload::get_system_configs_for_char_creation();
-        let _system_config_id = match SystemConfig::find_one_by_criteria(
-            QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
-            &mut *tx
-        ).await? {
-            Some(mut db_config) => {
-                if db_config.system_prompt != preload_config.system_prompt {
-                    db_config.system_prompt = preload_config.system_prompt;
-                    db_config = db_config.update(&mut *tx).await?;
-                }
+        // 1. upsert system configs
+        let preload_configs = vec![
+            preload::get_system_configs_for_char_creation(),
+            preload::get_system_configs_for_roleplay(),
+        ];
+        
+        for preload_config in preload_configs {
+            match SystemConfig::find_one_by_criteria(
+                QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
+                &mut *tx
+            ).await? {
+                Some(mut db_config) => {
+                    let mut needs_update = false;
+                    if db_config.system_prompt != preload_config.system_prompt {
+                        db_config.system_prompt = preload_config.system_prompt.clone();
+                        needs_update = true;
+                    }
 
-                if db_config.openai_model != preload_config.openai_model {
-                    db_config.openai_model = preload_config.openai_model;
-                    db_config = db_config.update(&mut *tx).await?;
-                }
+                    if db_config.openai_model != preload_config.openai_model {
+                        db_config.openai_model = preload_config.openai_model.clone();
+                        needs_update = true;
+                    }
 
-                if db_config.openai_temperature != preload_config.openai_temperature {
-                    db_config.openai_temperature = preload_config.openai_temperature;
-                    db_config = db_config.update(&mut *tx).await?;
-                }
+                    if db_config.openai_temperature != preload_config.openai_temperature {
+                        db_config.openai_temperature = preload_config.openai_temperature;
+                        needs_update = true;
+                    }
 
-                if db_config.openai_max_tokens != preload_config.openai_max_tokens {
-                    db_config.openai_max_tokens = preload_config.openai_max_tokens;
-                    db_config = db_config.update(&mut *tx).await?;
+                    if db_config.openai_max_tokens != preload_config.openai_max_tokens {
+                        db_config.openai_max_tokens = preload_config.openai_max_tokens;
+                        needs_update = true;
+                    }
+
+                    if needs_update {
+                        db_config.update(&mut *tx).await?;
+                    }
                 }
-                db_config.id
-            }
-            None => {
-                let new_config = preload_config.create(&mut *tx).await?;
-                new_config.id
-            }
-        };
+                None => {
+                    preload_config.create(&mut *tx).await?;
+                }
+            };
+        }
 
         // 2. find admin user
         let admin_user = User::find_one_by_criteria(

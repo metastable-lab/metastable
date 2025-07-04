@@ -10,7 +10,7 @@ mod env;
 pub use toolcall::ExecutableFunctionCall;
 pub use output_client::OutputClient;
 pub use runtime_client::{LLMRunResponse, RuntimeClient};
-pub use user::{UserRole, User, UserUsage, UserUrl, UserReferral, UserBadge};
+pub use user::{UserRole, User, UserUsage, UserUrl, UserReferral, UserBadge, UserFollow};
 pub use system_config::SystemConfig;
 pub use function_executor::FunctionExecutor;
 pub use env::RuntimeEnv;

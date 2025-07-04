@@ -1,5 +1,5 @@
 {
-  "resource_version": 106,
+  "resource_version": 16,
   "metadata": {
     "version": 3,
     "sources": [
@@ -258,15 +258,13 @@
                     "prompts_first_message",
                     "prompts_personality",
                     "prompts_scenario",
+                    "status",
                     "tags",
                     "version"
                   ],
                   "filter": {
                     "creator": {
                       "_eq": "X-Hasura-User-Id"
-                    },
-                    "status": {
-                      "_eq": "Draft"
                     }
                   },
                   "check": null
@@ -569,6 +567,85 @@
           },
           {
             "table": {
+              "name": "user_follows",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "user",
+                "using": {
+                  "foreign_key_constraint_on": "follower_id"
+                }
+              },
+              {
+                "name": "userByFollowingId",
+                "using": {
+                  "foreign_key_constraint_on": "following_id"
+                }
+              }
+            ],
+            "insert_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "check": {
+                    "follower_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "columns": []
+                },
+                "comment": ""
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "anyone",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "follower_id",
+                    "following_id",
+                    "id"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              },
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "follower_id",
+                    "following_id",
+                    "id"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ],
+            "delete_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "filter": {
+                    "follower_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "user_referrals",
               "schema": "public"
             },
@@ -627,7 +704,8 @@
                     "user_id": {
                       "_eq": "X-Hasura-User-Id"
                     }
-                  }
+                  },
+                  "allow_aggregations": true
                 },
                 "comment": ""
               }
@@ -846,6 +924,18 @@
                 }
               },
               {
+                "name": "userFollowsByFollowingId",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "following_id",
+                    "table": {
+                      "name": "user_follows",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "userReferralsByUserId",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -864,6 +954,18 @@
                     "column": "user_id",
                     "table": {
                       "name": "user_badges",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "user_follows",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "follower_id",
+                    "table": {
+                      "name": "user_follows",
                       "schema": "public"
                     }
                   }
@@ -911,10 +1013,11 @@
                 "role": "anyone",
                 "permission": {
                   "columns": [
+                    "avatar",
+                    "bio",
                     "id",
                     "user_aka",
-                    "avatar",
-                    "bio"
+                    "user_id"
                   ],
                   "filter": {},
                   "allow_aggregations": true

@@ -2,6 +2,7 @@ mod badge;
 mod usage;
 mod url;
 mod referral;
+mod follow;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub use usage::UserUsage;
 pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
+pub use follow::UserFollow;
 
 pub const BALANCE_CAP: i64 = 500;
 

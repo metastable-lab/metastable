@@ -6,9 +6,10 @@ use axum::{
     http::StatusCode, middleware, 
     routing::post, Json, Router
 };
+use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
 use voda_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use voda_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User};
+use voda_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
 
 use crate::{
     ensure_account, 
@@ -40,6 +41,10 @@ pub fn user_routes() -> Router<GlobalState> {
         )
         .route("/user/url/create",
             post(create_url)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+        .route("/user/follow",
+            post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -227,4 +232,25 @@ async fn create_url(
     Ok(AppSuccess::new(StatusCode::OK, "URL created successfully", json!({
         "url_id": url.id,
     })))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FollowRequest {
+    pub following_id: Uuid,
+}
+
+async fn follow(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<FollowRequest>,
+) -> Result<AppSuccess, AppError> {
+    let follower = ensure_account(&state.roleplay_client, &user_id_str, 0).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let follow = UserFollow::new(follower.id, payload.following_id);
+    follow.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
 }
