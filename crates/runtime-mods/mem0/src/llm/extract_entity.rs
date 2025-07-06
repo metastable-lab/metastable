@@ -4,26 +4,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use voda_runtime::ExecutableFunctionCall;
 
-use crate::llm::LlmConfig;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SingleEntityToolcall {
-    entity: String,
-    entity_type: String,
-}
+use crate::{llm::LlmConfig, EntityTag};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntitiesToolcall {
-    entities: Vec<SingleEntityToolcall>,
+    pub entities: Vec<EntityTag>,
 }
 
-pub fn get_extract_entity_config(user_id: String, data: String) -> (LlmConfig, String) {
+pub fn get_extract_entity_config(user_id: String, content: String) -> (LlmConfig, String) {
     let system_prompt = format!(
         "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
         user_id
     );
-
-    let user_prompt = format!("{{\"role\": \"user\", \"content\": \"{}\"}}", data);
 
     let extract_entity_tool = FunctionObject {
         name: "extract_entities".to_string(),
@@ -36,10 +28,10 @@ pub fn get_extract_entity_config(user_id: String, data: String) -> (LlmConfig, S
                     "items": {
                         "type": "object",
                         "properties": {
-                            "entity": {"type": "string", "description": "The name or identifier of the entity."},
-                            "entity_type": {"type": "string", "description": "The type or category of the entity."},
+                            "entity_name": {"type": "string", "description": "The name or identifier of the entity."},
+                            "entity_tag": {"type": "string", "description": "The type or category of the entity."},
                         },
-                        "required": ["entity", "entity_type"],
+                        "required": ["entity_name", "entity_tag"],
                         "additionalProperties": false,
                     },
                     "description": "An array of entities with their types.",
@@ -60,7 +52,7 @@ pub fn get_extract_entity_config(user_id: String, data: String) -> (LlmConfig, S
         system_prompt, tools,
     };
 
-    (config, user_prompt)
+    (config, content)
 }
 
 impl ExecutableFunctionCall for EntitiesToolcall {
@@ -69,11 +61,10 @@ impl ExecutableFunctionCall for EntitiesToolcall {
     }
 
     fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        let entities: Vec<SingleEntityToolcall> = serde_json::from_str(&function_call.arguments)?;
-        Ok(Self { entities })
+        Ok(serde_json::from_str(&function_call.arguments)?)
     }
 
     async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self.entities)?)
+        Ok(serde_json::to_string(&self)?)
     }
 }

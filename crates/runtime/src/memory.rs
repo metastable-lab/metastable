@@ -77,6 +77,27 @@ pub trait Message: Clone + Send + Sync + 'static {
             })
             .collect()
     }
+
+    fn pack_flat_messages(messages: &[Self]) -> Result<String> {
+        let mut flat_messages = Vec::new();
+        for message in messages {
+            match message.role() {
+                MessageRole::System => {
+                    flat_messages.push(format!("system: {}", message.text_content().unwrap_or_default()));
+                }
+                MessageRole::User => {
+                    flat_messages.push(format!("user: {}", message.text_content().unwrap_or_default()));
+                }
+                MessageRole::Assistant => {
+                    flat_messages.push(format!("assistant: {}", message.text_content().unwrap_or_default()));
+                }
+                MessageRole::ToolCall => {
+                    flat_messages.push(format!("tool_call: {}", message.text_content().unwrap_or_default()));
+                }
+            }
+        }
+        Ok(flat_messages.join("\n"))
+    }
 }
 
 #[async_trait::async_trait]
@@ -86,17 +107,11 @@ pub trait Memory: Clone + Send + Sync + 'static {
     async fn initialize(&self) -> Result<()>;
 
     async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
-    async fn get_one(&self, message_id: &Uuid) -> Result<Option<Self::MessageType>>;
-    async fn get_all(
-        &self, user_id: &Uuid, limit: u64, offset: u64
-    ) -> Result<Vec<Self::MessageType>>;
-
-    async fn search(&self, message: &Self::MessageType, limit: u64, offset: u64) -> Result<
+    async fn search(&self, message: &Self::MessageType, limit: u64) -> Result<
         (Vec<Self::MessageType>, SystemConfig)
     >;
 
     async fn update(&self, messages: &[Self::MessageType]) -> Result<()>;
     async fn delete(&self, message_ids: &[Uuid]) -> Result<()>;
-
     async fn reset(&self, user_id: &Uuid) -> Result<()>;
 }

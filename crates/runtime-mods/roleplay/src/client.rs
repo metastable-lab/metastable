@@ -56,7 +56,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
         let (messages, system_config) = self.memory
-            .search(&message, 100, 0).await?;
+            .search(&message, 100).await?;
 
         let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
@@ -82,13 +82,13 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
     async fn on_rollback(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
         let (mut messages, system_config) = self.memory
-            .search(&message, 100, 0).await?;
+            .search(&message, 100).await?;
         let mut last_assistant_message = messages.pop()
             .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last message found"))?;
 
         let response = self.send_llm_request(&system_config, &messages).await?;
         last_assistant_message.content = response.content.clone();
-        last_assistant_message.update(&*self.db).await?;
+        self.memory.update(&[last_assistant_message]).await?;
 
         let user_usage = UserUsage::new(
             message.owner.clone(),

@@ -1,52 +1,61 @@
-use anyhow::Result;
-use neo4rs::{query, Row};
+mod search;
+
 use std::collections::{HashMap, HashSet};
 
-use crate::relation::{EntityTag, Relationship};
-use crate::GraphDatabase;
+use anyhow::Result;
+use neo4rs::query;
 
-impl GraphDatabase {
-    pub async fn add(
-        &self,
-        relationships: &[Relationship],
-        entity_tags: &[EntityTag],
-    ) -> Result<Vec<Row>> {
-        let entity_tags = EntityTag::batch_into_hashmap(entity_tags);
+use crate::{Mem0Engine, EMBEDDING_DIMS};
+use crate::raw_message::GraphEntities;
+pub use crate::graph::search::RelationInfo;
 
-        // 1. Collect unique entity names
+impl Mem0Engine {
+    pub async fn graph_db_initialize(&self) -> Result<()> {
+        let mut tx = self.get_graph_db().start_txn().await?;
+        
+        let create_vector_index = format!(
+            "CREATE VECTOR INDEX memzero ON :Entity(embedding) WITH CONFIG {{'dimension': {}, 'capacity': 1000, 'metric': 'cos'}};",
+            EMBEDDING_DIMS
+        );
+        tx.run(query(&create_vector_index)).await?;
+
+        let create_user_id_index = "CREATE INDEX ON :Entity(user_id);";
+        tx.run(query(create_user_id_index)).await?;
+
+        let create_entity_index = "CREATE INDEX ON :Entity;";
+        tx.run(query(create_entity_index)).await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn graph_db_add(&self, message: &GraphEntities) -> Result<usize> {
+        let user_id = message.user_id;
+        let agent_id = message.agent_id;
+
         let mut entity_names = HashSet::new();
-        for r in relationships {
-            entity_names.insert(r.source.clone());
-            entity_names.insert(r.destination.clone());
+        for relationship in &message.relationships {
+            entity_names.insert(relationship.source.clone());
+            entity_names.insert(relationship.destination.clone());
         }
         let entity_names: Vec<String> = entity_names.into_iter().collect();
-        if entity_names.is_empty() {
-            return Ok(vec![]);
-        }
+        if entity_names.is_empty() { return Ok(0); }
 
-        // 2. Embed all entities
         let embeddings = self.embed(entity_names.clone()).await?;
-        let name_to_embedding: HashMap<String, Vec<f32>> =
-            entity_names.iter().cloned().zip(embeddings).collect();
+        let name_to_embedding: HashMap<String, Vec<f32>> = entity_names.iter().cloned().zip(embeddings).collect();
 
-        // 3. Search for existing entities
         let mut name_to_id = HashMap::new();
-        let user_id = &relationships[0].user_id; // Assume all have same user_id
         for name in &entity_names {
             let embedding = name_to_embedding.get(name).unwrap();
-            let id = self
-                .search_entity_with_similarity(embedding, user_id, None)
-                .await?;
-            if let Some(id_val) = id {
+            let id = self.graph_db_search_entity_with_similarity(embedding, &user_id, agent_id).await?;
+                if let Some(id_val) = id {
                 name_to_id.insert(name.clone(), id_val);
             }
         }
 
-        // 4. Start transaction and add relationships
-        let mut tx = self.db.start_txn().await?;
-        let mut results = Vec::new();
-
-        for relationship in relationships {
+        let mut tx = self.get_graph_db().start_txn().await?;
+        let mut count = 0;
+        for relationship in &message.relationships {
             let source_id = name_to_id.get(&relationship.source);
             let dest_id = name_to_id.get(&relationship.destination);
 
@@ -66,7 +75,7 @@ impl GraphDatabase {
                         .param("dest_id", dest_id.clone())
                 }
                 (Some(source_id), None) => {
-                    let dest_type = entity_tags
+                    let dest_type = message.entity_tags
                         .get(&relationship.destination)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
@@ -82,10 +91,10 @@ impl GraphDatabase {
                         .param("source_id", source_id.clone())
                         .param("destination_name", relationship.destination.clone())
                         .param("destination_embedding", dest_embed.clone())
-                        .param("user_id", relationship.user_id.clone())
+                        .param("user_id", user_id.clone().to_string())
                 }
                 (None, Some(dest_id)) => {
-                    let source_type = entity_tags
+                    let source_type = message.entity_tags
                         .get(&relationship.source)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
@@ -101,14 +110,14 @@ impl GraphDatabase {
                         .param("dest_id", dest_id.clone())
                         .param("source_name", relationship.source.clone())
                         .param("source_embedding", source_embed.clone())
-                        .param("user_id", relationship.user_id.clone())
+                        .param("user_id", user_id.clone().to_string())
                 }
                 (None, None) => {
-                    let source_type = entity_tags
+                    let source_type = message.entity_tags
                         .get(&relationship.source)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
-                    let dest_type = entity_tags
+                    let dest_type = message.entity_tags
                         .get(&relationship.destination)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
@@ -126,17 +135,41 @@ impl GraphDatabase {
                         .param("dest_name", relationship.destination.clone())
                         .param("source_embedding", source_embed.clone())
                         .param("dest_embedding", dest_embed.clone())
-                        .param("user_id", relationship.user_id.clone())
+                        .param("user_id", user_id.clone().to_string())
                 }
             };
+
             let mut result = tx.execute(query).await?;
-            while let Ok(Some(row)) = result.next(&mut tx.handle()).await {
-                results.push(row);
-            }
+            while let Ok(Some(_)) = result.next(&mut tx.handle()).await { count += 1; }
         }
 
         tx.commit().await?;
 
-        Ok(results)
+        Ok(count)
+    }
+
+    pub async fn graph_db_delete(&self, message: &GraphEntities) -> Result<usize> {
+        let mut count = 0;
+        let user_id = message.user_id;
+        let mut tx = self.get_graph_db().start_txn().await?;
+        for relationship in &message.relationships {
+            let cypher = format!(r#"
+                MATCH (n:Entity {{name: $source_name, user_id: $user_id}})
+                -[r:{}]->
+                (m:Entity {{name: $dest_name, user_id: $user_id}})
+                DELETE r
+            "#, relationship.relationship);
+
+            let query = query(&cypher)
+                .param("source_name", relationship.source.clone())
+                .param("dest_name", relationship.destination.clone())
+                .param("user_id", user_id.clone().to_string());
+            
+            let mut result = tx.execute(query).await?;
+            while let Ok(Some(_)) = result.next(&mut tx.handle()).await { count += 1; }
+        }
+
+        tx.commit().await?;
+        Ok(count)
     }
 }

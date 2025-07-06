@@ -4,23 +4,25 @@ use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
 use voda_database::{
-    SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery
+    SqlxCrud, QueryCriteria, SqlxFilterQuery
 };
-use voda_runtime::{Memory, SystemConfig};
+use voda_runtime::{Memory, MessageRole, MessageType, SystemConfig};
+use voda_runtime_mem0::{Mem0Engine, Mem0Messages};
 
 use crate::RoleplaySession;
 
 use super::message::RoleplayMessage;
 
-
 #[derive(Clone)]
 pub struct RoleplayRawMemory {
     db: Arc<PgPool>,
+    mem0: Arc<Mem0Engine>,
 }
 
 impl RoleplayRawMemory {
-    pub fn new(db: Arc<PgPool>) -> Self {
-        Self { db }
+    pub async fn new(db: Arc<PgPool>) -> Self {
+        let mem0 = Mem0Engine::new().await.unwrap();
+        Self { db, mem0: Arc::new(mem0) }
     }
 }
 
@@ -28,7 +30,10 @@ impl RoleplayRawMemory {
 impl Memory for RoleplayRawMemory {
     type MessageType = RoleplayMessage;
 
-    async fn initialize(&self) -> Result<()> { Ok(()) }
+    async fn initialize(&self) -> Result<()> {
+        self.mem0.initialize().await?;
+        Ok(())
+    }
 
     async fn add_messages(&self, messages: &[RoleplayMessage]) -> Result<()> {
         if messages.len() == 0 {
@@ -50,33 +55,43 @@ impl Memory for RoleplayRawMemory {
             let created_m = m.create(&mut *tx).await?;
             session.append_message_to_history(&created_m.id, &mut *tx).await?;
         }
-
+        let character = session.fetch_character(&mut *tx).await?
+            .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Character not found"))?;
         tx.commit().await?;
+
+        let mem0_messages = messages.iter().map(|m| 
+                match m.role {
+                    MessageRole::User => {
+                        Mem0Messages {
+                            id: m.id,
+                            user_id: m.owner,
+                            agent_id: Some(character.id.clone()),
+                            content_type: m.content_type.clone(),
+                            content: m.content.clone(),
+                            created_at: m.created_at,
+                            updated_at: m.updated_at,
+                        }       
+                    }
+                    MessageRole::Assistant => {
+                        Mem0Messages {
+                            id: m.id,
+                            user_id: character.id.clone(),
+                            agent_id: Some(character.id.clone()),
+                            content_type: m.content_type.clone(),
+                            content: m.content.clone(),
+                            created_at: m.created_at,
+                            updated_at: m.updated_at,
+                        }
+                    },
+                    _ => unimplemented!("RoleplayRawMemory::add_messages: {:?}", m.role)
+                }
+            ).collect::<Vec<_>>();
+
+        self.mem0.add_messages(&mem0_messages).await?;
         Ok(())
     }
 
-    async fn get_one(&self, message_id: &Uuid) -> Result<Option<RoleplayMessage>> {
-        let message = RoleplayMessage::find_one_by_criteria(
-            QueryCriteria::new()
-                .add_valued_filter("id", "=", message_id.clone())?,
-            &*self.db
-        ).await?;
-        Ok(message)
-    }
-
-    async fn get_all(&self, user_id: &Uuid, limit: u64, offset: u64) -> Result<Vec<RoleplayMessage>> {
-        let messages = RoleplayMessage::find_by_criteria(
-            QueryCriteria::new()
-                .add_valued_filter("owner", "=", user_id.clone())?
-                .order_by("created_at", OrderDirection::Desc)?
-                .limit(limit as i64)?
-                .offset(offset as i64)?,
-            &*self.db
-        ).await?;
-        Ok(messages)
-    }
-
-    async fn search(&self, message: &RoleplayMessage, _limit: u64, _offset: u64) -> Result<
+    async fn search(&self, message: &RoleplayMessage, _limit: u64) -> Result<
         (Vec<RoleplayMessage>, SystemConfig)
     > {
         let mut tx = self.db.begin().await?;
@@ -97,7 +112,61 @@ impl Memory for RoleplayRawMemory {
         let system_message = RoleplayMessage::system(&session, &system_config, &character, &user);
         let first_message = RoleplayMessage::first_message(&session, &character, &user);
         let mut messages = vec![system_message, first_message];
-        messages.extend(history);
+
+        let mem0_query_for_user = Mem0Messages {
+            id: message.id,
+            user_id: message.owner,
+            agent_id: Some(character.id.clone()),
+            content_type: message.content_type.clone(),
+            content: message.content.clone(),
+            created_at: message.created_at,
+            updated_at: message.updated_at,
+        };
+        let mem0_query_for_character = Mem0Messages {
+            id: message.id,
+            user_id: character.id.clone(),
+            agent_id: Some(character.id.clone()),
+            content_type: message.content_type.clone(),
+            content: message.content.clone(),
+            created_at: message.created_at,
+            updated_at: message.updated_at,
+        };
+        let (mem0_messages_for_user, _) = self.mem0.search(&mem0_query_for_user, 100).await?;
+        let (mem0_messages_for_character, _) = self.mem0.search(&mem0_query_for_character, 100).await?;
+
+
+        let character_related_memory_content = format!("{} \n\n {}", mem0_messages_for_character[0].content.clone(), mem0_messages_for_character[1].content.clone());
+        let character_related_memory = RoleplayMessage {
+            id: Uuid::new_v4(),
+            session_id: message.session_id.clone(),
+            owner: message.owner,
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: character_related_memory_content,
+            created_at: message.created_at,
+            updated_at: message.updated_at,
+        };
+
+        let user_related_memory_content = format!("{} \n\n {}", mem0_messages_for_user[0].content.clone(), mem0_messages_for_user[1].content.clone());
+        let user_related_memory = RoleplayMessage {
+            id: Uuid::new_v4(),
+            session_id: message.session_id.clone(),
+            owner: message.owner,
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: user_related_memory_content,
+            created_at: message.created_at,
+            updated_at: message.updated_at,
+        };
+
+        messages.push(character_related_memory);
+        messages.push(user_related_memory);
+
+        if history.len() <= 10 {
+            messages.extend(history.iter().cloned());
+        } else {
+            messages.extend(history[history.len() - 10..].iter().cloned());
+        }
         messages.push(message.clone());
 
         tx.commit().await?;

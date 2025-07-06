@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     let db_pool = Arc::new(connect(false).await.clone());
 
     let (executor, _execution_queue) = mpsc::channel(100);
-    let memory = RoleplayRawMemory::new(db_pool.clone());
+    let memory = RoleplayRawMemory::new(db_pool.clone()).await;
     let client = RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), executor).await;
 
     let global_state = GlobalState {

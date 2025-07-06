@@ -1,31 +1,26 @@
 use anyhow::Result;
 use neo4rs::query;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
 
-use crate::{
-    Embedding,
-    GraphDatabase,
+use crate::{Embedding, Mem0Engine, 
+    DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_SEARCH_LIMIT
 };
 
-pub const VECTOR_SIMILARITY_THRESHOLD: f32 = 0.9;
-pub const TEXT_SIMILARITY_THRESHOLD: f32 = 0.7;
-pub const SEARCH_LIMIT: i32 = 100;
-
-#[derive(Debug, Serialize)]
-struct RelationInfo {
-    source: String,
-    source_id: i64,
-    relationship: String,
-    relation_id: i64,
-    destination: String,
-    destination_id: i64,
-    similarity: f64,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RelationInfo {
+    pub source: String,
+    pub source_id: i64,
+    pub relationship: String,
+    pub relation_id: i64,
+    pub destination: String,
+    pub destination_id: i64,
+    pub similarity: f64,
 }
 
-impl GraphDatabase {
-    pub async fn search_entity_with_similarity(&self,
-        embedding: &Embedding,
-        user_id: &str, agent_id: Option<String>
+impl Mem0Engine {
+    pub async fn graph_db_search_entity_with_similarity(&self,
+        embedding: &Embedding, user_id: &Uuid, agent_id: Option<Uuid>
     ) -> Result<Option<String>> {
         let agent_id_filter = if let Some(agent_id) = agent_id {
             format!("AND n.agent_id = '{}'", agent_id)
@@ -39,15 +34,15 @@ impl GraphDatabase {
             WITH node AS candidate, similarity
             WHERE candidate.user_id = $user_id
             {agent_id_filter}
-            AND similarity >= {VECTOR_SIMILARITY_THRESHOLD}
+            AND similarity >= {DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD}
             RETURN id(candidate);
         "#);
 
         let q = query(&q)
             .param("source_embedding", embedding.clone())
-            .param("user_id", user_id);
+            .param("user_id", user_id.to_string());
 
-        let mut result = self.db.execute(q).await?;
+        let mut result = self.get_graph_db().execute(q).await?;
         let mut results = Vec::new();
         while let Some(row) = result.next().await? {
             results.push(row);
@@ -60,11 +55,11 @@ impl GraphDatabase {
         Ok(maybe_id)
     }
 
-    pub async fn search(&self,
+    pub async fn graph_db_search(&self,
         nodes: Vec<String>,
-        user_id: String,
-        agent_id: Option<String>
-    ) -> Result<Vec<String>> {
+        user_id: Uuid,
+        agent_id: Option<Uuid>
+    ) -> Result<Vec<RelationInfo>> {
         let agent_id_filter = if let Some(agent_id) = agent_id {
             format!("AND found_node.agent_id = '{}'", agent_id)
         } else {
@@ -80,7 +75,7 @@ impl GraphDatabase {
                 CALL vector_search.search("memzero", 1, $embedding)
                 YIELD node AS found_node, similarity
                 WITH found_node, similarity
-                WHERE found_node.user_id = $user_id {agent_id_filter} AND similarity >= {SIMILARITY_THRESHOLD}
+                WHERE found_node.user_id = $user_id {agent_id_filter} AND similarity >= {DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD}
                 MATCH (found_node)-[r]-(b:Entity)
                 WITH r, similarity, startNode(r) AS start, endNode(r) AS end
                 RETURN
@@ -92,18 +87,16 @@ impl GraphDatabase {
                     id(end) AS destination_id,
                     similarity
                 ORDER BY similarity DESC
-                LIMIT {SEARCH_LIMIT}
+                LIMIT {DEFAULT_GRAPH_DB_SEARCH_LIMIT}
             "#,
-            agent_id_filter = agent_id_filter,
-            SIMILARITY_THRESHOLD = TEXT_SIMILARITY_THRESHOLD,
-            SEARCH_LIMIT = SEARCH_LIMIT
+            agent_id_filter = agent_id_filter
             );
 
             let q = query(&query_str)
                 .param("embedding", embedding)
-                .param("user_id", user_id.clone());
+                .param("user_id", user_id.to_string());
 
-            let mut result = self.db.execute(q).await?;
+            let mut result = self.get_graph_db().execute(q).await?;
             while let Some(row) = result.next().await? {
                 let relation_info = RelationInfo {
                     source: row.get("source").unwrap_or_default(),
@@ -114,7 +107,7 @@ impl GraphDatabase {
                     destination_id: row.get("destination_id").unwrap_or_default(),
                     similarity: row.get("similarity").unwrap_or_default(),
                 };
-                all_relations.push(serde_json::to_string(&relation_info)?);
+                all_relations.push(relation_info);
             }
         }
 

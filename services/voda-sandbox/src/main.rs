@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
     let system_config = SYSTEM_CONFIG.clone().create(&*db_pool).await?;
     let session = get_or_create_session(&*db_pool, &user, &character, &system_config).await?;
 
-    let memory = RoleplayRawMemory::new(db_pool.clone());
+    let memory = RoleplayRawMemory::new(db_pool.clone()).await;
 
     let (tx, _rx) = mpsc::channel(100);
     let client =

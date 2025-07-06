@@ -2,20 +2,14 @@ use anyhow::Result;
 use async_openai::types::{FunctionCall, FunctionObject};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
 use voda_runtime::ExecutableFunctionCall;
 
-use crate::llm::LlmConfig;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SingleDelRelationshipToolcall {
-    source_entity: String,
-    relatationship: String,
-    destination_entity: String,
-}
+use crate::{graph::RelationInfo, llm::LlmConfig, raw_message::Relationship};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteGraphMemoryToolcall {
-    relationships: Vec<SingleDelRelationshipToolcall>,
+    pub relationships: Vec<Relationship>,
 }
 
 const DELETE_RELATIONS_SYSTEM_PROMPT: &str = r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
@@ -53,9 +47,14 @@ source -- relationship -- destination
 Provide a list of deletion instructions, each specifying the relationship to be deleted."#;
 
 
-pub fn get_delete_graph_memory_config(user_id: String, existing_memories: String, new_text: String) -> (LlmConfig, String) {
+pub fn get_delete_graph_memory_config(user_id: String, existing_memories: Vec<RelationInfo>, new_text: String) -> (LlmConfig, String) {
     let system_prompt = DELETE_RELATIONS_SYSTEM_PROMPT.replace("{user_id}", &user_id);
-    let user_prompt = format!("Here are the existing memories: {} \n\n New Information: {}", existing_memories, new_text);
+
+    let existing_memories_text = existing_memories.iter()
+        .map(|r| format!("{} -- {} -- {}", r.source, r.relationship, r.destination))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let user_prompt = format!("Here are the existing memories: {} \n\n New Information: {}", existing_memories_text, new_text);
 
     let delete_graph_memory_tool = FunctionObject {
         name: "delete_graph_memory".to_string(),
@@ -68,11 +67,11 @@ pub fn get_delete_graph_memory_config(user_id: String, existing_memories: String
                     "items": {
                         "type": "object",
                         "properties": {
-                            "source_entity": {"type": "string", "description": "The identifier of the source node in the relationship."},
+                            "source": {"type": "string", "description": "The identifier of the source node in the relationship."},
                             "relatationship": {"type": "string", "description": "The existing relationship between the source and destination nodes that needs to be deleted."},
-                            "destination_entity": {"type": "string", "description": "The identifier of the destination node in the relationship."},
+                            "destination": {"type": "string", "description": "The identifier of the destination node in the relationship."},
                         },
-                        "required": ["source_entity", "relatationship", "destination_entity"],
+                        "required": ["source", "relatationship", "destination"],
                         "additionalProperties": false,
                     },
                     "description": "An array of relationships.",
@@ -102,8 +101,7 @@ impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
     }
 
     fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        let relationships: Vec<SingleDelRelationshipToolcall> = serde_json::from_str(&function_call.arguments)?;
-        Ok(Self { relationships })
+        Ok(serde_json::from_str(&function_call.arguments)?)
     }
 
     async fn execute(&self) -> Result<String> {

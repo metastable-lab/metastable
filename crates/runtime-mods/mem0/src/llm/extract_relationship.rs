@@ -5,21 +5,14 @@ use serde_json::json;
 
 use voda_runtime::ExecutableFunctionCall;
 
-use crate::llm::LlmConfig;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SingleRelationshipToolcall {
-    source_entity: String,
-    relatationship: String,
-    destination_entity: String,
-}
+use crate::{llm::LlmConfig, raw_message::Relationship, EntityTag};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipsToolcall {
-    relationships: Vec<SingleRelationshipToolcall>,
+    pub relationships: Vec<Relationship>,
 }
 
-pub fn get_extract_relationship_config(user_id: String, entity_type_map: std::collections::HashMap<String, String>, data: String) -> (LlmConfig, String) {
+pub fn get_extract_relationship_config(user_id: String, entity_type_map: &[EntityTag], new_information: String) -> (LlmConfig, String) {
     let system_prompt = format!(
         r#"You are an advanced algorithm designed to extract structured information from text to construct knowledge graphs. Your goal is to capture comprehensive and accurate information. Follow these key principles:
 
@@ -42,7 +35,8 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
         user_id
     );
 
-    let user_prompt = format!("List of entities: {:?}. \n\nText: {}", entity_type_map.keys().collect::<Vec<_>>(), data);
+    let entities_names_text = entity_type_map.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>().join(", ");
+    let user_prompt = format!("List of entities: [{}]. \n\nText: {}", entities_names_text, new_information);
 
     let establish_relations_tool = FunctionObject {
         name: "establish_relations".to_string(),
@@ -55,11 +49,11 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
                     "items": {
                         "type": "object",
                         "properties": {
-                            "source_entity": {"type": "string", "description": "The source entity of the relationship."},
+                            "source": {"type": "string", "description": "The source entity of the relationship."},
                             "relatationship": {"type": "string", "description": "The relationship between the source and destination entities."},
-                            "destination_entity": {"type": "string", "description": "The destination entity of the relationship."},
+                            "destination": {"type": "string", "description": "The destination entity of the relationship."},
                         },
-                        "required": ["source_entity", "relatationship", "destination_entity"],
+                        "required": ["source", "relatationship", "destination"],
                         "additionalProperties": false,
                     },
                     "description": "An array of relationships.",
@@ -76,7 +70,7 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
     let config = LlmConfig {
         model: "mistralai/ministral-8b".to_string(),
         temperature: 0.7,
-        max_tokens: 5000,
+        max_tokens: 10000,
         system_prompt, tools,
     };
 
@@ -89,8 +83,7 @@ impl ExecutableFunctionCall for RelationshipsToolcall {
     }
 
     fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        let relationships: Vec<SingleRelationshipToolcall> = serde_json::from_str(&function_call.arguments)?;
-        Ok(Self { relationships })
+        Ok(serde_json::from_str(&function_call.arguments)?)
     }
 
     async fn execute(&self) -> Result<String> {

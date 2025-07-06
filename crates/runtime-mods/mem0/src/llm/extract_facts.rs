@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_openai::types::{FunctionCall, FunctionObject};
+use sqlx::types::Uuid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::Utc;
@@ -12,7 +13,7 @@ pub struct FactsToolcall {
     pub facts: Vec<String>,
 }
 
-pub fn get_extract_facts_config(user_id: String, conversation_data: String) -> (LlmConfig, String) {
+pub fn get_extract_facts_config(user_id: &Uuid, message: &str) -> (LlmConfig, String) {
     let system_prompt = format!(
         r#"You are a Personal Information Organizer, specialized in accurately storing facts, user memories, and preferences. Your primary role is to extract relevant pieces of information from conversations and organize them into distinct, manageable facts. 
         This allows for easy retrieval and personalization in future interactions. Below are the types of information you need to focus on and the detailed instructions on how to handle the input data.
@@ -68,8 +69,6 @@ Following is a conversation between the user and the assistant. You have to extr
         user_id
     );
 
-    let user_prompt = format!("{{\"role\": \"user\", \"content\": \"{}\"}}", conversation_data);
-
     let extract_facts_tool = FunctionObject {
         name: "extract_facts".to_string(),
         description: Some("Extract personal facts and preferences from the text.".to_string()),
@@ -98,7 +97,7 @@ Following is a conversation between the user and the assistant. You have to extr
         tools,
     };
 
-    (config, user_prompt)
+    (config, format!("Input: {}", message))
 }
 
 impl ExecutableFunctionCall for FactsToolcall {
@@ -107,11 +106,10 @@ impl ExecutableFunctionCall for FactsToolcall {
     }
 
     fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        let facts: Vec<String> = serde_json::from_str(&function_call.arguments)?;
-        Ok(Self { facts })
+        Ok(serde_json::from_str(&function_call.arguments)?)
     }
 
     async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&serde_json::json!({"facts": self.facts}))?)
+        Ok(serde_json::to_string(&self)?)
     }
 }

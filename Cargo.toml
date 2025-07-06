@@ -15,10 +15,10 @@ members = [
     "crates/database", 
     "crates/db-macros",
     "crates/runtime",
-    "crates/pgvector",
-    "crates/graph",
+
     # "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
+    "crates/runtime-mods/mem0",
 
     "services/voda-sandbox",
     "services/voda-service",
@@ -60,3 +60,4 @@ sqlx = { version = "0.8.6", default-features = false, features = [
     "bigdecimal"
 ] }
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
+chrono = { version = "0.4", features = ["serde"] }
