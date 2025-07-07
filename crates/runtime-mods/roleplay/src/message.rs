@@ -1,4 +1,6 @@
 use anyhow::Result;
+use chrono::Utc;
+use chrono_tz::Asia::Shanghai;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
@@ -66,7 +68,8 @@ impl RoleplayMessage {
         character_name: &str, user_name: &str,
         system_prompt: &str,
         character_personality: &str, character_example_dialogue: &str, character_scenario: &str,
-        character_background_stories: &Vec<String>, character_behavior_traits: &Vec<String>
+        character_background_stories: &Vec<String>, character_behavior_traits: &Vec<String>,
+        request_time: &str
     ) -> String {
         let character_personality = Self::replace_placeholders(character_personality, character_name, user_name);
         let character_example_dialogue = Self::replace_placeholders(character_example_dialogue, character_name, user_name);
@@ -81,7 +84,8 @@ impl RoleplayMessage {
             .replace("{{char_example_dialogue}}", &character_example_dialogue)
             .replace("{{char_scenario}}", &character_scenario)
             .replace("{{char_background_stories}}", &character_background_stories)
-            .replace("{{char_behavior_traits}}", &character_behavior_traits);
+            .replace("{{char_behavior_traits}}", &character_behavior_traits)
+            .replace("{{request_time}}", request_time);
     
         system_prompt
     }
@@ -89,6 +93,7 @@ impl RoleplayMessage {
     pub fn system(
         session: &RoleplaySession, system_config: &SystemConfig, character: &Character, user: &User,
     ) -> Self {
+        let request_time = Utc::now().with_timezone(&Shanghai).to_rfc3339();
         let system_prompt = Self::replace_placeholders_system_prompt(
             &character.name, 
             &user.user_aka,
@@ -97,7 +102,8 @@ impl RoleplayMessage {
             &character.prompts_example_dialogue,
             &character.prompts_scenario,
             &character.prompts_background_stories,
-            &character.prompts_behavior_traits
+            &character.prompts_behavior_traits,
+            &request_time
         );
 
         Self {
