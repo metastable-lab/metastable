@@ -51,7 +51,10 @@ impl RuntimeClient for RoleplayRuntimeClient {
     fn get_client(&self) -> &Client<OpenAIConfig> { &self.client }
     fn get_memory(&self) -> &Arc<RoleplayRawMemory> { &self.memory }
 
-    async fn on_init(&self) -> Result<()> { Ok(()) }
+    async fn on_init(&self) -> Result<()> { 
+        self.memory.initialize().await?;    
+        Ok(()) 
+    }
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {

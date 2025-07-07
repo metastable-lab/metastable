@@ -43,7 +43,7 @@ impl Mem0Engine {
             .uri(env.get_env_var("GRAPH_URI"))
             .user(env.get_env_var("GRAPH_USER"))
             .password(env.get_env_var("GRAPH_PASSWORD"))
-            .db("memgraph")
+            .db("neo4j")
             .build()
             .expect("[Mem0Engine::new] Failed to build graph config");
 

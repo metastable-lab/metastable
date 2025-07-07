@@ -29,9 +29,8 @@ impl Mem0Engine {
         };
 
         let q = format!(r#"
-            CALL vector_search.search("memzero", 1, $source_embedding)
-            YIELD distance, node, similarity
-            WITH node AS candidate, similarity
+            CALL db.index.vector.queryNodes("memzero", 1, $source_embedding)
+            YIELD node AS candidate, score AS similarity
             WHERE candidate.user_id = $user_id
             {agent_id_filter}
             AND similarity >= {DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD}
@@ -60,10 +59,13 @@ impl Mem0Engine {
         user_id: Uuid,
         agent_id: Option<Uuid>
     ) -> Result<Vec<RelationInfo>> {
-        let agent_id_filter = if let Some(agent_id) = agent_id {
-            format!("AND found_node.agent_id = '{}'", agent_id)
+        let (agent_id_filter_n, agent_id_filter_m) = if let Some(agent_id) = agent_id {
+            (
+                format!("AND n.agent_id = '{}'", agent_id),
+                format!("AND m.agent_id = '{}'", agent_id)
+            )
         } else {
-            "".to_string()
+            ("".to_string(), "".to_string())
         };
 
         let mut all_relations = Vec::new();
@@ -72,24 +74,35 @@ impl Mem0Engine {
 
         for embedding in embeddings {
             let query_str = format!(r#"
-                CALL vector_search.search("memzero", 1, $embedding)
-                YIELD node AS found_node, similarity
-                WITH found_node, similarity
-                WHERE found_node.user_id = $user_id {agent_id_filter} AND similarity >= {DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD}
-                MATCH (found_node)-[r]-(b:Entity)
-                WITH r, similarity, startNode(r) AS start, endNode(r) AS end
+                MATCH (n:Entity)
+                WHERE n.embedding IS NOT NULL AND n.user_id = $user_id {agent_id_filter_n}
+                WITH n, round(2 * vector.similarity.cosine(n.embedding, $embedding) - 1, 4) AS similarity
+                WHERE similarity >= {DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD}
+                CALL {{
+                    WITH n
+                    MATCH (n)-[r]->(m:Entity)
+                    WHERE m.user_id = $user_id {agent_id_filter_m}
+                    RETURN n.name AS source, elementId(n) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, m.name AS destination, elementId(m) AS destination_id
+                    UNION
+                    WITH n
+                    MATCH (m:Entity)-[r]->(n)
+                    WHERE m.user_id = $user_id {agent_id_filter_m}
+                    RETURN m.name AS source, elementId(m) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, n.name AS destination, elementId(n) AS destination_id
+                }}
+                WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
                 RETURN
-                    start.name AS source,
-                    id(start) AS source_id,
-                    type(r) AS relationship,
-                    id(r) AS relation_id,
-                    end.name AS destination,
-                    id(end) AS destination_id,
+                    source,
+                    source_id,
+                    relationship,
+                    relation_id,
+                    destination,
+                    destination_id,
                     similarity
                 ORDER BY similarity DESC
                 LIMIT {DEFAULT_GRAPH_DB_SEARCH_LIMIT}
             "#,
-            agent_id_filter = agent_id_filter
+            agent_id_filter_n = agent_id_filter_n,
+            agent_id_filter_m = agent_id_filter_m
             );
 
             let q = query(&query_str)

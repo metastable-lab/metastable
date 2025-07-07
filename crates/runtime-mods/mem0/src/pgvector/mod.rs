@@ -15,16 +15,15 @@ impl Mem0Engine {
         let mut tx = self.get_vector_db().begin().await?;
         sqlx::query(r#"
             CREATE TABLE IF NOT EXISTS embeddings (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id UUID,
-            agent_id UUID,
-
-            content TEXT NOT NULL,
-            embedding vector(1024),
-
-            created_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now())),
-            updated_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now())
-        );"#)
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL,
+                agent_id UUID,
+                content TEXT NOT NULL,
+                embedding vector(1024),
+                created_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now())),
+                updated_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now()))
+            );
+        "#)
         .execute(&mut *tx)
         .await?;
 

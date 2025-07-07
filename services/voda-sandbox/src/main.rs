@@ -11,6 +11,7 @@ use termimad::MadSkin;
 use tokio::sync::mpsc;
 // use tracing::Level;
 
+use tracing::Level;
 use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use voda_runtime::user::{UserProfile, UserUrl};
 use voda_runtime::{MessageRole, RuntimeClient, SystemConfig, User, UserMetadata, UserPoints, UserUsage};
@@ -79,7 +80,7 @@ async fn get_or_create_session(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // tracing_subscriber::fmt().with_max_level(Level::INFO).init();
+    tracing_subscriber::fmt().with_max_level(Level::DEBUG).init();
     println!("{}", "Sandbox CLI initializing ... ".red());
 
     let db_pool = Arc::new(connect(false).await.clone());
@@ -98,6 +99,8 @@ async fn main() -> Result<()> {
     let (tx, _rx) = mpsc::channel(100);
     let client =
         RoleplayRuntimeClient::new(db_pool.clone(), Arc::new(memory), tx).await;
+
+    client.on_init().await?;
 
     let mut rl = DefaultEditor::new()?;
     println!("{}", "Sandbox CLI Initialized. Type 'exit' or press Ctrl-D to quit.".green());

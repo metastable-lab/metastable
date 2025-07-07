@@ -12,18 +12,15 @@ pub use crate::graph::search::RelationInfo;
 impl Mem0Engine {
     pub async fn graph_db_initialize(&self) -> Result<()> {
         let mut tx = self.get_graph_db().start_txn().await?;
-        
+
         let create_vector_index = format!(
-            "CREATE VECTOR INDEX memzero ON :Entity(embedding) WITH CONFIG {{'dimension': {}, 'capacity': 1000, 'metric': 'cos'}};",
+            "CREATE VECTOR INDEX memzero IF NOT EXISTS FOR (n:Entity) ON (n.embedding) OPTIONS {{indexConfig: {{`vector.dimensions`: {}, `vector.similarity_function`: 'cosine'}}}}",
             EMBEDDING_DIMS
         );
-        tx.run(query(&create_vector_index)).await?;
+        let _ = tx.run(query(&create_vector_index)).await;
 
-        let create_user_id_index = "CREATE INDEX ON :Entity(user_id);";
-        tx.run(query(create_user_id_index)).await?;
-
-        let create_entity_index = "CREATE INDEX ON :Entity;";
-        tx.run(query(create_entity_index)).await?;
+        let create_user_id_index = "CREATE INDEX entity_user_id_index IF NOT EXISTS FOR (n:Entity) ON (n.user_id)";
+        let _ = tx.run(query(create_user_id_index)).await;
 
         tx.commit().await?;
         Ok(())
