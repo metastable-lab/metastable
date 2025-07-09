@@ -68,8 +68,8 @@ macro_rules! init_pgvector_pool {
 
                 // Create tables for each specified type
                 if create_tables {
-                    // Create the timestamp helper function globally
-                    let trigger_func_sql = r#"
+                    let create_extension_sql = "CREATE EXTENSION IF NOT EXISTS vector;";
+                    let create_table_sql = r#"
                     CREATE TABLE IF NOT EXISTS embeddings (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         user_id UUID NOT NULL,
@@ -79,14 +79,29 @@ macro_rules! init_pgvector_pool {
                         created_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now())),
                         updated_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now()))
                     );
+                    "#;
+
+                    let create_index_sql = r#"
                     CREATE INDEX IF NOT EXISTS idx_embeddings_user_id ON embeddings(user_id);
                     "#;
 
-                    sqlx::query(trigger_func_sql)
-                        .execute(&pool)
+                    let mut tx = pool.begin().await.expect("Failed to begin transaction");
+                    sqlx::query(create_extension_sql)
+                        .execute(&mut *tx)
                         .await
                         .expect("Failed to create embeddings table.");
-                }
+
+                    sqlx::query(create_table_sql)
+                        .execute(&mut *tx)
+                        .await
+                        .expect("Failed to create embeddings table.");
+
+                    sqlx::query(create_index_sql)
+                        .execute(&mut *tx)
+                        .await
+                        .expect("Failed to create embeddings index.");
+                        
+                    tx.commit().await.expect("Failed to commit transaction");}
 
                 pool
             }).await
