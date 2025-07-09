@@ -36,7 +36,7 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        let memory = RoleplayRawMemory::new(db.clone());
+        let memory = RoleplayRawMemory::new(db.clone()).await?;
         Ok(Self { client, db, memory: Arc::new(memory), executor })
     }
 }
@@ -152,7 +152,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
         let (messages, system_config) = self.memory
-            .search(&message, 100, 0).await?;
+            .search(&message, 100).await?;
 
         let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
@@ -178,8 +178,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
     async fn on_rollback(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
         let (mut messages, system_config) = self.memory
-            .search(&message, 100, 0).await?;
-        messages.pop(); // pop the placeholder message
+            .search(&message, 100).await?;
         let mut last_assistant_message = messages.pop()
             .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last message found"))?;
 

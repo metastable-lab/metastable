@@ -1,5 +1,5 @@
 [package]
-name = "voda-runtime-roleplay"
+name = "voda-runtime-mem0"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,10 +8,9 @@ voda-runtime = { path = "../../runtime" }
 voda-common = { path = "../../common" }
 voda-database = { path = "../../database" }
 voda-db-macros = { path = "../../db-macros" }
-voda-runtime-mem0 = { path = "../mem0" }
+
 serde.workspace = true
 serde_json.workspace = true
-
 anyhow.workspace = true 
 async-openai.workspace = true
 reqwest.workspace = true
@@ -19,8 +18,9 @@ tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
-
 chrono.workspace = true
-chrono-tz.workspace = true
-strum = "0.26"
-strum_macros = "0.26"
+futures.workspace = true
+
+# we might be able to remove this dependency
+pgvector = { version = "0.4", features = ["sqlx"]}
+neo4rs = "0.8.0"

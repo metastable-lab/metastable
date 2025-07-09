@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
-use voda_database::{SqlxCrud, QueryCriteria, OrderDirection, SqlxFilterQuery};
+use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use voda_runtime::{Memory, SystemConfig};
 use voda_runtime_roleplay::{RoleplayMessage, RoleplaySession};
 
@@ -51,28 +51,7 @@ impl Memory for CharacterCreationMemory {
         Ok(())
     }
 
-    async fn get_one(&self, message_id: &Uuid) -> Result<Option<CharacterCreationMessage>> {
-        let message = CharacterCreationMessage::find_one_by_criteria(
-            QueryCriteria::new()
-                .add_valued_filter("id", "=", message_id.clone())?,
-            &*self.db
-        ).await?;
-        Ok(message)
-    }
-
-    async fn get_all(&self, user_id: &Uuid, limit: u64, offset: u64) -> Result<Vec<CharacterCreationMessage>> {
-        let messages = CharacterCreationMessage::find_by_criteria(
-            QueryCriteria::new()
-                .add_valued_filter("owner", "=", user_id.clone())?
-                .order_by("created_at", OrderDirection::Desc)?
-                .limit(limit as i64)?
-                .offset(offset as i64)?,
-            &*self.db
-        ).await?;
-        Ok(messages)
-    }
-
-    async fn search(&self, message: &CharacterCreationMessage, _limit: u64, _offset: u64) -> Result<
+    async fn search(&self, message: &CharacterCreationMessage, _limit: u64) -> Result<
         (Vec<CharacterCreationMessage>, SystemConfig)
     > {
         let mut tx = self.db.begin().await?;

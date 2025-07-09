@@ -123,7 +123,7 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
     async fn on_new_message(&self, message: &CharacterCreationMessage) -> Result<LLMRunResponse> {
         let (messages, system_config) = self
             .memory
-            .search(&message, 100, 0).await?;
+            .search(&message, 100).await?;
 
         let mut response = self.send_llm_request(&system_config, &messages).await?;
         let mut assistant_message = CharacterCreationMessage::from_llm_response(
