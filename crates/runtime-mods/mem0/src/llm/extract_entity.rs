@@ -48,7 +48,7 @@ pub fn get_extract_entity_config(user_id: String, content: String) -> (LlmConfig
     let config = LlmConfig {
         model: "google/gemini-2.5-flash-lite-preview-06-17".to_string(),
         temperature: 0.7,
-        max_tokens: 5000,
+        max_tokens: 10000,
         system_prompt, tools,
     };
 

@@ -92,7 +92,7 @@ Following is a conversation between the user and the assistant. You have to extr
     let config = LlmConfig {
         model: "google/gemini-2.5-flash-lite-preview-06-17".to_string(),
         temperature: 0.7,
-        max_tokens: 5000,
+        max_tokens: 10000,
         system_prompt,
         tools,
     };
