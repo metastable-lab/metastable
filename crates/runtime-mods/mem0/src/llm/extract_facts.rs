@@ -90,7 +90,7 @@ Following is a conversation between the user and the assistant. You have to extr
     let tools = vec![extract_facts_tool];
 
     let config = LlmConfig {
-        model: "mistralai/ministral-8b".to_string(),
+        model: "google/gemini-2.5-flash-lite-preview-06-17".to_string(),
         temperature: 0.7,
         max_tokens: 5000,
         system_prompt,

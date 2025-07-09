@@ -46,7 +46,7 @@ pub fn get_extract_entity_config(user_id: String, content: String) -> (LlmConfig
     let tools = vec![extract_entity_tool];
 
     let config = LlmConfig {
-        model: "mistralai/ministral-8b".to_string(),
+        model: "google/gemini-2.5-flash-lite-preview-06-17".to_string(),
         temperature: 0.7,
         max_tokens: 5000,
         system_prompt, tools,
