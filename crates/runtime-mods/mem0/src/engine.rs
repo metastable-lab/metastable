@@ -19,7 +19,7 @@ define_function_types!(
     EntitiesToolcall(crate::llm::EntitiesToolcall, "extract_entities"),
     FactsToolcall(crate::llm::FactsToolcall, "extract_facts"),
     MemoryUpdateToolcall(crate::llm::MemoryUpdateToolcall, "update_memory"),
-    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "extract_relationships"),
+    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "establish_relationships"),
 );
 
 #[derive(Clone)]
@@ -137,7 +137,6 @@ impl Mem0Engine {
         let response = response.choices.first()
             .ok_or(anyhow!("[Mem0Engine::llm] No response from AI inference server"))?
             .message.clone();
-
         let content = response.content.unwrap_or_default();
         let maybe_function_call = response.tool_calls
             .unwrap_or_default()
@@ -147,7 +146,9 @@ impl Mem0Engine {
 
         let mut maybe_results = Vec::new();
         for tool_call in maybe_function_call.clone() {
+            println!("tool_call: {:?}", tool_call);
             let tc = RuntimeFunctionType::from_function_call(tool_call.clone())?;
+        
             let result = tc.execute().await?;
             maybe_results.push(result);
         }

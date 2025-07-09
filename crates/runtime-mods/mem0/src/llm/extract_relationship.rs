@@ -38,8 +38,8 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
     let entities_names_text = entity_type_map.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>().join(", ");
     let user_prompt = format!("List of entities: [{}]. \n\nText: {}", entities_names_text, new_information);
 
-    let establish_relations_tool = FunctionObject {
-        name: "establish_relations".to_string(),
+    let establish_relationships_tool = FunctionObject {
+        name: "establish_relationships".to_string(),
         description: Some("Establish relationships among the entities based on the provided text.".to_string()),
         parameters: Some(json!({
             "type": "object",
@@ -50,10 +50,10 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
                         "type": "object",
                         "properties": {
                             "source": {"type": "string", "description": "The source entity of the relationship."},
-                            "relatationship": {"type": "string", "description": "The relationship between the source and destination entities."},
+                            "relationship": {"type": "string", "description": "The relationship between the source and destination entities."},
                             "destination": {"type": "string", "description": "The destination entity of the relationship."},
                         },
-                        "required": ["source", "relatationship", "destination"],
+                        "required": ["source", "relationship", "destination"],
                         "additionalProperties": false,
                     },
                     "description": "An array of relationships.",
@@ -65,7 +65,7 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
         strict: Some(true),
     };
 
-    let tools = vec![establish_relations_tool];
+    let tools = vec![establish_relationships_tool];
 
     let config = LlmConfig {
         model: "mistralai/ministral-8b".to_string(),
@@ -79,14 +79,15 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
 
 impl ExecutableFunctionCall for RelationshipsToolcall {
     fn name() -> &'static str {
-        "establish_relations"
+        "establish_relationships"
     }
 
     fn from_function_call(function_call: FunctionCall) -> Result<Self> {
+        println!("function_call: {:?}", function_call);
         Ok(serde_json::from_str(&function_call.arguments)?)
     }
 
     async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self.relationships)?)
+        Ok(serde_json::to_string(&self)?)
     }
 }

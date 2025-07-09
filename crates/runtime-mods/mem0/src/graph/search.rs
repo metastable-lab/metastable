@@ -23,7 +23,7 @@ impl Mem0Engine {
         embedding: &Embedding, user_id: &Uuid, agent_id: Option<Uuid>
     ) -> Result<Option<String>> {
         let agent_id_filter = if let Some(agent_id) = agent_id {
-            format!("AND n.agent_id = '{}'", agent_id)
+            format!("AND candidate.agent_id = '{}'", agent_id)
         } else {
             "".to_string()
         };

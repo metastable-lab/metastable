@@ -68,10 +68,10 @@ pub fn get_delete_graph_memory_config(user_id: String, existing_memories: Vec<Re
                         "type": "object",
                         "properties": {
                             "source": {"type": "string", "description": "The identifier of the source node in the relationship."},
-                            "relatationship": {"type": "string", "description": "The existing relationship between the source and destination nodes that needs to be deleted."},
+                            "relationship": {"type": "string", "description": "The existing relationship between the source and destination nodes that needs to be deleted."},
                             "destination": {"type": "string", "description": "The identifier of the destination node in the relationship."},
                         },
-                        "required": ["source", "relatationship", "destination"],
+                        "required": ["source", "relationship", "destination"],
                         "additionalProperties": false,
                     },
                     "description": "An array of relationships.",
@@ -105,6 +105,6 @@ impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
     }
 
     async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self.relationships)?)
+        Ok(serde_json::to_string(&self)?)
     }
 }

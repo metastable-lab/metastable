@@ -213,7 +213,7 @@ Your response must only be the tool call.
     );
 
     let user_prompt = "Please update the memory based on the new facts.".to_string();
-
+    
     let update_memory_tool = FunctionObject {
         name: "update_memory".to_string(),
         description: Some("Updates the memory with new facts, including adding, modifying, or deleting entries.".to_string()),
@@ -253,9 +253,9 @@ Your response must only be the tool call.
     let tools = vec![update_memory_tool];
 
     let config = LlmConfig {
-        model: "mistralai/ministral-8b".to_string(),
-        temperature: 0.3,
-        max_tokens: 5000,
+        model: "x-ai/grok-3-mini".to_string(),
+        temperature: 0.7,
+        max_tokens: 10000,
         system_prompt,
         tools,
     };
