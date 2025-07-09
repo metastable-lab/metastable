@@ -22,7 +22,7 @@ pub struct RoleplayRuntimeClient {
 
 impl RoleplayRuntimeClient {
     pub async fn new(
-        db: Arc<PgPool>, 
+        db: Arc<PgPool>, pgvector_db: Arc<PgPool>,
         executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
     ) -> Result<Self> {
         let env = RuntimeEnv::load();
@@ -36,7 +36,7 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        let memory = RoleplayRawMemory::new(db.clone()).await?;
+        let memory = RoleplayRawMemory::new(db.clone(), pgvector_db.clone()).await?;
         Ok(Self { client, db, memory: Arc::new(memory), executor })
     }
 }

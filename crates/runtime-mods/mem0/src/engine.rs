@@ -7,7 +7,7 @@ use async_openai::types::{
     ChatCompletionToolArgs, ChatCompletionToolChoiceOption, CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs
 };
 use neo4rs::{ConfigBuilder, Graph};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 
 use voda_runtime::{define_function_types, ExecutableFunctionCall, LLMRunResponse};
 
@@ -32,12 +32,8 @@ pub struct Mem0Engine {
 }
 
 impl Mem0Engine {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(pgvector_db: Arc<PgPool>) -> Result<Self> {
         let env = crate::env::Mem0Env::load();
-        let vector_db = PgPoolOptions::new()
-            .connect(&env.get_env_var("PGVECTOR_URI"))
-            .await
-            .expect("[Mem0Engine::new] Failed to connect to vector db");
 
         let graph_config = ConfigBuilder::default()
             .uri(env.get_env_var("GRAPH_URI"))
@@ -70,14 +66,14 @@ impl Mem0Engine {
         );
 
         Ok(Self { 
-            vector_db: Arc::new(vector_db), 
+            vector_db: pgvector_db, 
             graph_db: Arc::new(graph_db), 
             embeder, llm 
         })
     }
 
     pub async fn init(&self) -> Result<()> {
-        self.vector_db_initialize().await?;
+        // self.vector_db_initialize().await?;
         self.graph_db_initialize().await?;
         Ok(())
     }

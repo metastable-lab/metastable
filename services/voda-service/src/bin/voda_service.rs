@@ -10,6 +10,7 @@ use voda_service_api::{
     graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, GlobalState
 };
 
+use voda_runtime_mem0::init_pgvector_pool;
 use voda_database::init_db_pool;
 use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage, RuntimeClient};
 use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
@@ -21,6 +22,8 @@ init_db_pool!(
     CharacterCreationMessage
 );
 
+init_pgvector_pool!();
+
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_tracing();
@@ -29,9 +32,10 @@ async fn main() -> Result<()> {
     let trace = TraceLayer::new_for_http();
 
     let db_pool = Arc::new(connect(false, false).await.clone());
+    let pgvector_db = Arc::new(connect_pgvector(false, false).await.clone());
 
     let (roleplay_executor, _execution_queue) = mpsc::channel(100);
-    let roleplay_client = RoleplayRuntimeClient::new(db_pool.clone(), roleplay_executor).await?;
+    let roleplay_client = RoleplayRuntimeClient::new(db_pool.clone(), pgvector_db.clone(), roleplay_executor).await?;
     let (character_creation_executor, character_creation_queue) = mpsc::channel(100);
     let character_creation_client = CharacterCreationRuntimeClient::new(
         db_pool.clone(), "character_creation_v0".to_string(), 

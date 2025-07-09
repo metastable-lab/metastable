@@ -11,6 +11,7 @@ voda-service-api = { path = "../../crates/api" }
 
 voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
 voda-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
+voda-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
 
 axum.workspace = true
 tokio.workspace = true

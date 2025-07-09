@@ -20,8 +20,8 @@ pub struct RoleplayRawMemory {
 }
 
 impl RoleplayRawMemory {
-    pub async fn new(db: Arc<PgPool>) -> Result<Self> {
-        let mut mem0 = Mem0Engine::new().await?;
+    pub async fn new(db: Arc<PgPool>, pgvector_db: Arc<PgPool>) -> Result<Self> {
+        let mut mem0 = Mem0Engine::new(pgvector_db).await?;
         mem0.initialize().await?;
         Ok(Self { db, mem0: Arc::new(mem0) })
     }
