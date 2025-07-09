@@ -8,6 +8,7 @@ voda-common = { path = "../common" }
 voda-database = { path = "../database" }
 voda-runtime = { path = "../runtime" }
 voda-runtime-roleplay = { path = "../runtime-mods/roleplay" }
+voda-runtime-character-creation = { path = "../runtime-mods/character-creation" }
 # voda-runtime-evm = { path = "../runtime-mods/evm" }
 
 axum.workspace = true

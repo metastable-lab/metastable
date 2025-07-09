@@ -146,7 +146,6 @@ impl Mem0Engine {
 
         let mut maybe_results = Vec::new();
         for tool_call in maybe_function_call.clone() {
-            println!("tool_call: {:?}", tool_call);
             let tc = RuntimeFunctionType::from_function_call(tool_call.clone())?;
         
             let result = tc.execute().await?;
@@ -158,6 +157,7 @@ impl Mem0Engine {
             usage,
             maybe_function_call,
             maybe_results,
+            misc_value: None,
         })
     }
 

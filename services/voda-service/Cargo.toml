@@ -7,9 +7,10 @@ edition = "2021"
 voda-common = { path = "../../crates/common" }
 voda-database = { path = "../../crates/database" }
 voda-runtime = { path = "../../crates/runtime" }
-voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
-voda-runtime-evm = { path = "../../crates/runtime-mods/evm" }
 voda-service-api = { path = "../../crates/api" }
+
+voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
+voda-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
 
 axum.workspace = true
 tokio.workspace = true

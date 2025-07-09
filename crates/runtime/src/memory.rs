@@ -104,7 +104,7 @@ pub trait Message: Clone + Send + Sync + 'static {
 pub trait Memory: Clone + Send + Sync + 'static {
     type MessageType: Message;
 
-    async fn initialize(&self) -> Result<()>;
+    async fn initialize(&mut self) -> Result<()>;
 
     async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
     async fn search(&self, message: &Self::MessageType, limit: u64) -> Result<

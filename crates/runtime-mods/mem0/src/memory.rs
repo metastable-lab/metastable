@@ -15,7 +15,7 @@ use crate::llm::{
 impl Memory for Mem0Engine {
     type MessageType = Mem0Messages;
 
-    async fn initialize(&self) -> Result<()> { 
+    async fn initialize(&mut self) -> Result<()> { 
         self.init().await
     }
 

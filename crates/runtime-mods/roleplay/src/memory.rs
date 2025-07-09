@@ -20,9 +20,10 @@ pub struct RoleplayRawMemory {
 }
 
 impl RoleplayRawMemory {
-    pub async fn new(db: Arc<PgPool>) -> Self {
-        let mem0 = Mem0Engine::new().await.unwrap();
-        Self { db, mem0: Arc::new(mem0) }
+    pub async fn new(db: Arc<PgPool>) -> Result<Self> {
+        let mut mem0 = Mem0Engine::new().await?;
+        mem0.initialize().await?;
+        Ok(Self { db, mem0: Arc::new(mem0) })
     }
 }
 
@@ -30,10 +31,7 @@ impl RoleplayRawMemory {
 impl Memory for RoleplayRawMemory {
     type MessageType = RoleplayMessage;
 
-    async fn initialize(&self) -> Result<()> {
-        self.mem0.initialize().await?;
-        Ok(())
-    }
+    async fn initialize(&mut self) -> Result<()> { Ok(()) }
 
     async fn add_messages(&self, messages: &[RoleplayMessage]) -> Result<()> {
         if messages.len() == 0 {

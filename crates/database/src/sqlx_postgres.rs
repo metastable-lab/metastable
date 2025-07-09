@@ -81,7 +81,7 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
 ///   and runs the table creation logic. Subsequent calls return the existing pool.
 ///
 /// # Panics
-/// - If the `POSTGRES_URI` environment variable is not set or is invalid.
+/// - If the `DATABASE_URL` environment variable is not set or is invalid.
 /// - If connecting to the PostgreSQL database fails.
 /// - If any of the table creation SQL queries fail to execute. The panic message will
 ///   include the type for which table creation failed and the problematic SQL query.
@@ -125,30 +125,15 @@ macro_rules! init_db_pool {
         //
         // Example usage:
         // let pool = connect().await;
-        async fn connect(drop_table: bool) -> &'static sqlx::PgPool {
+        async fn connect(drop_tables: bool, create_tables: bool) -> &'static sqlx::PgPool {
             POOL.get_or_init(|| async {
                 let database_url = std::env::var("DATABASE_URL").unwrap();
                 
                 let pool = sqlx::PgPool::connect(&database_url).await
-                    .expect("Failed to connect to Postgres. Ensure DB is running and POSTGRES_URI is correct.");
-
-                // Create the timestamp helper function globally
-                let trigger_func_sql = r#"
-                CREATE OR REPLACE FUNCTION set_updated_at_unix_timestamp()
-                RETURNS TRIGGER AS $$
-                BEGIN
-                   NEW.updated_at = floor(extract(epoch from now()));
-                   RETURN NEW;
-                END;
-                $$ language 'plpgsql';
-                "#;
-                sqlx::query(trigger_func_sql)
-                    .execute(&pool)
-                    .await
-                    .expect("Failed to create timestamp helper function.");
+                    .expect("Failed to connect to Postgres. Ensure DB is running and DATABASE_URL is correct.");
 
                 // Drop tables first to ensure a clean schema for tests
-                if drop_table {
+                if drop_tables {
                 $( 
                     let drop_table_sql_str = <$target_type as $crate::SqlxSchema>::drop_table_sql();
                     if !drop_table_sql_str.trim().is_empty() { 
@@ -172,40 +157,58 @@ macro_rules! init_db_pool {
                 }
 
                 // Create tables for each specified type
-                $( 
-                    let create_table_sql_str = <$target_type as $crate::SqlxSchema>::create_table_sql();
-                    if !create_table_sql_str.trim().is_empty() { // Basic check to avoid empty SQL
-                        sqlx::query(&create_table_sql_str)
-                            .execute(&pool)
-                            .await
-                            .unwrap_or_else(|e| panic!(
-                                "Failed to create table for type '{}'. SQL: \"{}\". Error: {:?}. Check SQL schema and permissions.", 
-                                stringify!($target_type), 
-                                create_table_sql_str, 
-                                e
-                            ));
-                    } else {
-                        eprintln!("Skipping table creation for {} as create_table_sql() returned empty string.", stringify!($target_type));
-                    }
-                )*
+                if create_tables {
+                    // Create the timestamp helper function globally
+                    let trigger_func_sql = r#"
+                    CREATE OR REPLACE FUNCTION set_updated_at_unix_timestamp()
+                    RETURNS TRIGGER AS $$
+                    BEGIN
+                    NEW.updated_at = floor(extract(epoch from now()));
+                    RETURN NEW;
+                    END;
+                    $$ language 'plpgsql';
+                    "#;
 
-                // Create triggers for each specified type
-                $( 
-                    let trigger_sql_str = <$target_type as $crate::SqlxSchema>::trigger_sql();
-                    if !trigger_sql_str.trim().is_empty() {
-                        for statement in trigger_sql_str.split(';').filter(|s| !s.trim().is_empty()) {
-                            sqlx::query(statement)
+                    sqlx::query(trigger_func_sql)
+                        .execute(&pool)
+                        .await
+                        .expect("Failed to create timestamp helper function.");
+
+                    $( 
+                        let create_table_sql_str = <$target_type as $crate::SqlxSchema>::create_table_sql();
+                        if !create_table_sql_str.trim().is_empty() { // Basic check to avoid empty SQL
+                            sqlx::query(&create_table_sql_str)
                                 .execute(&pool)
                                 .await
                                 .unwrap_or_else(|e| panic!(
-                                    "Failed to execute trigger statement for type '{}'. SQL: \"{}\". Error: {:?}.",
-                                    stringify!($target_type),
-                                    statement,
+                                    "Failed to create table for type '{}'. SQL: \"{}\". Error: {:?}. Check SQL schema and permissions.", 
+                                    stringify!($target_type), 
+                                    create_table_sql_str, 
                                     e
                                 ));
+                        } else {
+                            eprintln!("Skipping table creation for {} as create_table_sql() returned empty string.", stringify!($target_type));
                         }
-                    }
-                )*
+                    )*
+
+                    // Create triggers for each specified type
+                    $( 
+                        let trigger_sql_str = <$target_type as $crate::SqlxSchema>::trigger_sql();
+                        if !trigger_sql_str.trim().is_empty() {
+                            for statement in trigger_sql_str.split(';').filter(|s| !s.trim().is_empty()) {
+                                sqlx::query(statement)
+                                    .execute(&pool)
+                                    .await
+                                    .unwrap_or_else(|e| panic!(
+                                        "Failed to execute trigger statement for type '{}'. SQL: \"{}\". Error: {:?}.",
+                                        stringify!($target_type),
+                                        statement,
+                                        e
+                                    ));
+                            }
+                        }
+                    )*
+                }
 
                 pool
             }).await

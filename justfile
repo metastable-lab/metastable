@@ -6,10 +6,6 @@ set shell := ["zsh", "-cu"]
 set dotenv-filename := ".env"
 set dotenv-load := true
 
-# export ETH_RPC_URL := env("ETH_RPC_URL")
-# export MONGODB_URI := env("MONGODB_URI")
-# export GITCOIN_PRIVATE_KEY_SALT := env("GITCOIN_PRIVATE_KEY_SALT")
-
 export SECRET_SALT := env("SECRET_SALT")
 export OPENAI_API_KEY := env("OPENAI_API_KEY")
 export OPENAI_BASE_URL := env("OPENAI_BASE_URL")
@@ -33,11 +29,14 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 @api:
     cargo run --package voda-service --bin voda_service --release
 
-@sandbox:
-    cargo run --package voda-sandbox --release
+@sandbox-init:
+    cargo run --package voda-sandbox --bin init --release
 
-@graph:
-    cargo test --package voda-graph -- --no-capture
+@sandbox-run:
+    cargo run --package voda-sandbox --bin run --release
 
-@graph-llm:
-    cargo test --package voda-graph --lib -- llm::tests::test_extract_entity_config --exact --show-output
+@sandbox-buy-referral:
+    cargo run --package voda-sandbox --bin buy_referral --release
+
+# @sandbox-reset-db:
+#     cargo run --package voda-sandbox --bin reset_db --release
