@@ -8,7 +8,7 @@ use sqlx::Row;
 use crate::engine::Mem0Engine;
 use crate::raw_message::EmbeddingMessage;
 pub use query_criteria::VectorQueryCriteria;
-pub use batch::{MemoryUpdateEntry, MemoryEvent};
+pub use batch::{BatchUpdateSummary, MemoryUpdateEntry, MemoryEvent};
 
 impl Mem0Engine {
     pub async fn vector_db_initialize(&self) -> Result<()> {

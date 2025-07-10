@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_openai::types::FunctionCall;
 use async_openai::{config::OpenAIConfig, Client};
 
 use sqlx::PgPool;
-use tokio::sync::{mpsc, oneshot};
+use sqlx::types::Uuid;
 use tokio::time::Instant;
-use voda_common::EnvVars;
-use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole};
+use voda_common::{get_current_timestamp, EnvVars};
+use voda_runtime::{LLMRunResponse, Memory, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole, MessageRole, MessageType};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 
 use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
@@ -18,13 +17,11 @@ pub struct RoleplayRuntimeClient {
     db: Arc<PgPool>,
     memory: Arc<RoleplayRawMemory>,
     client: Client<OpenAIConfig>,
-    executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
 }
 
 impl RoleplayRuntimeClient {
     pub async fn new(
         db: Arc<PgPool>, pgvector_db: Arc<PgPool>,
-        executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
     ) -> Result<Self> {
         let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
@@ -38,7 +35,7 @@ impl RoleplayRuntimeClient {
         );
 
         let memory = RoleplayRawMemory::new(db.clone(), pgvector_db.clone()).await?;
-        Ok(Self { client, db, memory: Arc::new(memory), executor })
+        Ok(Self { client, db, memory: Arc::new(memory) })
     }
 }
 
@@ -143,12 +140,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
         Ok(())
     }
 
-    async fn init_function_executor(
-        _queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
-    ) -> Result<()> {
-        tracing::info!("[RoleplayRuntimeClient::init_function_executor] Starting function executor");
-        Ok(())
-    }
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
@@ -160,11 +151,18 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         let time = Instant::now();
         let response = self.send_llm_request(&system_config, &messages).await?;
-        let assistant_message = RoleplayMessage::from_llm_response(
-            response.clone(), 
-            &message.session_id, 
-            &message.owner
-        );
+        let user_usage = UserUsage::from_llm_response(&response);
+        let assistant_message = RoleplayMessage {
+            id: Uuid::default(),
+            owner: message.owner.clone(),
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: response.content.clone(),
+            session_id: message.session_id.clone(),
+
+            created_at: get_current_timestamp(),
+            updated_at: get_current_timestamp(),
+        };
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Assistant message took {:?}", time.elapsed());
 
         self.memory.add_messages(&[
@@ -173,11 +171,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
         ]).await?;
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory add took {:?}", time.elapsed());
 
-        let user_usage = UserUsage::new(
-            message.owner.clone(),
-            system_config.openai_model.clone(),
-            response.usage.clone()
-        );
         user_usage.create(&*self.db).await?;
 
         Ok(response)
@@ -193,22 +186,9 @@ impl RuntimeClient for RoleplayRuntimeClient {
         last_assistant_message.content = response.content.clone();
         self.memory.update(&[last_assistant_message]).await?;
 
-        let user_usage = UserUsage::new(
-            message.owner.clone(),
-            system_config.openai_model.clone(),
-            response.usage.clone()
-        );
+        let user_usage = UserUsage::from_llm_response(&response);
         user_usage.create(&*self.db).await?;
 
         Ok(response)
-    }
-
-    async fn on_tool_call(
-        &self, call: &FunctionCall
-    ) -> Result<String> {
-        let (tx, rx) = oneshot::channel();
-        self.executor.send((call.clone(), tx)).await?;
-        let result = rx.await?;
-        result
-    }    
+    }  
 }

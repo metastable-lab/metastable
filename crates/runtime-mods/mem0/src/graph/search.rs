@@ -3,21 +3,31 @@ use neo4rs::query;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
-use crate::{Embedding, Mem0Engine, 
-    DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_SEARCH_LIMIT
+use crate::{
+    raw_message::Relationship, 
+    Embedding, Mem0Engine, 
+    DEFAULT_GRAPH_DB_SEARCH_LIMIT, 
+    DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, 
+    DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelationInfo {
     pub source: String,
-    pub source_id: i64,
     pub relationship: String,
-    pub relation_id: i64,
     pub destination: String,
-    pub destination_id: i64,
     pub similarity: f64,
 }
 
+impl From<&RelationInfo> for Relationship {
+    fn from(relation_info: &RelationInfo) -> Self {
+        Relationship {
+            source: relation_info.source.clone(),
+            relationship: relation_info.relationship.clone(),
+            destination: relation_info.destination.clone(),
+        }
+    }
+}
 impl Mem0Engine {
     pub async fn graph_db_search_entity_with_similarity(&self,
         embedding: &Embedding, user_id: &Uuid, agent_id: Option<Uuid>
@@ -92,11 +102,8 @@ impl Mem0Engine {
                 WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
                 RETURN
                     source,
-                    source_id,
                     relationship,
-                    relation_id,
                     destination,
-                    destination_id,
                     similarity
                 ORDER BY similarity DESC
                 LIMIT {DEFAULT_GRAPH_DB_SEARCH_LIMIT}
@@ -113,11 +120,8 @@ impl Mem0Engine {
             while let Some(row) = result.next().await? {
                 let relation_info = RelationInfo {
                     source: row.get("source").unwrap_or_default(),
-                    source_id: row.get("source_id").unwrap_or_default(),
                     relationship: row.get("relationship").unwrap_or_default(),
-                    relation_id: row.get("relation_id").unwrap_or_default(),
                     destination: row.get("destination").unwrap_or_default(),
-                    destination_id: row.get("destination_id").unwrap_or_default(),
                     similarity: row.get("similarity").unwrap_or_default(),
                 };
                 all_relations.push(relation_info);

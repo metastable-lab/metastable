@@ -1,14 +1,18 @@
 use anyhow::{anyhow, Result};
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
-use voda_runtime::{Memory, Message, MessageRole, MessageType, SystemConfig};
+use voda_runtime::{ExecutableFunctionCall, Memory, Message, MessageRole, MessageType, SystemConfig};
 
 use crate::pgvector::VectorQueryCriteria;
-use crate::{EmbeddingMessage, GraphEntities};
+use crate::EmbeddingMessage;
 use crate::{message::Mem0Messages, Mem0Engine};
 use crate::llm::{
-    get_delete_graph_memory_config, get_extract_entity_config, get_extract_facts_config, get_extract_relationship_config, get_update_memory_config, 
-    DeleteGraphMemoryToolcall, EntitiesToolcall, FactsToolcall, InputMemory, MemoryUpdateToolcall, RelationshipsToolcall
+    LlmTool,
+    DeleteGraphMemoryToolInput, DeleteGraphMemoryToolcall, 
+    EntitiesToolcall, ExtractEntityToolInput, 
+    ExtractFactsToolInput, FactsToolcall,
+    MemoryUpdateToolInput, MemoryUpdateToolcall, 
+    ExtractRelationshipToolInput,RelationshipsToolcall
 };
 
 type AsyncTask = tokio::task::JoinHandle<Result<()>>;
@@ -27,141 +31,106 @@ impl Memory for Mem0Engine {
 
         let flattened_message = Mem0Messages::pack_flat_messages(messages)?;
         
-        let self_clone_vector = self.clone();
-        let flattened_message_vector = flattened_message.clone();
-        let user_id_vector = user_id.clone();
-        let agent_id_vector = agent_id.clone();
         // 1. TASK 1 - VectorDB Operations
+        let self_clone_vector = self.clone();
+        let flattened_message_clone = flattened_message.clone();
         let vector_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting vector DB operations");
-            let (extract_facts_config, user_prompt) = get_extract_facts_config(&user_id_vector, &flattened_message_vector);
-            let facts = extract_facts_config.call::<FactsToolcall>(&self_clone_vector, user_prompt).await?.facts;
-            tracing::info!("[Mem0Engine::add_messages] Extracted {} facts", facts.len());
-            if facts.is_empty() {
-                tracing::info!("[Mem0Engine::add_messages] No facts extracted, skipping");
-                return Ok(());
-            }
+            let facts_tool_input = ExtractFactsToolInput {
+                user_id: user_id.clone(),
+                agent_id: agent_id.clone(),
+                new_message: flattened_message_clone.clone(),
+            };
+            let (facts_tool_call, facts_llm_response) = FactsToolcall::call(&self_clone_vector, facts_tool_input).await?;
+            // 1.1 extract facts & build embeddings
+            let embedding_messages = facts_tool_call.execute(&facts_llm_response, &self_clone_vector).await?;
 
-            let embeddings = self_clone_vector.embed(facts.clone()).await?;
-            tracing::debug!("[Mem0Engine::add_messages] Generated {} embeddings", embeddings.len());
-            let embedding_messages = embeddings.iter().zip(facts.clone())
-                .map(|(embedding, fact)| EmbeddingMessage {
-                    id: Uuid::new_v4(),
-                    user_id: user_id_vector.clone(),
-                    agent_id: agent_id_vector.clone(),
-                    embedding: embedding.clone().into(),
-                    content: fact,
-                    created_at: get_current_timestamp(),
-                    updated_at: get_current_timestamp(),
-                }).collect::<Vec<_>>();
-
-            // 1. search db for existing memories
-            tracing::debug!("[Mem0Engine::add_messages] Searching vector DB for existing memories");
-            let queries = embedding_messages.iter().map(|embedding_message| {
-                let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id_vector.clone())
-                    .with_limit(5)
-                    .with_agent_id(agent_id_vector);
-                self_clone_vector.vector_db_search_embeddings(criteria)
-            }).collect::<Vec<_>>();
-
-            let results = futures::future::join_all(queries).await;
-            let mut existing_memories = Vec::new();
-            for result in results {
-                match result {
-                    Ok(res) => {
-                        existing_memories.extend(res.into_iter().map(|(embedding_message, _)| {
-                            InputMemory {
-                                id: embedding_message.id,
-                                content: embedding_message.content,
-                            }
-                        }));
-                    }
-                    Err(e) => {
-                        tracing::warn!("[Mem0Engine::add_messages] Error in vector_db_search_embeddings: {:?}", e);
-                    }
-                }
-            }
-            tracing::debug!("[Mem0Engine::add_messages] Found {} existing memories", existing_memories.len());
-            let (config, user_prompt) = get_update_memory_config(facts, &existing_memories);
-            let simplified_update_entries = config.call::<MemoryUpdateToolcall>(&self_clone_vector, user_prompt).await?;
-            let update_entries = simplified_update_entries.into_memory_update_entry(user_id_vector.clone(), agent_id_vector.unwrap_or_default());
-            tracing::debug!("[Mem0Engine::add_messages] Updating {} vector DB entries", update_entries.len());
-            self_clone_vector.vector_db_batch_update(update_entries).await?;
-
+            // 1.2 search db for existing memories
+            let update_memory_input = MemoryUpdateToolInput::search_vector_db_and_prepare_input(user_id.clone(), agent_id.clone(), embedding_messages, &self_clone_vector).await?;
+            
+            // 1.3 get memories to update and push to db
+            let (update_memory_tool_call, update_memory_llm_response) = MemoryUpdateToolcall::call(&self_clone_vector, update_memory_input).await?;
+            let update_entries = update_memory_tool_call.execute(&update_memory_llm_response, &self_clone_vector).await?;
+            tracing::debug!(
+                "[Mem0Engine::add_messages] Added {} new memories and updated {} existing memories, deleted {} memories", 
+                update_entries.added, update_entries.updated, update_entries.deleted
+            );
             Ok(())
         });
 
         // 2. TASK 2 - GraphDB Operations
         let self_clone_graph = self.clone();
+        let flattened_message_clone = flattened_message.clone();
         let graph_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting graph DB operations");
-
-            let (type_mapping_config, user_message) = get_extract_entity_config(user_id.clone().to_string(), flattened_message.clone());
-            let type_mapping = type_mapping_config.call::<EntitiesToolcall>(&self_clone_graph, user_message).await?;
+            // 2.1 extract entities
+            let entities_tool_input = ExtractEntityToolInput {
+                user_id: user_id.clone(),
+                agent_id: agent_id.clone(),
+                new_message: flattened_message_clone.clone(),
+            };
+            let (entities_tool_call, entities_llm_response) = EntitiesToolcall::call(&self_clone_graph, entities_tool_input).await?;
+            let type_mapping = entities_tool_call.execute(&entities_llm_response, &self_clone_graph).await?;
 
             // 2.1 Insert Operations
             let self_clone_insert = self_clone_graph.clone();
+            let type_mapping_clone = type_mapping.clone();
             let flattened_message_clone = flattened_message.clone();
-            let type_mapping_entities_clone = type_mapping.entities.clone();
-            let user_id_clone = user_id.clone();
-            let agent_id_clone = agent_id.clone();
             let graph_db_insert_operations: AsyncTask = tokio::spawn(async move {
                 tracing::debug!("[Mem0Engine::add_messages] Starting graph DB insert operations");
-                 // 2.2 get relationships on the new information
-                let (relationship_config, user_message) = get_extract_relationship_config(user_id_clone.to_string(), &type_mapping_entities_clone, flattened_message_clone);
-                let relationship = relationship_config.call::<RelationshipsToolcall>(&self_clone_insert, user_message).await?;
-                tracing::debug!("[Mem0Engine::add_messages] Extracted relationships: {:?}", relationship.relationships);
-
-                // 2.6 add new relationships
-                let add_relationship = relationship.relationships;
-                let add_entities = GraphEntities::new(
-                    add_relationship,
-                    type_mapping_entities_clone,
-                    user_id_clone,
-                    agent_id_clone,
-                );
-                tracing::debug!("[Mem0Engine::add_messages] Adding relationships to graph DB");
-                let add_size = self_clone_insert.graph_db_add(&add_entities).await?;
+                // 2.2 get relationships on the new information
+                let relationship_tool_input = ExtractRelationshipToolInput {
+                    user_id: user_id.clone(), agent_id: agent_id.clone(),
+                    entities: type_mapping_clone.clone(),
+                    new_information: flattened_message_clone.clone(),
+                };
+                let (relationship_tool_call, relationship_llm_response) = RelationshipsToolcall::call(&self_clone_insert, relationship_tool_input).await?;
+                // insert new relationships into GraphDB
+                let add_size = relationship_tool_call.execute(&relationship_llm_response, &self_clone_insert).await?;
                 tracing::info!("[Mem0Engine::add_messages] Added {} relationships", add_size);
                 Ok(())
             });
 
-            // Delete operations
+            // 2.2 Delete Operations
             let self_clone_delete = self_clone_graph.clone();
+            let type_mapping_clone = type_mapping.clone();
+            let flattened_message_clone = flattened_message.clone();
             let graph_db_delete_operations: AsyncTask = tokio::spawn(async move {
                 tracing::debug!("[Mem0Engine::add_messages] Starting graph DB delete operations");
                 // 2.3 search for exisiting nodes
-                let type_mapping_keys = type_mapping.entities.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>();
+                let type_mapping_keys = type_mapping_clone.clone().iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>();
                 tracing::debug!("[Mem0Engine::add_messages] Searching for existing nodes with keys: {:?}", type_mapping_keys);
                 let nodes = self_clone_delete.graph_db_search(type_mapping_keys, user_id.clone(), agent_id.clone()).await?;
+                let relationships = nodes.iter().map(|node| node.into()).collect::<Vec<_>>();
                 tracing::debug!("[Mem0Engine::add_messages] Found {} existing nodes", nodes.len());
 
-                // 2.4 Delete existing relationships
-                let (delete_relationship_config, user_message) = get_delete_graph_memory_config(user_id.clone().to_string(), nodes, flattened_message);
-                let delete_relationship = delete_relationship_config.call::<DeleteGraphMemoryToolcall>(&self_clone_delete, user_message).await?;
-                tracing::debug!("[Mem0Engine::add_messages] Relationships to delete: {:?}", delete_relationship.relationships);
-
-                // 2.5 delete existing relationships
-                let delete_relationship = delete_relationship.relationships;
-                let delete_entities = GraphEntities::new(
-                    delete_relationship,
-                    type_mapping.entities,
-                    user_id,
-                    agent_id,
-                );
-                tracing::debug!("[Mem0Engine::add_messages] Deleting relationships from graph DB");
-                let delete_size = self_clone_delete.graph_db_delete(&delete_entities).await?;
+                // 2.4 Delete existing relationships if we have to
+                let delete_relationship_tool_input = DeleteGraphMemoryToolInput {
+                    user_id: user_id.clone(), agent_id: agent_id.clone(),
+                    type_mapping: type_mapping_clone.clone(),
+                    existing_memories: relationships,
+                    new_message: flattened_message_clone.clone(),
+                };
+                let (delete_relationship_tool_call, delete_relationship_llm_response) = DeleteGraphMemoryToolcall::call(&self_clone_delete, delete_relationship_tool_input).await?;
+                let delete_size = delete_relationship_tool_call.execute(&delete_relationship_llm_response, &self_clone_delete).await?;
                 tracing::info!("[Mem0Engine::add_messages] Deleted {} relationships", delete_size);
+
                 Ok(())
             });
 
-            let (graph_db_insert_results, graph_db_delete_results) = futures::future::join(graph_db_insert_operations, graph_db_delete_operations).await;
+            let (graph_db_insert_results, graph_db_delete_results) = futures::future::join(
+                graph_db_insert_operations, 
+                graph_db_delete_operations
+            ).await;
             graph_db_insert_results??;
             graph_db_delete_results??;
             Ok(())
         });
 
-        let (vector_db_results, graph_db_results) = futures::future::join(vector_db_operations, graph_db_operations).await;
+        let (vector_db_results, graph_db_results) = futures::future::join(
+            vector_db_operations, 
+            graph_db_operations
+        ).await;
         vector_db_results??;
         graph_db_results??;
         Ok(())

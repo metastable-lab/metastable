@@ -1,29 +1,33 @@
 use std::sync::Arc;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
+use async_openai::types::CreateEmbeddingRequestArgs;
 use async_openai::{config::OpenAIConfig, Client};
-use async_openai::types::{
-    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, 
-    ChatCompletionToolArgs, ChatCompletionToolChoiceOption, CreateChatCompletionRequestArgs, CreateEmbeddingRequestArgs
-};
+
 use neo4rs::{ConfigBuilder, Graph};
 use sqlx::PgPool;
 
-use voda_runtime::{define_function_types, ExecutableFunctionCall, LLMRunResponse};
+use voda_runtime::{toolcalls, LLMRunResponse, UserUsage};
+use voda_database::SqlxCrud;
 
-use crate::llm::LlmConfig;
-use crate::Embedding;
+use crate::pgvector::BatchUpdateSummary;
+use crate::{Embedding, EntityTag, EmbeddingMessage};
+use crate::llm::{DeleteGraphMemoryToolcall, EntitiesToolcall, FactsToolcall, MemoryUpdateToolcall, RelationshipsToolcall};
 
-define_function_types!(
-    DeleteGraphMemoryToolcall(crate::llm::DeleteGraphMemoryToolcall, "delete_graph_memory"),
-    EntitiesToolcall(crate::llm::EntitiesToolcall, "extract_entities"),
-    FactsToolcall(crate::llm::FactsToolcall, "extract_facts"),
-    MemoryUpdateToolcall(crate::llm::MemoryUpdateToolcall, "update_memory"),
-    RelationshipsToolcall(crate::llm::RelationshipsToolcall, "establish_relationships"),
+toolcalls!(
+    ctx: Mem0Engine,
+    tools: [
+        (DeleteGraphMemoryToolcall, "delete_graph_memory", usize),
+        (EntitiesToolcall, "extract_entities", Vec<EntityTag>),
+        (FactsToolcall, "extract_facts", Vec<EmbeddingMessage>),
+        (MemoryUpdateToolcall, "update_memory", BatchUpdateSummary),
+        (RelationshipsToolcall, "establish_relationships", usize),
+    ]
 );
 
 #[derive(Clone)]
 pub struct Mem0Engine {
+    data_db: Arc<PgPool>,
     vector_db: Arc<PgPool>,
     graph_db: Arc<Graph>,
 
@@ -32,7 +36,7 @@ pub struct Mem0Engine {
 }
 
 impl Mem0Engine {
-    pub async fn new(pgvector_db: Arc<PgPool>) -> Result<Self> {
+    pub async fn new(data_db: Arc<PgPool>, pgvector_db: Arc<PgPool>) -> Result<Self> {
         let env = crate::env::Mem0Env::load();
 
         let graph_config = ConfigBuilder::default()
@@ -66,6 +70,7 @@ impl Mem0Engine {
         );
 
         Ok(Self { 
+            data_db,
             vector_db: pgvector_db, 
             graph_db: Arc::new(graph_db), 
             embeder, llm 
@@ -100,68 +105,16 @@ impl Mem0Engine {
         Ok(embeddings)
     }
 
-    pub async fn llm(&self, config: &LlmConfig, user_message: String) -> Result<LLMRunResponse> {
-        let messages = [
-            ChatCompletionRequestMessage::System(
-                ChatCompletionRequestSystemMessageArgs::default()
-                    .content(config.system_prompt.clone())
-                    .build()
-                    .expect("[Mem0Engine::llm] System message should build")
-            ),
-            ChatCompletionRequestMessage::User(
-                ChatCompletionRequestUserMessageArgs::default()
-                    .content(user_message)
-                    .build()?
-            ),
-        ];
+    pub async fn add_usage_report(&self, response: &LLMRunResponse) -> Result<()> {
+        let mut tx = self.data_db.begin().await?;
+        let usage = UserUsage::from_llm_response(response);
+        usage.create(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(())
+    }
 
-        let tools = config.tools.iter()
-            .map(|function| ChatCompletionToolArgs::default()
-                .function(function.clone())
-                .build()
-                .expect("[Mem0Engine::llm] Tool should build")
-            )
-            .collect::<Vec<_>>();
-
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&config.model)
-            .messages(messages)
-            .tools(tools)
-            .temperature(config.temperature)
-            .max_tokens(config.max_tokens as u32)
-            .tool_choice(ChatCompletionToolChoiceOption::Auto)
-            .build()?;
-
-        let response = self.llm.chat().create(request).await?;
-        let usage = response.usage.ok_or(|| {
-            tracing::warn!("Model {} returned no usage", config.model);
-        }).map_err(|_| anyhow!("Model {} returned no usage", config.model))?;
-
-        let response = response.choices.first()
-            .ok_or(anyhow!("[Mem0Engine::llm] No response from AI inference server"))?
-            .message.clone();
-        let content = response.content.unwrap_or_default();
-        let maybe_function_call = response.tool_calls
-            .unwrap_or_default()
-            .into_iter()
-            .map(|tool_call| tool_call.function)
-            .collect::<Vec<_>>();
-
-        let mut maybe_results = Vec::new();
-        for tool_call in maybe_function_call.clone() {
-            let tc = RuntimeFunctionType::from_function_call(tool_call.clone())?;
-        
-            let result = tc.execute().await?;
-            maybe_results.push(result);
-        }
-
-        Ok(LLMRunResponse {
-            content,
-            usage,
-            maybe_function_call,
-            maybe_results,
-            misc_value: None,
-        })
+    pub fn get_data_db(&self) -> &Arc<PgPool> {
+        &self.data_db
     }
 
     pub fn get_vector_db(&self) -> &Arc<PgPool> {
@@ -170,5 +123,9 @@ impl Mem0Engine {
 
     pub fn get_graph_db(&self) -> &Arc<Graph> {
         &self.graph_db
+    }
+
+    pub fn get_llm(&self) -> &Client<OpenAIConfig> {
+        &self.llm
     }
 }

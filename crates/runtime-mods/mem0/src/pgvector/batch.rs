@@ -23,11 +23,18 @@ pub struct MemoryUpdateEntry {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchUpdateSummary {
+    pub added: usize,
+    pub updated: usize,
+    pub deleted: usize,
+}
+
 impl Mem0Engine {
 
-    pub async fn vector_db_batch_update(&self, updates: Vec<MemoryUpdateEntry>) -> Result<()> {
+    pub async fn vector_db_batch_update(&self, updates: Vec<MemoryUpdateEntry>) -> Result<BatchUpdateSummary> {
         if updates.is_empty() {
-            return Ok(());
+            return Ok(BatchUpdateSummary { added: 0, updated: 0, deleted: 0 });
         }
 
         let mut to_add = Vec::new();
@@ -52,6 +59,12 @@ impl Mem0Engine {
         let (add_embeddings, update_embeddings) = embeddings.split_at(add_contents.len());
 
         let now = get_current_timestamp();
+
+        let summary = BatchUpdateSummary { 
+            added: to_add.len(), 
+            updated: to_update.len(), 
+            deleted: to_delete_ids.len() 
+        };
 
         let add_messages: Vec<EmbeddingMessage> = to_add
             .into_iter()
@@ -134,7 +147,7 @@ impl Mem0Engine {
         }
         
         tx.commit().await?;
-        Ok(())
+        Ok(summary)
     }
 
 }

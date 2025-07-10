@@ -1,71 +1,92 @@
 use anyhow::Result;
-use async_openai::types::{FunctionCall, FunctionObject};
+use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use voda_runtime::ExecutableFunctionCall;
+use sqlx::types::Uuid;
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use crate::{llm::LlmConfig, EntityTag};
+use crate::{llm::{LlmTool, ToolInput}, EntityTag, Mem0Engine};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractEntityToolInput {
+    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub new_message: String,
+}
+
+impl ToolInput for ExtractEntityToolInput {
+    fn user_id(&self) -> Uuid { self.user_id.clone() }
+    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+
+    fn build(&self) -> String {
+        self.new_message.clone()
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntitiesToolcall {
     pub entities: Vec<EntityTag>,
+    pub input: Option<ExtractEntityToolInput>,
 }
 
-pub fn get_extract_entity_config(user_id: String, content: String) -> (LlmConfig, String) {
-    let system_prompt = format!(
-        "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
-        user_id
-    );
+#[async_trait::async_trait]
+impl LlmTool for EntitiesToolcall {
+    type ToolInput = ExtractEntityToolInput;
 
-    let extract_entity_tool = FunctionObject {
-        name: "extract_entities".to_string(),
-        description: Some("Extract entities and their types from the text.".to_string()),
-        parameters: Some(json!({
-            "type": "object",
-            "properties": {
-                "entities": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "entity_name": {"type": "string", "description": "The name or identifier of the entity."},
-                            "entity_tag": {"type": "string", "description": "The type or category of the entity."},
+    fn tool_input(&self) -> Option<Self::ToolInput> {
+        self.input.clone()
+    }
+
+    fn set_tool_input(&mut self, tool_input: Self::ToolInput) {
+        self.input = Some(tool_input);
+    }
+
+    fn system_prompt(input: &Self::ToolInput) -> String {
+        format!(
+            "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
+            input.user_id()
+        )
+    }
+
+    fn tools() -> Vec<FunctionObject> {
+        vec![FunctionObject {
+            name: "extract_entities".to_string(),
+            description: Some("Extract entities and their types from the text.".to_string()),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "entities": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "entity_name": {"type": "string", "description": "The name or identifier of the entity."},
+                                "entity_tag": {"type": "string", "description": "The type or category of the entity."},
+                            },
+                            "required": ["entity_name", "entity_tag"],
+                            "additionalProperties": false,
                         },
-                        "required": ["entity_name", "entity_tag"],
-                        "additionalProperties": false,
-                    },
-                    "description": "An array of entities with their types.",
-                }
-            },
-            "required": ["entities"],
-            "additionalProperties": false,
-        })),
-        strict: Some(true),
-    };
-
-    let tools = vec![extract_entity_tool];
-
-    let config = LlmConfig {
-        name: "extract_entity".to_string(),
-        model: "x-ai/grok-3-mini".to_string(),
-        temperature: 0.7,
-        max_tokens: 10000,
-        system_prompt, tools,
-    };
-
-    (config, content)
+                        "description": "An array of entities with their types.",
+                    }
+                },
+                "required": ["entities"],
+                "additionalProperties": false,
+            })),
+            strict: Some(true),
+        }]
+    }
 }
 
+#[async_trait::async_trait]
 impl ExecutableFunctionCall for EntitiesToolcall {
-    fn name() -> &'static str {
-        "extract_entities"
-    }
+    type CTX = Mem0Engine;
+    type RETURN = Vec<EntityTag>;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "extract_entities" }
 
-    async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self)?)
+    async fn execute(&self, llm_response: &LLMRunResponse, execution_context: &Self::CTX) -> Result<Self::RETURN> {
+        execution_context.add_usage_report(llm_response).await?;
+
+        Ok(self.entities.clone())
     }
 }

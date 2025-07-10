@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
 use sqlx::types::Uuid;
-use crate::{LLMRunResponse, SystemConfig};
+use crate::SystemConfig;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
 pub enum MessageRole {
@@ -43,7 +43,6 @@ pub trait Message: Clone + Send + Sync + 'static {
 
     fn created_at(&self) -> i64;
 
-    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self;
     fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
         message
             .iter()

@@ -1,22 +1,23 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use async_openai::types::FunctionCall;
 use async_openai::{config::OpenAIConfig, Client};
 
-use serde_json::json;
+use sqlx::types::{Json, Uuid};
 use sqlx::PgPool;
-use tokio::sync::{mpsc, oneshot};
-use voda_common::EnvVars;
-use voda_runtime::{define_function_types, FunctionExecutor, LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
+use voda_common::{get_current_timestamp, EnvVars};
+use voda_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use voda_runtime_roleplay::Character;
 
 use crate::memory::CharacterCreationMemory;
-use crate::{CharacterCreationMessage, preload, SummarizeCharacterFunctionCall};
+use crate::{CharacterCreationMessage, preload, SummarizeCharacterToolCall};
 
-define_function_types!(
-    SummarizeCharacterFunctionCall(SummarizeCharacterFunctionCall, "summarize_character")
+toolcalls!(
+    ctx: (),
+    tools: [
+        (SummarizeCharacterToolCall, "summarize_character", Character)
+    ]
 );
 
 #[derive(Clone)]
@@ -24,14 +25,12 @@ pub struct CharacterCreationRuntimeClient {
     db: Arc<PgPool>,
     memory: Arc<CharacterCreationMemory>,
     client: Client<OpenAIConfig>,
-    executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>,
 }
 
 impl CharacterCreationRuntimeClient {
     pub async fn new(
         db: Arc<PgPool>,
         system_config_name: String,
-        executor: mpsc::Sender<(FunctionCall, oneshot::Sender<Result<String>>)>
     ) -> Result<Self> {
         let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
@@ -47,7 +46,7 @@ impl CharacterCreationRuntimeClient {
         let mut character_creation_memory = CharacterCreationMemory::new(db.clone(), system_config_name.clone());
         character_creation_memory.initialize().await?;
 
-        Ok(Self { client, db, memory: Arc::new(character_creation_memory), executor })
+        Ok(Self { client, db, memory: Arc::new(character_creation_memory) })
     }
 }
 
@@ -109,15 +108,6 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
         tracing::info!("[CharacterCreationRuntimeClient::on_init] Character creation runtime client initialized");
         Ok(())
     }
-    async fn init_function_executor(
-        queue: mpsc::Receiver<(FunctionCall, oneshot::Sender<Result<String>>)>
-    ) -> Result<()> {        
-        tracing::info!("[CharacterCreationRuntimeClient::init_function_executor] Starting function executor");
-        let mut function_executor = FunctionExecutor::<RuntimeFunctionType>::new(queue);
-        function_executor.run().await;
-
-        Ok(())
-    }
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &CharacterCreationMessage) -> Result<LLMRunResponse> {
@@ -126,48 +116,40 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
             .search(&message, 100).await?;
 
         let mut response = self.send_llm_request(&system_config, &messages).await?;
-        let mut assistant_message = CharacterCreationMessage::from_llm_response(
-            response.clone(), 
-            &message.roleplay_session_id, 
-            &message.owner
-        );
+        let function_call = response.maybe_function_call.first()
+            .ok_or(anyhow::anyhow!("[CharacterCreationRuntimeClient::on_new_message] No function call found"))?;
 
+        let tc = RuntimeToolcall::from_function_call(function_call.clone())
+            .map_err(|e| anyhow::anyhow!("[CharacterCreationRuntimeClient::on_new_message] Failed to parse function call: {}", e))?;
+        let result = tc.execute(&response, &()).await?;
+        let RuntimeToolcallReturn::SummarizeCharacterToolCall(character) = result;
         let mut tx = self.db.begin().await?;
-        assistant_message.character_creation_system_config = system_config.id;
-        if let Some(character_str) = assistant_message.character_creation_maybe_character_str.clone() {
-            let mut character = serde_json::from_str::<Character>(&character_str)?;
-            character.creator = message.owner.clone();
-            let char = character.create(&mut *tx).await?;
-            assistant_message.character_creation_maybe_character_id = Some(char.id);
-        }
-        let assistant_message = assistant_message.create(&mut *tx).await?;
-
-        let user_usage = UserUsage::new(
-            message.owner.clone(),
-            system_config.openai_model.clone(),
-            response.usage.clone()
-        );
+        let character = character.create(&mut *tx).await?;
+        let character_creation_message = CharacterCreationMessage {
+            id: Uuid::new_v4(),
+            roleplay_session_id: message.roleplay_session_id.clone(),
+            character_creation_system_config: system_config.id.clone(),
+            owner: message.owner.clone(),
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            character_creation_call: Json(vec![function_call.clone()]),
+            character_creation_maybe_character_str: Some(serde_json::to_string(&character)?),
+            character_creation_maybe_character_id: Some(character.id),
+            content: response.content.clone(),
+            created_at: get_current_timestamp(),
+            updated_at: get_current_timestamp(),
+        };
+        character_creation_message.create(&mut *tx).await?;
+        let user_usage = UserUsage::from_llm_response(&response);
         user_usage.create(&mut *tx).await?;
-
         tx.commit().await?;
 
-        response.misc_value = Some(json!({
-            "character_id": assistant_message.character_creation_maybe_character_id,
-        }));
+        response.misc_value = Some(serde_json::json!({ "character_id": character.id }));
 
         Ok(response)
     }
 
     async fn on_rollback(&self, _message: &CharacterCreationMessage) -> Result<LLMRunResponse> {
         unimplemented!()
-    }
-
-    async fn on_tool_call(
-        &self, call: &FunctionCall
-    ) -> Result<String> {
-        let (tx, rx) = oneshot::channel();
-        self.executor.send((call.clone(), tx)).await?;
-        let result = rx.await?;
-        result
-    }    
+    }   
 }

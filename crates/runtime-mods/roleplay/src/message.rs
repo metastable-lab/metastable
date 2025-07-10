@@ -1,11 +1,9 @@
-use anyhow::Result;
-use chrono::Utc;
-use chrono_tz::Asia::Shanghai;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
+use voda_common::get_time_in_utc8;
 use voda_database::SqlxObject;
-use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
+use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
 
 use super::{Character, RoleplaySession};
 
@@ -40,20 +38,6 @@ impl Message for RoleplayMessage {
     fn url_content(&self) -> Option<String> { None }
 
     fn created_at(&self) -> i64 { self.created_at }
-
-    fn from_llm_response(response: LLMRunResponse, session_id: &Uuid, user_id: &Uuid) -> Self {
-        Self {
-            id: Uuid::default(),
-            owner: user_id.clone(),
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            content: response.content,
-            session_id: session_id.clone(),
-
-            created_at: 0,
-            updated_at: 0,
-        }
-    }
 }
 
 impl RoleplayMessage {
@@ -93,7 +77,7 @@ impl RoleplayMessage {
     pub fn system(
         session: &RoleplaySession, system_config: &SystemConfig, character: &Character, user: &User,
     ) -> Self {
-        let request_time = Utc::now().with_timezone(&Shanghai).to_rfc3339();
+        let request_time = get_time_in_utc8();
         let system_prompt = Self::replace_placeholders_system_prompt(
             &character.name, 
             &user.user_aka,

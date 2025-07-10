@@ -1,16 +1,70 @@
 use anyhow::Result;
-use async_openai::types::{FunctionCall, FunctionObject};
+use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::types::Uuid;
-use voda_runtime::ExecutableFunctionCall;
-use crate::{llm::LlmConfig, pgvector::{MemoryEvent, MemoryUpdateEntry}};
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
+use crate::{llm::{LlmTool, ToolInput}, pgvector::{BatchUpdateSummary, MemoryEvent, MemoryUpdateEntry, VectorQueryCriteria}, EmbeddingMessage, Mem0Engine};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputMemory {
     pub id: Uuid,
     pub content: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryUpdateToolInput {
+    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub retrieved_facts: Vec<String>,
+    pub old_memories: Vec<InputMemory>,
+}
+
+impl ToolInput for MemoryUpdateToolInput {
+    fn user_id(&self) -> Uuid { self.user_id.clone() }
+    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+
+    fn build(&self) -> String {
+        "Please update the memory based on the new facts.".to_string()
+    }
+}
+
+impl MemoryUpdateToolInput {
+    pub async fn search_vector_db_and_prepare_input(
+        user_id: Uuid, agent_id: Option<Uuid>, 
+        embedding_messages: Vec<EmbeddingMessage>,
+        engine: &Mem0Engine,
+    ) -> Result<Self> {
+        tracing::debug!("[MemoryUpdateToolInput::prepare_input] Searching vector DB for existing memories");
+        let queries = embedding_messages.iter().map(|embedding_message| {
+            let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id)
+                .with_limit(5)
+                .with_agent_id(agent_id);
+            engine.vector_db_search_embeddings(criteria)
+        }).collect::<Vec<_>>();
+        let results = futures::future::join_all(queries).await;
+        let mut existing_memories = Vec::new();
+        for result in results {
+            match result {
+                Ok(res) => {
+                    existing_memories.extend(res.into_iter().map(|(embedding_message, _)| {
+                        InputMemory { id: embedding_message.id, content: embedding_message.content }
+                    }));
+                }
+                Err(e) => {
+                    tracing::warn!("[MemoryUpdateToolInput::prepare_input] Error in vector_db_search_embeddings: {:?}", e);
+                }
+            }
+        }
+        tracing::debug!("[MemoryUpdateToolInput::prepare_input] Found {} existing memories", existing_memories.len());
+
+        Ok(Self {
+            user_id, agent_id, 
+            retrieved_facts: embedding_messages.iter().map(|embedding_message| embedding_message.content.clone()).collect(), 
+            old_memories: existing_memories,
+        })
+    }
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntrySimplified {
@@ -22,14 +76,21 @@ pub struct MemoryEntrySimplified {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryUpdateToolcall {
     pub memory: Vec<MemoryEntrySimplified>,
+    pub input: Option<MemoryUpdateToolInput>,
 }
 
-pub fn get_update_memory_config(retrieved_facts: Vec<String>, old_memories: &Vec<InputMemory>) -> (LlmConfig, String) {
-    let retrieved_facts_text = serde_json::to_string_pretty(&retrieved_facts).unwrap_or_else(|_| "[]".to_string());
-    let memories_text = serde_json::to_string_pretty(old_memories).unwrap_or_else(|_| "[]".to_string());
+#[async_trait::async_trait]
+impl LlmTool for MemoryUpdateToolcall {
+    type ToolInput = MemoryUpdateToolInput;
 
-    let system_prompt = format!(
-        r#"You are a smart memory manager which controls the memory of a system.
+    fn tool_input(&self) -> Option<Self::ToolInput> { self.input.clone() }
+    fn set_tool_input(&mut self, tool_input: Self::ToolInput) { self.input = Some(tool_input); }
+
+    fn system_prompt(input: &Self::ToolInput) -> String {
+        let retrieved_facts_text = serde_json::to_string_pretty(&input.retrieved_facts).unwrap_or_else(|_| "[]".to_string());
+        let memories_text = serde_json::to_string_pretty(&input.old_memories).unwrap_or_else(|_| "[]".to_string());
+        format!(
+            r#"You are a smart memory manager which controls the memory of a system.
 You can perform four operations: (1) add into the memory, (2) update the memory, (3) delete from the memory, and (4) no change.
 The memory entries are identified by a unique UUID.
 
@@ -208,84 +269,73 @@ Follow the instruction mentioned below when constructing the arguments for the t
 
 Your response must only be the tool call.
 "#,
-        memories = memories_text,
-        facts = retrieved_facts_text
-    );
+            memories = memories_text,
+            facts = retrieved_facts_text
+        )
+    }
 
-    let user_prompt = "Please update the memory based on the new facts.".to_string();
-    
-    let update_memory_tool = FunctionObject {
-        name: "update_memory".to_string(),
-        description: Some("Updates the memory with new facts, including adding, modifying, or deleting entries.".to_string()),
-        parameters: Some(json!({
-            "type": "object",
-            "properties": {
-                "memory": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "description": "ID of the memory in UUID format. Use existing ID for updates/deletes, or the nil UUID for additions."
+    fn tools() -> Vec<FunctionObject> {
+        vec![FunctionObject {
+            name: "update_memory".to_string(),
+            description: Some("Updates the memory with new facts, including adding, modifying, or deleting entries.".to_string()),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "memory": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "description": "ID of the memory in UUID format. Use existing ID for updates/deletes, or the nil UUID for additions."
+                                },
+                                "content": {
+                                    "type": "string",
+                                    "description": "Content of the memory."
+                                },
+                                "event": {
+                                    "type": "string",
+                                    "enum": ["ADD", "UPDATE", "DELETE", "NONE"],
+                                    "description": "Operation to be performed."
+                                },
                             },
-                            "content": {
-                                "type": "string",
-                                "description": "Content of the memory."
-                            },
-                            "event": {
-                                "type": "string",
-                                "enum": ["ADD", "UPDATE", "DELETE", "NONE"],
-                                "description": "Operation to be performed."
-                            },
-                        },
-                        "required": ["id", "content", "event"]
+                            "required": ["id", "content", "event"]
+                        }
                     }
-                }
-            },
-            "required": ["memory"],
-            "additionalProperties": false
-        })),
-        strict: Some(true),
-    };
-
-    let tools = vec![update_memory_tool];
-
-    let config = LlmConfig {
-        name: "update_memory".to_string(),
-        model: "x-ai/grok-3-mini".to_string(),
-        temperature: 0.7,
-        max_tokens: 10000,
-        system_prompt,
-        tools,
-    };
-
-    (config, user_prompt)
+                },
+                "required": ["memory"],
+                "additionalProperties": false
+            })),
+            strict: Some(true),
+        }]
+    }
 }
 
+#[async_trait::async_trait]
 impl ExecutableFunctionCall for MemoryUpdateToolcall {
-    fn name() -> &'static str {
-        "update_memory"
-    }
+    type CTX = Mem0Engine;
+    type RETURN = BatchUpdateSummary;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "update_memory" }
 
-    async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self)?)
-    }
-}
+    async fn execute(&self, llm_response: &LLMRunResponse, execution_context: &Self::CTX) -> Result<Self::RETURN> {
+        execution_context.add_usage_report(llm_response).await?;
 
-impl MemoryUpdateToolcall {
-    pub fn into_memory_update_entry(self, user_id: Uuid, agent_id: Uuid) -> Vec<MemoryUpdateEntry> {
-        self.memory.into_iter().map(|entry| MemoryUpdateEntry {
-            id: entry.id,
-            user_id,
-            agent_id,
-            event: entry.event,
-            content: entry.content,
-        }).collect()
+        let input = self.tool_input()
+            .ok_or(anyhow::anyhow!("[MemoryUpdateToolcall::execute] No input found"))?;
+
+        let memory_update_entries = self.memory.clone().into_iter()
+            .map(|entry| MemoryUpdateEntry {
+                id: entry.id,
+                user_id: input.user_id,
+                agent_id: input.agent_id.clone().unwrap_or_default(),
+                event: entry.event,
+                content: entry.content,
+            }).collect();
+
+        let summary = execution_context.vector_db_batch_update(memory_update_entries).await?;
+        Ok(summary)
     }
 }

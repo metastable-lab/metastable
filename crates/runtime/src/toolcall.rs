@@ -1,58 +1,82 @@
 use anyhow::Result;
+use async_openai::types::FunctionCall;
 use serde::{de::DeserializeOwned, Serialize};
 
+use crate::LLMRunResponse;
+
+#[async_trait::async_trait]
 pub trait ExecutableFunctionCall:
     Clone + Serialize + DeserializeOwned + Send + Sync + 'static
 {
+    type CTX: Send + Sync + 'static;
+    type RETURN: Send + Sync + 'static + std::fmt::Debug + std::clone::Clone;
+
     fn name() -> &'static str;
-    fn from_function_call(function_call: async_openai::types::FunctionCall) -> Result<Self>;
-    #[allow(async_fn_in_trait)]
-    async fn execute(&self) -> Result<String>;
+    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
+        Ok(serde_json::from_str(&function_call.arguments)?)
+    }
+
+    async fn execute(&self, 
+        llm_response: &LLMRunResponse, 
+        execution_context: &Self::CTX
+    ) -> Result<Self::RETURN>;
 }
 
 #[macro_export]
-macro_rules! define_function_types {
+macro_rules! toolcalls {
     (
-        $(
-            $variant:ident($type:ty, $name:expr)
-        ),* $(,)?
+        ctx: $ctx:ty,
+        tools: [
+            $(
+                ($type:ident, $name:expr, $return_type:ty)
+            ),* $(,)?
+        ]
     ) => {
-        #[derive(Debug, serde::Serialize, serde::Deserialize)]
-        pub enum RuntimeFunctionType {
-            $($variant($type)),*
+        #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+        pub enum RuntimeToolcall {
+            $(
+                $type($type),
+            )*
         }
 
-        impl ::voda_runtime::ExecutableFunctionCall for RuntimeFunctionType {
+        #[derive(Debug, Clone)]
+        pub enum RuntimeToolcallReturn {
+            $(
+                $type($return_type),
+            )*
+        }
+
+        #[async_trait::async_trait]
+        impl ::voda_runtime::ExecutableFunctionCall for RuntimeToolcall {
+            type CTX = $ctx;
+            type RETURN = RuntimeToolcallReturn;
+
             fn name() -> &'static str { "runtime_function_calls" }
 
-            fn from_function_call(function_call: async_openai::types::FunctionCall) -> Result<Self> {
+            fn from_function_call(function_call: async_openai::types::FunctionCall) -> anyhow::Result<Self> {
                 let args: serde_json::Value = serde_json::from_str(&function_call.arguments)?;
-                
+
                 match function_call.name.as_str() {
                     $(
                         $name => {
                             let function = serde_json::from_value::<$type>(args)?;
-                            Ok(RuntimeFunctionType::$variant(function))
+                            Ok(RuntimeToolcall::$type(function))
                         }
-                    ),*,
+                    ),*
                     _ => Err(anyhow::anyhow!("Unknown function type: {}", function_call.name))
                 }
             }
 
-            async fn execute(&self) -> Result<String> {
+            async fn execute(&self, 
+                llm_response: &::voda_runtime::LLMRunResponse, 
+                execution_context: &Self::CTX
+            ) -> anyhow::Result<Self::RETURN> {
                 match self {
                     $(
-                        RuntimeFunctionType::$variant(f) => f.execute().await
-                    ),*
-                }
-            }
-        }
-
-        impl std::clone::Clone for RuntimeFunctionType {
-            fn clone(&self) -> Self {
-                match self {
-                    $(
-                        RuntimeFunctionType::$variant(f) => RuntimeFunctionType::$variant(f.clone())
+                        RuntimeToolcall::$type(f) => {
+                            let result = f.execute(llm_response, execution_context).await?;
+                            Ok(RuntimeToolcallReturn::$type(result))
+                        }
                     ),*
                 }
             }

@@ -1,5 +1,5 @@
 use sqlx::types::Uuid;
-use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType};
+use voda_runtime::{Message, MessageRole, MessageType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mem0Messages {
@@ -28,8 +28,4 @@ impl Message for Mem0Messages {
     fn url_content(&self) -> Option<String> { None }
 
     fn created_at(&self) -> i64 { self.created_at }
-
-    fn from_llm_response(_response: LLMRunResponse, _session_id: &Uuid, _user_id: &Uuid) -> Self {
-        unimplemented!("Mem0Messages::from_llm_response will not be parsed form LLM response")
-    }
 }

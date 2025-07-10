@@ -1,21 +1,49 @@
 use anyhow::Result;
-use async_openai::types::{FunctionCall, FunctionObject};
+use async_openai::types::FunctionObject;
 use sqlx::types::Uuid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use chrono::Utc;
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use voda_runtime::ExecutableFunctionCall;
-use crate::llm::LlmConfig;
+use voda_common::{get_current_timestamp, get_time_in_utc8};
+use crate::{llm::{LlmTool, ToolInput}, EmbeddingMessage, Mem0Engine};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractFactsToolInput {
+    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub new_message: String,
+}
+
+impl ToolInput for ExtractFactsToolInput {
+    fn user_id(&self) -> Uuid { self.user_id.clone() }
+    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+
+    fn build(&self) -> String {
+        format!("Input: {}", self.new_message)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactsToolcall {
     pub facts: Vec<String>,
+    pub input: Option<ExtractFactsToolInput>,
 }
 
-pub fn get_extract_facts_config(user_id: &Uuid, message: &str) -> (LlmConfig, String) {
-    let system_prompt = format!(
-        r#"You are a Personal Information Organizer, specialized in accurately storing facts, user memories, and preferences. Your primary role is to extract relevant pieces of information from conversations and organize them into distinct, manageable facts. 
+#[async_trait::async_trait]
+impl LlmTool for FactsToolcall {
+    type ToolInput = ExtractFactsToolInput;
+
+    fn tool_input(&self) -> Option<Self::ToolInput> {
+        self.input.clone()
+    }
+
+    fn set_tool_input(&mut self, tool_input: Self::ToolInput) {
+        self.input = Some(tool_input);
+    }
+
+    fn system_prompt(input: &Self::ToolInput) -> String {
+        format!(
+            r#"You are a Personal Information Organizer, specialized in accurately storing facts, user memories, and preferences. Your primary role is to extract relevant pieces of information from conversations and organize them into distinct, manageable facts. 
         This allows for easy retrieval and personalization in future interactions. Below are the types of information you need to focus on and the detailed instructions on how to handle the input data.
 
 Types of Information to Remember:
@@ -65,52 +93,58 @@ Remember the following:
 - Detect the language of the user input and record the facts in the same language.
 
 Following is a conversation between the user and the assistant. You have to extract the relevant facts and preferences about the user, if any, from the conversation and return them in the json format as shown above."#,
-        Utc::now().format("%Y-%m-%d"),
-        user_id
-    );
+        get_time_in_utc8(), input.user_id() )
+    }
 
-    let extract_facts_tool = FunctionObject {
-        name: "extract_facts".to_string(),
-        description: Some("Extract personal facts and preferences from the text.".to_string()),
-        parameters: Some(json!({
-            "type": "object",
-            "properties": {
-                "facts": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "An array of extracted facts and preferences."
-                }
-            },
-            "required": ["facts"],
-            "additionalProperties": false,
-        })),
-        strict: Some(true),
-    };
-
-    let tools = vec![extract_facts_tool];
-
-    let config = LlmConfig {
-        name: "extract_facts".to_string(),
-        model: "x-ai/grok-3-mini".to_string(),
-        temperature: 0.7,
-        max_tokens: 10000,
-        system_prompt,
-        tools,
-    };
-
-    (config, format!("Input: {}", message))
+    fn tools() -> Vec<FunctionObject> {
+        vec![FunctionObject {
+            name: "extract_facts".to_string(),
+            description: Some("Extract personal facts and preferences from the text.".to_string()),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "facts": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "An array of extracted facts and preferences."
+                    }
+                },
+                "required": ["facts"],
+                "additionalProperties": false,
+            })),
+            strict: Some(true),
+        }]
+    }
 }
 
+#[async_trait::async_trait]
 impl ExecutableFunctionCall for FactsToolcall {
-    fn name() -> &'static str {
-        "extract_facts"
-    }
+    type CTX = Mem0Engine;
+    type RETURN = Vec<EmbeddingMessage>;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "extract_facts" }
 
-    async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self)?)
+    async fn execute(&self, llm_response: &LLMRunResponse, execution_context: &Self::CTX) -> Result<Self::RETURN> {
+        execution_context.add_usage_report(llm_response).await?;
+        let input = self.tool_input()
+            .ok_or(anyhow::anyhow!("[FactsToolcall::execute] No input found"))?;
+
+        let facts = self.facts.clone();
+        if facts.is_empty() { return Ok(vec![]); }
+        tracing::info!("[FactsToolcall::execute] Extracted {} facts", facts.len());
+
+        let embeddings = execution_context.embed(facts.clone()).await?;
+        let embedding_messages = embeddings.iter().zip(facts.clone())
+            .map(|(embedding, fact)| EmbeddingMessage {
+                id: Uuid::new_v4(),
+                user_id: input.user_id(),
+                agent_id: input.agent_id(),
+                embedding: embedding.clone().into(),
+                content: fact.clone(),
+                created_at: get_current_timestamp(),
+                updated_at: get_current_timestamp(),
+            }).collect::<Vec<_>>();
+
+        Ok(embedding_messages)
     }
 }

@@ -1,13 +1,12 @@
 use anyhow::Result;
-use async_openai::types::FunctionCall;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
-use voda_runtime::ExecutableFunctionCall;
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 use voda_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SummarizeCharacterFunctionCall {
+pub struct SummarizeCharacterToolCall {
     pub name: String,
     pub description: String,
     pub gender: CharacterGender,
@@ -21,24 +20,24 @@ pub struct SummarizeCharacterFunctionCall {
     pub tags: Vec<String>,
 }
 
-impl ExecutableFunctionCall for SummarizeCharacterFunctionCall {
-    fn name() -> &'static str {
-        "summarize_character"
-    }
+#[async_trait::async_trait]
+impl ExecutableFunctionCall for SummarizeCharacterToolCall {
+    type CTX = ();
+    type RETURN = Character;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        println!("function_call: {:?}", function_call);
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "summarize_character" }
 
-    async fn execute(&self) -> Result<String> {
+    async fn execute(&self, 
+        llm_response: &LLMRunResponse, 
+        _execution_context: &Self::CTX
+    ) -> Result<Character> {
         let character = Character {
             id: Uuid::new_v4(),
             name: self.name.clone(),
             description: self.description.clone(),
             gender: self.gender.clone(),
             language: self.language.clone(),
-            features: vec![CharacterFeature::DefaultRoleplay],
+            features: vec![CharacterFeature::Roleplay],
             prompts_scenario: self.prompts_scenario.clone(),
             prompts_personality: self.prompts_personality.clone(),
             prompts_example_dialogue: self.prompts_example_dialogue.clone(),
@@ -46,14 +45,13 @@ impl ExecutableFunctionCall for SummarizeCharacterFunctionCall {
             prompts_background_stories: self.prompts_background_stories.clone(),
             prompts_behavior_traits: self.prompts_behavior_traits.clone(),
             tags: self.tags.clone(),
-            creator: Uuid::new_v4(),
+            creator: llm_response.caller.clone(),
             version: 1,
             status: CharacterStatus::Draft,
             creator_notes: None,
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         };
-
-        Ok(serde_json::to_string(&character)?)
+        Ok(character)
     }
 }

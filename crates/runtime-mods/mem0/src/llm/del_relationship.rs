@@ -1,18 +1,59 @@
 use anyhow::Result;
-use async_openai::types::{FunctionCall, FunctionObject};
+use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use voda_runtime::ExecutableFunctionCall;
+use sqlx::types::Uuid;
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use crate::{graph::RelationInfo, llm::LlmConfig, raw_message::Relationship};
+use crate::{ 
+    llm::{LlmTool, ToolInput}, 
+    raw_message::Relationship, 
+    EntityTag, GraphEntities, Mem0Engine
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteGraphMemoryToolInput {
+    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+
+    pub type_mapping: Vec<EntityTag>,
+    pub existing_memories: Vec<Relationship>,
+    pub new_message: String,
+}
+
+impl ToolInput for DeleteGraphMemoryToolInput {
+    fn user_id(&self) -> Uuid { self.user_id.clone() }
+    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+
+    fn build(&self) -> String {
+        let existing_memories_text = self.existing_memories.iter()
+            .map(|r| format!("{} -- {} -- {}", r.source, r.relationship, r.destination))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("Here are the existing memories: {} \n\n New Information: {}", existing_memories_text, self.new_message)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteGraphMemoryToolcall {
     pub relationships: Vec<Relationship>,
+    pub input: Option<DeleteGraphMemoryToolInput>,
 }
 
-const DELETE_RELATIONS_SYSTEM_PROMPT: &str = r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
+#[async_trait::async_trait]
+impl LlmTool for DeleteGraphMemoryToolcall {
+    type ToolInput = DeleteGraphMemoryToolInput;
+
+    fn tool_input(&self) -> Option<Self::ToolInput> {
+        self.input.clone()
+    }
+
+    fn set_tool_input(&mut self, tool_input: Self::ToolInput) {
+        self.input = Some(tool_input);
+    }
+
+    fn system_prompt(_input: &Self::ToolInput) -> String {
+        r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
 Input:
 1. Existing Graph Memories: A list of current graph memories, each containing source, relationship, and destination information.
 2. New Text: The new information to be integrated into the existing graph structure.
@@ -44,68 +85,63 @@ Do not delete in the above example because there is a possibility that Alice lov
 Memory Format:
 source -- relationship -- destination
 
-Provide a list of deletion instructions, each specifying the relationship to be deleted."#;
+Provide a list of deletion instructions, each specifying the relationship to be deleted."#.to_string()
+    }
 
-
-pub fn get_delete_graph_memory_config(user_id: String, existing_memories: Vec<RelationInfo>, new_text: String) -> (LlmConfig, String) {
-    let system_prompt = DELETE_RELATIONS_SYSTEM_PROMPT.replace("{user_id}", &user_id);
-
-    let existing_memories_text = existing_memories.iter()
-        .map(|r| format!("{} -- {} -- {}", r.source, r.relationship, r.destination))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let user_prompt = format!("Here are the existing memories: {} \n\n New Information: {}", existing_memories_text, new_text);
-
-    let delete_graph_memory_tool = FunctionObject {
-        name: "delete_graph_memory".to_string(),
-        description: Some("Delete relationships among the entities based on the provided text.".to_string()),
-        parameters: Some(json!({
-            "type": "object",
-            "properties": {
-                "relationships": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "source": {"type": "string", "description": "The identifier of the source node in the relationship."},
-                            "relationship": {"type": "string", "description": "The existing relationship between the source and destination nodes that needs to be deleted."},
-                            "destination": {"type": "string", "description": "The identifier of the destination node in the relationship."},
+    fn tools() -> Vec<FunctionObject> {
+        vec![FunctionObject {
+            name: "delete_graph_memory".to_string(),
+            description: Some("Delete relationships among the entities based on the provided text.".to_string()),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "relationships": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "source": {"type": "string", "description": "The identifier of the source node in the relationship."},
+                                "relationship": {"type": "string", "description": "The existing relationship between the source and destination nodes that needs to be deleted."},
+                                "destination": {"type": "string", "description": "The identifier of the destination node in the relationship."},
+                            },
+                            "required": ["source", "relationship", "destination"],
+                            "additionalProperties": false,
                         },
-                        "required": ["source", "relationship", "destination"],
-                        "additionalProperties": false,
-                    },
-                    "description": "An array of relationships.",
-                }
-            },
-            "required": ["relationships"],
-            "additionalProperties": false,
-        })),
-        strict: Some(true),
-    };
-
-    let tools = vec![delete_graph_memory_tool];
-
-    let config = LlmConfig {
-        name: "delete_graph_memory".to_string(),
-        model: "x-ai/grok-3-mini".to_string(),
-        temperature: 0.7,
-        max_tokens: 10000,
-        system_prompt, tools,
-    };
-
-    (config, user_prompt)
+                        "description": "An array of relationships.",
+                    }
+                },
+                "required": ["relationships"],
+                "additionalProperties": false,
+            })),
+            strict: Some(true),
+        }]
+    }
 }
 
+#[async_trait::async_trait]
 impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
-    fn name() -> &'static str {
-        "delete_graph_memory"
-    }
+    type CTX = Mem0Engine;
+    type RETURN = usize;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "delete_graph_memory" }
 
-    async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self)?)
+    async fn execute(&self, llm_response: &LLMRunResponse, execution_context: &Self::CTX) -> Result<Self::RETURN> {
+        execution_context.add_usage_report(llm_response).await?;
+
+        tracing::debug!("[DeleteGraphMemoryToolcall::execute] Executing tool call: {:?}", self);
+        let input = self.tool_input()
+            .ok_or(anyhow::anyhow!("[DeleteGraphMemoryToolcall::execute] No input found"))?;
+
+        let delete_entities = GraphEntities::new(
+            self.relationships.clone(),
+            input.type_mapping.clone(),
+            input.user_id,
+            input.agent_id,
+        );
+
+        tracing::debug!("[Mem0Engine::add_messages] Deleting relationships from graph DB");
+        let delete_size = execution_context.graph_db_delete(&delete_entities).await?;
+        tracing::info!("[Mem0Engine::add_messages] Deleted {} relationships", delete_size);
+        Ok(delete_size)
     }
 }

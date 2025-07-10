@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::Router;
-use tokio::sync::mpsc;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
 use reqwest;
 
@@ -12,7 +11,7 @@ use voda_service_api::{
 
 use voda_runtime_mem0::init_pgvector_pool;
 use voda_database::init_db_pool;
-use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage, RuntimeClient};
+use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage};
 use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
 use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
 
@@ -34,17 +33,8 @@ async fn main() -> Result<()> {
     let db_pool = Arc::new(connect(false, false).await.clone());
     let pgvector_db = Arc::new(connect_pgvector(false, false).await.clone());
 
-    let (roleplay_executor, _execution_queue) = mpsc::channel(100);
-    let roleplay_client = RoleplayRuntimeClient::new(db_pool.clone(), pgvector_db.clone(), roleplay_executor).await?;
-    let (character_creation_executor, character_creation_queue) = mpsc::channel(100);
-    let character_creation_client = CharacterCreationRuntimeClient::new(
-        db_pool.clone(), "character_creation_v0".to_string(), 
-        character_creation_executor
-    ).await?;
-
-    tokio::spawn(async move { 
-        let _ = CharacterCreationRuntimeClient::init_function_executor(character_creation_queue).await; 
-    });
+    let roleplay_client = RoleplayRuntimeClient::new(db_pool.clone(), pgvector_db.clone()).await?;
+    let character_creation_client = CharacterCreationRuntimeClient::new(db_pool.clone(), "character_creation_v0".to_string()).await?;
 
     let global_state = GlobalState {
         roleplay_client: roleplay_client,

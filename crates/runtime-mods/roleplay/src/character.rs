@@ -41,7 +41,6 @@ pub enum CharacterLanguage {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 pub enum CharacterFeature {
     #[default]
-    DefaultRoleplay,
     Roleplay,
     CharacterCreation,
 
@@ -57,7 +56,6 @@ pub enum CharacterFeature {
 impl fmt::Display for CharacterFeature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CharacterFeature::DefaultRoleplay => write!(f, "DefaultRoleplay"),
             CharacterFeature::Roleplay => write!(f, "Roleplay"),
             CharacterFeature::CharacterCreation => write!(f, "CharacterCreation"),
             CharacterFeature::BackgroundImage(s) => write!(f, "BackgroundImage({})", s),
@@ -77,7 +75,6 @@ impl FromStr for CharacterFeature {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "DefaultRoleplay" => Ok(CharacterFeature::DefaultRoleplay),
             "Roleplay" => Ok(CharacterFeature::Roleplay),
             "CharacterCreation" => Ok(CharacterFeature::CharacterCreation),
             s if s.starts_with("BackgroundImage(") && s.ends_with(')') => {

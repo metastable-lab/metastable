@@ -1,19 +1,45 @@
 use anyhow::Result;
-use async_openai::types::{FunctionCall, FunctionObject};
+use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use voda_runtime::ExecutableFunctionCall;
+use sqlx::types::Uuid;
+use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use crate::{llm::LlmConfig, raw_message::Relationship, EntityTag};
+use crate::{llm::{LlmTool, ToolInput}, raw_message::Relationship, EntityTag, GraphEntities, Mem0Engine};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractRelationshipToolInput {
+    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub entities: Vec<EntityTag>,
+    pub new_information: String,
+}
+
+impl ToolInput for ExtractRelationshipToolInput {
+    fn user_id(&self) -> Uuid { self.user_id.clone() }
+    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+
+    fn build(&self) -> String {
+        let entities_names_text = self.entities.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>().join(", ");
+        format!("List of entities: {}\nNew information: {}", entities_names_text, self.new_information)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipsToolcall {
     pub relationships: Vec<Relationship>,
+    pub input: Option<ExtractRelationshipToolInput>,
 }
 
-pub fn get_extract_relationship_config(user_id: String, entity_type_map: &[EntityTag], new_information: String) -> (LlmConfig, String) {
-    let system_prompt = format!(
+#[async_trait::async_trait]
+impl LlmTool for RelationshipsToolcall {
+    type ToolInput = ExtractRelationshipToolInput;
+
+    fn tool_input(&self) -> Option<Self::ToolInput> { self.input.clone() }
+    fn set_tool_input(&mut self, tool_input: Self::ToolInput) { self.input = Some(tool_input); }
+
+    fn system_prompt(input: &Self::ToolInput) -> String {
+        format!(
         r#"You are an advanced algorithm designed to extract structured information from text to construct knowledge graphs. Your goal is to capture comprehensive and accurate information. Follow these key principles:
 
 1. Extract only explicitly stated information from the text.
@@ -32,63 +58,62 @@ Entity Consistency:
 Strive to construct a coherent and easily understandable knowledge graph by eshtablishing all the relationships among the entities and adherence to the user’s context.
 
 Adhere strictly to these guidelines to ensure high-quality knowledge graph extraction."#,
-        user_id
-    );
+        input.user_id())
+    }
 
-    let entities_names_text = entity_type_map.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>().join(", ");
-    let user_prompt = format!("List of entities: [{}]. \n\nText: {}", entities_names_text, new_information);
-
-    let establish_relationships_tool = FunctionObject {
-        name: "establish_relationships".to_string(),
-        description: Some("Establish relationships among the entities based on the provided text.".to_string()),
-        parameters: Some(json!({
-            "type": "object",
-            "properties": {
-                "relationships": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "source": {"type": "string", "description": "The source entity of the relationship."},
-                            "relationship": {"type": "string", "description": "The relationship between the source and destination entities."},
-                            "destination": {"type": "string", "description": "The destination entity of the relationship."},
+    fn tools() -> Vec<FunctionObject> {
+        vec![FunctionObject {
+            name: "establish_relationships".to_string(),
+            description: Some("Establish relationships among the entities based on the provided text.".to_string()),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "relationships": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "source": {"type": "string", "description": "The source entity of the relationship."},
+                                "relationship": {"type": "string", "description": "The relationship between the source and destination entities."},
+                                "destination": {"type": "string", "description": "The destination entity of the relationship."},
+                            },
+                            "required": ["source", "relationship", "destination"],
+                            "additionalProperties": false,
                         },
-                        "required": ["source", "relationship", "destination"],
-                        "additionalProperties": false,
-                    },
-                    "description": "An array of relationships.",
-                }
-            },
-            "required": ["relationships"],
-            "additionalProperties": false,
-        })),
-        strict: Some(true),
-    };
-
-    let tools = vec![establish_relationships_tool];
-
-    let config = LlmConfig {
-        name: "establish_relationships".to_string(),
-        model: "x-ai/grok-3-mini".to_string(),
-        temperature: 0.7,
-        max_tokens: 10000,
-        system_prompt, tools,
-    };
-
-    (config, user_prompt)
+                        "description": "An array of relationships.",
+                    }
+                },
+                "required": ["relationships"],
+                "additionalProperties": false,
+            })),
+            strict: Some(true),
+        }]
+    }
 }
 
+#[async_trait::async_trait]
 impl ExecutableFunctionCall for RelationshipsToolcall {
-    fn name() -> &'static str {
-        "establish_relationships"
-    }
+    type CTX = Mem0Engine;
+    type RETURN = usize;
 
-    fn from_function_call(function_call: FunctionCall) -> Result<Self> {
-        println!("function_call: {:?}", function_call);
-        Ok(serde_json::from_str(&function_call.arguments)?)
-    }
+    fn name() -> &'static str { "extract_relationships" }
 
-    async fn execute(&self) -> Result<String> {
-        Ok(serde_json::to_string(&self)?)
+    async fn execute(&self, llm_response: &LLMRunResponse, execution_context: &Self::CTX) -> Result<Self::RETURN> {
+        execution_context.add_usage_report(llm_response).await?;
+
+        let input = self.tool_input()
+            .ok_or(anyhow::anyhow!("[RelationshipsToolcall::execute] No input found"))?;
+
+        if self.relationships.is_empty() { return Ok(0); }
+
+        let add_entities = GraphEntities::new(
+            self.relationships.clone(),
+            input.entities.clone(),
+            input.user_id(),
+            input.agent_id(),
+        );
+
+        let add_size = execution_context.graph_db_add(&add_entities).await?;
+        Ok(add_size)
     }
 }

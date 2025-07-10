@@ -7,7 +7,6 @@ use neo4rs::query;
 
 use crate::{Mem0Engine, EMBEDDING_DIMS};
 use crate::raw_message::GraphEntities;
-pub use crate::graph::search::RelationInfo;
 
 impl Mem0Engine {
     pub async fn graph_db_initialize(&self) -> Result<()> {

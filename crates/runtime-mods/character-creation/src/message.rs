@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
 use voda_database::SqlxObject;
-use voda_runtime::{LLMRunResponse, Message, MessageRole, MessageType, SystemConfig, User};
+use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
 use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
@@ -47,31 +47,6 @@ impl Message for CharacterCreationMessage {
     fn url_content(&self) -> Option<String> { None }
 
     fn created_at(&self) -> i64 { self.created_at }
-
-    fn from_llm_response(
-        response: LLMRunResponse, 
-        roleplay_session_id: &Uuid, 
-        user_id: &Uuid
-    ) -> Self {
-        let maybe_character = response.maybe_results
-            .first()
-            .map(|r| r.clone());
-
-        Self {
-            id: Uuid::default(),
-            owner: user_id.clone(),
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            content: response.content,
-            roleplay_session_id: roleplay_session_id.clone(),
-            character_creation_system_config: Uuid::default(), // to be populated later
-            character_creation_call: Json(response.maybe_function_call),
-            character_creation_maybe_character_str: maybe_character,
-            character_creation_maybe_character_id: None,
-            created_at: 0,
-            updated_at: 0,
-        }
-    }
 }
 
 impl CharacterCreationMessage {
