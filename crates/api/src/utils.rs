@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use axum::extract::Request;
 use axum::http::{header, StatusCode};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::response::AppError;
 
@@ -40,8 +41,11 @@ pub fn extract_bearer_token(req: &Request) -> Result<String, AppError> {
 }
 
 pub fn setup_tracing() {
-    let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::DEBUG)
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("debug,sqlx=warn,hyper_util=warn"));
+
+    let subscriber = FmtSubscriber::builder()
+        .with_env_filter(filter)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
