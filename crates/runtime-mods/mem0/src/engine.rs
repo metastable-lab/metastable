@@ -79,16 +79,23 @@ impl Mem0Engine {
     }
 
     pub async fn embed(&self, text: Vec<String>) -> Result<Vec<Embedding>> {
+        tracing::debug!("[Mem0Engine::embed] Embedding text: {:?}", text);
+        if text.is_empty() {
+            return Ok(vec![]);
+        }
+
         let request = CreateEmbeddingRequestArgs::default()
-        .model(crate::EMBEDDING_MODEL)
-        .input(text)
-        .build()?;
+            .model(crate::EMBEDDING_MODEL)
+            .input(text)
+            .build()?;
 
         let response = self.embeder.embeddings().create(request).await?;
         let embeddings = response.data
             .into_iter()
             .map(|item| item.embedding)
-            .collect();
+            .collect::<Vec<_>>();
+
+        tracing::debug!("[Mem0Engine::embed] Embedding response: {}", embeddings.len());
 
         Ok(embeddings)
     }
