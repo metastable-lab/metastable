@@ -58,30 +58,15 @@ impl Memory for RoleplayRawMemory {
         tx.commit().await?;
 
         let mem0_messages = messages.iter().map(|m| 
-                match m.role {
-                    MessageRole::User => {
-                        Mem0Messages {
-                            id: m.id,
-                            user_id: m.owner,
-                            agent_id: Some(character.id.clone()),
-                            content_type: m.content_type.clone(),
-                            content: m.content.clone(),
-                            created_at: m.created_at,
-                            updated_at: m.updated_at,
-                        }       
-                    }
-                    MessageRole::Assistant => {
-                        Mem0Messages {
-                            id: m.id,
-                            user_id: character.id.clone(),
-                            agent_id: Some(character.id.clone()),
-                            content_type: m.content_type.clone(),
-                            content: m.content.clone(),
-                            created_at: m.created_at,
-                            updated_at: m.updated_at,
-                        }
-                    },
-                    _ => unimplemented!("RoleplayRawMemory::add_messages: {:?}", m.role)
+                Mem0Messages {
+                    id: m.id,
+                    user_id: m.owner,
+                    agent_id: Some(character.id.clone()),
+                    content_type: m.content_type.clone(),
+                    role: m.role.clone(),
+                    content: m.content.clone(),
+                    created_at: m.created_at,
+                    updated_at: m.updated_at,
                 }
             ).collect::<Vec<_>>();
 
@@ -111,54 +96,33 @@ impl Memory for RoleplayRawMemory {
         let first_message = RoleplayMessage::first_message(&session, &character, &user);
         let mut messages = vec![system_message, first_message];
 
-        let mem0_query_for_user = Mem0Messages {
+        let mem0_query = Mem0Messages {
             id: message.id,
             user_id: message.owner,
             agent_id: Some(character.id.clone()),
             content_type: message.content_type.clone(),
+            role: message.role.clone(),
             content: message.content.clone(),
             created_at: message.created_at,
             updated_at: message.updated_at,
         };
-        let mem0_query_for_character = Mem0Messages {
-            id: message.id,
-            user_id: character.id.clone(),
-            agent_id: Some(character.id.clone()),
-            content_type: message.content_type.clone(),
-            content: message.content.clone(),
-            created_at: message.created_at,
-            updated_at: message.updated_at,
-        };
-        let (mem0_messages_for_user, _) = self.mem0.search(&mem0_query_for_user, 100).await?;
-        let (mem0_messages_for_character, _) = self.mem0.search(&mem0_query_for_character, 100).await?;
 
+        let (mem0_messages, _) = self.mem0.search(&mem0_query, 100).await?;
 
-        let character_related_memory_content = format!("{} \n\n {}", mem0_messages_for_character[0].content.clone(), mem0_messages_for_character[1].content.clone());
-        let character_related_memory = RoleplayMessage {
+        let memory_content = format!("{} \n\n {}", mem0_messages[0].content.clone(), mem0_messages[1].content.clone());
+        tracing::debug!("[RoleplayRawMemory::search] Memory content from mem0: {}", memory_content);
+        let memory = RoleplayMessage {
             id: Uuid::new_v4(),
             session_id: message.session_id.clone(),
             owner: message.owner,
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
-            content: character_related_memory_content,
+            content: memory_content,
             created_at: message.created_at,
             updated_at: message.updated_at,
         };
 
-        let user_related_memory_content = format!("{} \n\n {}", mem0_messages_for_user[0].content.clone(), mem0_messages_for_user[1].content.clone());
-        let user_related_memory = RoleplayMessage {
-            id: Uuid::new_v4(),
-            session_id: message.session_id.clone(),
-            owner: message.owner,
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            content: user_related_memory_content,
-            created_at: message.created_at,
-            updated_at: message.updated_at,
-        };
-
-        messages.push(character_related_memory);
-        messages.push(user_related_memory);
+        messages.push(memory);
 
         if history.len() <= 10 {
             messages.extend(history.iter().cloned());

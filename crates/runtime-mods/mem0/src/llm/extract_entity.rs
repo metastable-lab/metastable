@@ -46,7 +46,8 @@ pub fn get_extract_entity_config(user_id: String, content: String) -> (LlmConfig
     let tools = vec![extract_entity_tool];
 
     let config = LlmConfig {
-        model: "inception/mercury".to_string(),
+        name: "extract_entity".to_string(),
+        model: "x-ai/grok-3-mini".to_string(),
         temperature: 0.7,
         max_tokens: 10000,
         system_prompt, tools,

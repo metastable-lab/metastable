@@ -90,7 +90,8 @@ Following is a conversation between the user and the assistant. You have to extr
     let tools = vec![extract_facts_tool];
 
     let config = LlmConfig {
-        model: "inception/mercury".to_string(),
+        name: "extract_facts".to_string(),
+        model: "x-ai/grok-3-mini".to_string(),
         temperature: 0.7,
         max_tokens: 10000,
         system_prompt,

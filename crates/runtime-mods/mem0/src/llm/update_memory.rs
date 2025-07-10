@@ -253,7 +253,8 @@ Your response must only be the tool call.
     let tools = vec![update_memory_tool];
 
     let config = LlmConfig {
-        model: "inception/mercury".to_string(),
+        name: "update_memory".to_string(),
+        model: "x-ai/grok-3-mini".to_string(),
         temperature: 0.7,
         max_tokens: 10000,
         system_prompt,

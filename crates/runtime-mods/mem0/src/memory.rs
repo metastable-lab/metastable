@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
-use voda_runtime::{Memory, Message, MessageType, SystemConfig};
+use voda_runtime::{Memory, Message, MessageRole, MessageType, SystemConfig};
 
 use crate::pgvector::VectorQueryCriteria;
 use crate::{EmbeddingMessage, GraphEntities};
@@ -26,7 +26,6 @@ impl Memory for Mem0Engine {
         let agent_id = messages[0].agent_id.clone();
 
         let flattened_message = Mem0Messages::pack_flat_messages(messages)?;
-        tracing::debug!("[Mem0Engine::add_messages] Flattened message: {}", flattened_message);
         
         let self_clone_vector = self.clone();
         let flattened_message_vector = flattened_message.clone();
@@ -36,15 +35,8 @@ impl Memory for Mem0Engine {
         let vector_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting vector DB operations");
             let (extract_facts_config, user_prompt) = get_extract_facts_config(&user_id_vector, &flattened_message_vector);
-            tracing::debug!("[Mem0Engine::add_messages] Extract facts prompt: {}", user_prompt);
-            let response = self_clone_vector.llm(&extract_facts_config, user_prompt).await?;
-            tracing::debug!("[Mem0Engine::add_messages] Extract facts response: {:?}", response.maybe_results);
-            let facts = response.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
-            let facts = serde_json::from_str::<FactsToolcall>(&facts)
-                .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing facts: {:?}", e))?
-                .facts;
-            tracing::info!("[Mem0Engine::add_messages] Extracted facts: {:?}", facts.len());
-            tracing::debug!("[Mem0Engine::add_messages] Extracted facts content: {:?}", facts);
+            let facts = extract_facts_config.call::<FactsToolcall>(&self_clone_vector, user_prompt).await?.facts;
+            tracing::info!("[Mem0Engine::add_messages] Extracted {} facts", facts.len());
             if facts.is_empty() {
                 tracing::info!("[Mem0Engine::add_messages] No facts extracted, skipping");
                 return Ok(());
@@ -91,12 +83,7 @@ impl Memory for Mem0Engine {
             }
             tracing::debug!("[Mem0Engine::add_messages] Found {} existing memories", existing_memories.len());
             let (config, user_prompt) = get_update_memory_config(facts, &existing_memories);
-            tracing::debug!("[Mem0Engine::add_messages] Update memory prompt: {}", user_prompt);
-            let response = self_clone_vector.llm(&config, user_prompt).await?;
-            tracing::debug!("[Mem0Engine::add_messages] Update memory response: {:?}", response.maybe_results);
-            let maybe_result = response.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
-            let simplified_update_entries = serde_json::from_str::<MemoryUpdateToolcall>(&maybe_result)
-                .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing update memory toolcall: {:?}", e))?;
+            let simplified_update_entries = config.call::<MemoryUpdateToolcall>(&self_clone_vector, user_prompt).await?;
             let update_entries = simplified_update_entries.into_memory_update_entry(user_id_vector.clone(), agent_id_vector.unwrap_or_default());
             tracing::debug!("[Mem0Engine::add_messages] Updating {} vector DB entries", update_entries.len());
             self_clone_vector.vector_db_batch_update(update_entries).await?;
@@ -110,13 +97,7 @@ impl Memory for Mem0Engine {
             tracing::debug!("[Mem0Engine::add_messages] Starting graph DB operations");
 
             let (type_mapping_config, user_message) = get_extract_entity_config(user_id.clone().to_string(), flattened_message.clone());
-            tracing::debug!("[Mem0Engine::add_messages] Extract entity prompt: {}", user_message);
-            let type_mapping = self_clone_graph.llm(&type_mapping_config, user_message).await?;
-            tracing::debug!("[Mem0Engine::add_messages] Extract entity response: {:?}", type_mapping.maybe_results);
-            let type_mapping = type_mapping.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
-            let type_mapping = serde_json::from_str::<EntitiesToolcall>(&type_mapping)
-                .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing type mapping: {:?}", e))?;
-            tracing::debug!("[Mem0Engine::add_messages] Extracted entities: {:?}", type_mapping.entities);
+            let type_mapping = type_mapping_config.call::<EntitiesToolcall>(&self_clone_graph, user_message).await?;
 
             // 2.1 Insert Operations
             let self_clone_insert = self_clone_graph.clone();
@@ -128,12 +109,7 @@ impl Memory for Mem0Engine {
                 tracing::debug!("[Mem0Engine::add_messages] Starting graph DB insert operations");
                  // 2.2 get relationships on the new information
                 let (relationship_config, user_message) = get_extract_relationship_config(user_id_clone.to_string(), &type_mapping_entities_clone, flattened_message_clone);
-                tracing::debug!("[Mem0Engine::add_messages] Extract relationship prompt: {}", user_message);
-                let relationship = self_clone_insert.llm(&relationship_config, user_message).await?;
-                tracing::debug!("[Mem0Engine::add_messages] Extract relationship response: {:?}", relationship.maybe_results);
-                let relationship = relationship.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
-                let relationship = serde_json::from_str::<RelationshipsToolcall>(&relationship)
-                    .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing relationship: {:?}", e))?;
+                let relationship = relationship_config.call::<RelationshipsToolcall>(&self_clone_insert, user_message).await?;
                 tracing::debug!("[Mem0Engine::add_messages] Extracted relationships: {:?}", relationship.relationships);
 
                 // 2.6 add new relationships
@@ -162,12 +138,7 @@ impl Memory for Mem0Engine {
 
                 // 2.4 Delete existing relationships
                 let (delete_relationship_config, user_message) = get_delete_graph_memory_config(user_id.clone().to_string(), nodes, flattened_message);
-                tracing::debug!("[Mem0Engine::add_messages] Delete relationship prompt: {}", user_message);
-                let delete_relationship = self_clone_delete.llm(&delete_relationship_config, user_message).await?;
-                tracing::debug!("[Mem0Engine::add_messages] Delete relationship response: {:?}", delete_relationship.maybe_results);
-                let delete_relationship = delete_relationship.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
-                let delete_relationship = serde_json::from_str::<DeleteGraphMemoryToolcall>(&delete_relationship)
-                    .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing delete relationship: {:?}", e))?;
+                let delete_relationship = delete_relationship_config.call::<DeleteGraphMemoryToolcall>(&self_clone_delete, user_message).await?;
                 tracing::debug!("[Mem0Engine::add_messages] Relationships to delete: {:?}", delete_relationship.relationships);
 
                 // 2.5 delete existing relationships
@@ -237,6 +208,7 @@ impl Memory for Mem0Engine {
             user_id: embedding_message.user_id,
             agent_id: embedding_message.agent_id,
             content_type: MessageType::Text,
+            role: MessageRole::User,
             content: embedding_messages.join("\n"),
             created_at: embedding_message.created_at,
             updated_at: embedding_message.updated_at,
@@ -252,6 +224,7 @@ impl Memory for Mem0Engine {
             user_id: user_id.clone(),
             agent_id: agent_id.clone(),
             content_type: MessageType::Text,
+            role: MessageRole::User,
             content: relations.join("\n"),
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),

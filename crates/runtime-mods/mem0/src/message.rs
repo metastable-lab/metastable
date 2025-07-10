@@ -8,6 +8,7 @@ pub struct Mem0Messages {
     pub user_id: Uuid,
     pub agent_id: Option<Uuid>,
     pub content_type: MessageType,
+    pub role: MessageRole,
 
     pub content: String,
 
@@ -18,7 +19,7 @@ pub struct Mem0Messages {
 impl Message for Mem0Messages {
     fn id(&self) -> &Uuid { &self.id }
 
-    fn role(&self) -> &MessageRole { &MessageRole::User }
+    fn role(&self) -> &MessageRole { &self.role }
     fn owner(&self) -> &Uuid { &self.user_id }
     
     fn content_type(&self) -> &MessageType { &self.content_type }

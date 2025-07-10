@@ -68,7 +68,8 @@ Adhere strictly to these guidelines to ensure high-quality knowledge graph extra
     let tools = vec![establish_relationships_tool];
 
     let config = LlmConfig {
-        model: "inception/mercury".to_string(),
+        name: "establish_relationships".to_string(),
+        model: "x-ai/grok-3-mini".to_string(),
         temperature: 0.7,
         max_tokens: 10000,
         system_prompt, tools,
