@@ -6,6 +6,7 @@ use async_openai::{config::OpenAIConfig, Client};
 
 use sqlx::PgPool;
 use tokio::sync::{mpsc, oneshot};
+use tokio::time::Instant;
 use voda_common::EnvVars;
 use voda_runtime::{LLMRunResponse, Memory, Message, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
@@ -151,20 +152,26 @@ impl RuntimeClient for RoleplayRuntimeClient {
     async fn on_shutdown(&self) -> Result<()> { Ok(()) }
 
     async fn on_new_message(&self, message: &RoleplayMessage) -> Result<LLMRunResponse> {
+        tracing::debug!("[RoleplayRuntimeClient::on_new_message] New message start");
+        let time = Instant::now();
         let (messages, system_config) = self.memory
             .search(&message, 100).await?;
+        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory search took {:?}", time.elapsed());
 
+        let time = Instant::now();
         let response = self.send_llm_request(&system_config, &messages).await?;
         let assistant_message = RoleplayMessage::from_llm_response(
             response.clone(), 
             &message.session_id, 
             &message.owner
         );
+        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Assistant message took {:?}", time.elapsed());
 
         self.memory.add_messages(&[
             message.clone(),
             assistant_message.clone(),
         ]).await?;
+        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory add took {:?}", time.elapsed());
 
         let user_usage = UserUsage::new(
             message.owner.clone(),
