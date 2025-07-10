@@ -5,10 +5,12 @@ use async_openai::{config::OpenAIConfig, Client};
 
 use sqlx::PgPool;
 use sqlx::types::Uuid;
+use tokio::sync::mpsc;
 use tokio::time::Instant;
 use voda_common::{get_current_timestamp, EnvVars};
 use voda_runtime::{LLMRunResponse, Memory, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole, MessageRole, MessageType};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
+use voda_runtime_mem0::Mem0Messages;
 
 use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
 
@@ -22,7 +24,7 @@ pub struct RoleplayRuntimeClient {
 impl RoleplayRuntimeClient {
     pub async fn new(
         db: Arc<PgPool>, pgvector_db: Arc<PgPool>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, mpsc::Receiver<Vec<Mem0Messages>>)> {
         let env = RuntimeEnv::load();
         let config = OpenAIConfig::new()
             .with_api_key(env.get_env_var("OPENAI_API_KEY"))
@@ -34,8 +36,9 @@ impl RoleplayRuntimeClient {
             Default::default()
         );
 
-        let memory = RoleplayRawMemory::new(db.clone(), pgvector_db.clone()).await?;
-        Ok(Self { client, db, memory: Arc::new(memory) })
+        let (mem0_messages_tx, mem0_messages_rx) = mpsc::channel(100);
+        let memory = RoleplayRawMemory::new(db.clone(), pgvector_db.clone(), mem0_messages_tx).await?;
+        Ok((Self { client, db, memory: Arc::new(memory) }, mem0_messages_rx))
     }
 }
 

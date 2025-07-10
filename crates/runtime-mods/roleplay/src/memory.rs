@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
+use tokio::sync::mpsc;
 use voda_database::{
     SqlxCrud, QueryCriteria, SqlxFilterQuery
 };
@@ -17,13 +18,18 @@ use super::message::RoleplayMessage;
 pub struct RoleplayRawMemory {
     db: Arc<PgPool>,
     mem0: Arc<Mem0Engine>,
+
+    mem0_messages_tx: mpsc::Sender<Vec<Mem0Messages>>,
 }
 
 impl RoleplayRawMemory {
-    pub async fn new(db: Arc<PgPool>, pgvector_db: Arc<PgPool>) -> Result<Self> {
+    pub async fn new(
+        db: Arc<PgPool>, pgvector_db: Arc<PgPool>, 
+        mem0_messages_tx: mpsc::Sender<Vec<Mem0Messages>>
+    ) -> Result<Self> {
         let mut mem0 = Mem0Engine::new(db.clone(), pgvector_db).await?;
         mem0.initialize().await?;
-        Ok(Self { db, mem0: Arc::new(mem0) })
+        Ok(Self { db, mem0: Arc::new(mem0), mem0_messages_tx })
     }
 }
 
@@ -70,7 +76,9 @@ impl Memory for RoleplayRawMemory {
                 }
             ).collect::<Vec<_>>();
 
-        self.mem0.add_messages(&mem0_messages).await?;
+        self.mem0_messages_tx.send(mem0_messages).await
+            .expect("[RoleplayRawMemory::add_messages] Failed to send mem0 messages");
+        // self.mem0.add_messages(&mem0_messages).await?;
         Ok(())
     }
 
