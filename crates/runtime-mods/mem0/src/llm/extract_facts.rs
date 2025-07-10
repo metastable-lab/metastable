@@ -59,27 +59,27 @@ Types of Information to Remember:
 Here are some few shot examples:
 
 Input: Hi.
-Output: {{"facts" : []}}
+Action: Call the `extract_facts` tool with an empty list for the `facts` parameter.
 
 Input: There are branches in trees.
-Output: {{"facts" : []}}
+Action: Call the `extract_facts` tool with an empty list for the `facts` parameter.
 
 Input: Hi, I am looking for a restaurant in San Francisco.
-Output: {{"facts" : ["Looking for a restaurant in San Francisco"]}}
+Action: Call the `extract_facts` tool with `facts` as `["Looking for a restaurant in San Francisco"]`.
 
 Input: Yesterday, I had a meeting with John at 3pm. We discussed the new project.
-Output: {{"facts" : ["Had a meeting with John at 3pm", "Discussed the new project"]}}
+Action: Call the `extract_facts` tool with `facts` as `["Had a meeting with John at 3pm", "Discussed the new project"]`.
 
 Input: Hi, my name is John. I am a software engineer.
-Output: {{"facts" : ["Name is John", "Is a Software engineer"]}}
+Action: Call the `extract_facts` tool with `facts` as `["Name is John", "Is a Software engineer"]`.
 
 Input: Me favourite movies are Inception and Interstellar.
-Output: {{"facts" : ["Favourite movie is Inception", "Favourite movie is Interstellar"]}}
+Action: Call the `extract_facts` tool with `facts` as `["Favourite movie is Inception", "Favourite movie is Interstellar"]`.
 
 Input: I like pizza and hamburger.
-Output: {{"facts": ["Likes pizza", "Likes hamburger"]}}
+Action: Call the `extract_facts` tool with `facts` as `["Likes pizza", "Likes hamburger"]`.
 
-Return the facts and preferences in a json format as shown above. **Each fact must be a separate string in the array. Do not merge multiple facts into one string.**
+Call the `extract_facts` tool with the extracted facts and preferences. **Each fact must be a separate string in the array. Do not merge multiple facts into one string.**
 
 Remember the following:
 - Today's date is {}.
@@ -88,11 +88,10 @@ Remember the following:
 - If the user asks where you fetched my information, answer that you found from publicly available sources on internet.
 - If you do not find anything relevant in the below conversation, you can return an empty list corresponding to the "facts" key.
 - Create the facts based on the user and assistant messages only. Do not pick anything from the system messages.
-- Make sure to return the response in the format mentioned in the examples. The response should be in json with a key as "facts" and corresponding value will be a list of strings.
 - Use "{}" as the source entity for any self-references (e.g., "I," "me," "my," etc.) in user messages.
 - Detect the language of the user input and record the facts in the same language.
 
-Following is a conversation between the user and the assistant. You have to extract the relevant facts and preferences about the user, if any, from the conversation and return them in the json format as shown above."#,
+Following is a conversation between the user and the assistant. You have to extract the relevant facts and preferences about the user, if any, from the conversation and call the `extract_facts` tool with them."#,
         get_time_in_utc8(), input.user_id() )
     }
 
