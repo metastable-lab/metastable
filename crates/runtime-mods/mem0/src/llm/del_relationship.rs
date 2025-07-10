@@ -86,7 +86,7 @@ pub fn get_delete_graph_memory_config(user_id: String, existing_memories: Vec<Re
     let tools = vec![delete_graph_memory_tool];
 
     let config = LlmConfig {
-        model: "google/gemini-2.5-flash-lite-preview-06-17".to_string(),
+        model: "inception/mercury".to_string(),
         temperature: 0.7,
         max_tokens: 10000,
         system_prompt, tools,

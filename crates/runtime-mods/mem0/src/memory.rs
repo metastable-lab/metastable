@@ -26,6 +26,7 @@ impl Memory for Mem0Engine {
         let agent_id = messages[0].agent_id.clone();
 
         let flattened_message = Mem0Messages::pack_flat_messages(messages)?;
+        tracing::debug!("[Mem0Engine::add_messages] Flattened message: {}", flattened_message);
         
         let self_clone_vector = self.clone();
         let flattened_message_vector = flattened_message.clone();
@@ -33,19 +34,24 @@ impl Memory for Mem0Engine {
         let agent_id_vector = agent_id.clone();
         // 1. TASK 1 - VectorDB Operations
         let vector_db_operations: AsyncTask = tokio::spawn(async move {
+            tracing::debug!("[Mem0Engine::add_messages] Starting vector DB operations");
             let (extract_facts_config, user_prompt) = get_extract_facts_config(&user_id_vector, &flattened_message_vector);
+            tracing::debug!("[Mem0Engine::add_messages] Extract facts prompt: {}", user_prompt);
             let response = self_clone_vector.llm(&extract_facts_config, user_prompt).await?;
+            tracing::debug!("[Mem0Engine::add_messages] Extract facts response: {:?}", response.maybe_results);
             let facts = response.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
             let facts = serde_json::from_str::<FactsToolcall>(&facts)
                 .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing facts: {:?}", e))?
                 .facts;
             tracing::info!("[Mem0Engine::add_messages] Extracted facts: {:?}", facts.len());
+            tracing::debug!("[Mem0Engine::add_messages] Extracted facts content: {:?}", facts);
             if facts.is_empty() {
                 tracing::info!("[Mem0Engine::add_messages] No facts extracted, skipping");
                 return Ok(());
             }
 
             let embeddings = self_clone_vector.embed(facts.clone()).await?;
+            tracing::debug!("[Mem0Engine::add_messages] Generated {} embeddings", embeddings.len());
             let embedding_messages = embeddings.iter().zip(facts.clone())
                 .map(|(embedding, fact)| EmbeddingMessage {
                     id: Uuid::new_v4(),
@@ -58,6 +64,7 @@ impl Memory for Mem0Engine {
                 }).collect::<Vec<_>>();
 
             // 1. search db for existing memories
+            tracing::debug!("[Mem0Engine::add_messages] Searching vector DB for existing memories");
             let queries = embedding_messages.iter().map(|embedding_message| {
                 let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id_vector.clone())
                     .with_limit(5)
@@ -82,12 +89,16 @@ impl Memory for Mem0Engine {
                     }
                 }
             }
+            tracing::debug!("[Mem0Engine::add_messages] Found {} existing memories", existing_memories.len());
             let (config, user_prompt) = get_update_memory_config(facts, &existing_memories);
+            tracing::debug!("[Mem0Engine::add_messages] Update memory prompt: {}", user_prompt);
             let response = self_clone_vector.llm(&config, user_prompt).await?;
+            tracing::debug!("[Mem0Engine::add_messages] Update memory response: {:?}", response.maybe_results);
             let maybe_result = response.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
             let simplified_update_entries = serde_json::from_str::<MemoryUpdateToolcall>(&maybe_result)
                 .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing update memory toolcall: {:?}", e))?;
             let update_entries = simplified_update_entries.into_memory_update_entry(user_id_vector.clone(), agent_id_vector.unwrap_or_default());
+            tracing::debug!("[Mem0Engine::add_messages] Updating {} vector DB entries", update_entries.len());
             self_clone_vector.vector_db_batch_update(update_entries).await?;
 
             Ok(())
@@ -96,12 +107,16 @@ impl Memory for Mem0Engine {
         // 2. TASK 2 - GraphDB Operations
         let self_clone_graph = self.clone();
         let graph_db_operations: AsyncTask = tokio::spawn(async move {
+            tracing::debug!("[Mem0Engine::add_messages] Starting graph DB operations");
 
             let (type_mapping_config, user_message) = get_extract_entity_config(user_id.clone().to_string(), flattened_message.clone());
+            tracing::debug!("[Mem0Engine::add_messages] Extract entity prompt: {}", user_message);
             let type_mapping = self_clone_graph.llm(&type_mapping_config, user_message).await?;
+            tracing::debug!("[Mem0Engine::add_messages] Extract entity response: {:?}", type_mapping.maybe_results);
             let type_mapping = type_mapping.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
             let type_mapping = serde_json::from_str::<EntitiesToolcall>(&type_mapping)
                 .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing type mapping: {:?}", e))?;
+            tracing::debug!("[Mem0Engine::add_messages] Extracted entities: {:?}", type_mapping.entities);
 
             // 2.1 Insert Operations
             let self_clone_insert = self_clone_graph.clone();
@@ -110,12 +125,16 @@ impl Memory for Mem0Engine {
             let user_id_clone = user_id.clone();
             let agent_id_clone = agent_id.clone();
             let graph_db_insert_operations: AsyncTask = tokio::spawn(async move {
+                tracing::debug!("[Mem0Engine::add_messages] Starting graph DB insert operations");
                  // 2.2 get relationships on the new information
                 let (relationship_config, user_message) = get_extract_relationship_config(user_id_clone.to_string(), &type_mapping_entities_clone, flattened_message_clone);
+                tracing::debug!("[Mem0Engine::add_messages] Extract relationship prompt: {}", user_message);
                 let relationship = self_clone_insert.llm(&relationship_config, user_message).await?;
+                tracing::debug!("[Mem0Engine::add_messages] Extract relationship response: {:?}", relationship.maybe_results);
                 let relationship = relationship.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
                 let relationship = serde_json::from_str::<RelationshipsToolcall>(&relationship)
                     .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing relationship: {:?}", e))?;
+                tracing::debug!("[Mem0Engine::add_messages] Extracted relationships: {:?}", relationship.relationships);
 
                 // 2.6 add new relationships
                 let add_relationship = relationship.relationships;
@@ -125,6 +144,7 @@ impl Memory for Mem0Engine {
                     user_id_clone,
                     agent_id_clone,
                 );
+                tracing::debug!("[Mem0Engine::add_messages] Adding relationships to graph DB");
                 let add_size = self_clone_insert.graph_db_add(&add_entities).await?;
                 tracing::info!("[Mem0Engine::add_messages] Added {} relationships", add_size);
                 Ok(())
@@ -133,16 +153,22 @@ impl Memory for Mem0Engine {
             // Delete operations
             let self_clone_delete = self_clone_graph.clone();
             let graph_db_delete_operations: AsyncTask = tokio::spawn(async move {
+                tracing::debug!("[Mem0Engine::add_messages] Starting graph DB delete operations");
                 // 2.3 search for exisiting nodes
                 let type_mapping_keys = type_mapping.entities.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>();
+                tracing::debug!("[Mem0Engine::add_messages] Searching for existing nodes with keys: {:?}", type_mapping_keys);
                 let nodes = self_clone_delete.graph_db_search(type_mapping_keys, user_id.clone(), agent_id.clone()).await?;
+                tracing::debug!("[Mem0Engine::add_messages] Found {} existing nodes", nodes.len());
 
                 // 2.4 Delete existing relationships
                 let (delete_relationship_config, user_message) = get_delete_graph_memory_config(user_id.clone().to_string(), nodes, flattened_message);
+                tracing::debug!("[Mem0Engine::add_messages] Delete relationship prompt: {}", user_message);
                 let delete_relationship = self_clone_delete.llm(&delete_relationship_config, user_message).await?;
+                tracing::debug!("[Mem0Engine::add_messages] Delete relationship response: {:?}", delete_relationship.maybe_results);
                 let delete_relationship = delete_relationship.maybe_results.first().ok_or(anyhow!("[Mem0Engine::add_messages] No result from LLM"))?;
                 let delete_relationship = serde_json::from_str::<DeleteGraphMemoryToolcall>(&delete_relationship)
                     .map_err(|e| anyhow!("[Mem0Engine::add_messages] Error in parsing delete relationship: {:?}", e))?;
+                tracing::debug!("[Mem0Engine::add_messages] Relationships to delete: {:?}", delete_relationship.relationships);
 
                 // 2.5 delete existing relationships
                 let delete_relationship = delete_relationship.relationships;
@@ -152,6 +178,7 @@ impl Memory for Mem0Engine {
                     user_id,
                     agent_id,
                 );
+                tracing::debug!("[Mem0Engine::add_messages] Deleting relationships from graph DB");
                 let delete_size = self_clone_delete.graph_db_delete(&delete_entities).await?;
                 tracing::info!("[Mem0Engine::add_messages] Deleted {} relationships", delete_size);
                 Ok(())
@@ -175,6 +202,7 @@ impl Memory for Mem0Engine {
         let user_id = message.user_id;
         let agent_id = message.agent_id;
         let content = message.content.clone();
+        tracing::debug!("[Mem0Engine::search] Searching for message content: {}", content);
 
         let embeddings = self.embed(vec![content.clone()]).await?;
         let embedding_message = EmbeddingMessage {
@@ -186,6 +214,7 @@ impl Memory for Mem0Engine {
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         };
+        tracing::debug!("[Mem0Engine::search] Generated embedding for search");
 
         let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id.clone())
             .with_limit(limit as usize)
@@ -196,10 +225,13 @@ impl Memory for Mem0Engine {
         let (vector_search_results, graph_search_results) = futures::future::join(vector_search_query, graph_search_query).await;
         let vector_search_results = vector_search_results.map_err(|e| anyhow!("[Mem0Engine::search] Error in vector_db_search_embeddings: {:?}", e))?;
         let graph_search_results = graph_search_results.map_err(|e| anyhow!("[Mem0Engine::search] Error in graph_db_search: {:?}", e))?;
+        tracing::debug!("[Mem0Engine::search] Vector search found {} results", vector_search_results.len());
+        tracing::debug!("[Mem0Engine::search] Graph search found {} results", graph_search_results.len());
 
         let mut memories = Vec::new();
 
         let embedding_messages = vector_search_results.iter().map(|(embedding_message, _)| embedding_message.content.clone()).collect::<Vec<_>>(); 
+        tracing::debug!("[Mem0Engine::search] Vector search memories: {:?}", embedding_messages);
         memories.push(Mem0Messages {
             id: embedding_message.id,
             user_id: embedding_message.user_id,
@@ -213,6 +245,7 @@ impl Memory for Mem0Engine {
         let relations = graph_search_results.iter()
             .map(|relation_info| format!("{} {} {}", relation_info.source, relation_info.relationship, relation_info.destination))
             .collect::<Vec<_>>();
+        tracing::debug!("[Mem0Engine::search] Graph search relations: {:?}", relations);
 
         memories.push(Mem0Messages {
             id: Uuid::new_v4(),
@@ -223,7 +256,8 @@ impl Memory for Mem0Engine {
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         });
-
+        
+        tracing::debug!("[Mem0Engine::search] Returning {} memories", memories.len());
         Ok((memories, SystemConfig::default()))
     }
 
