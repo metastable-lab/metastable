@@ -85,7 +85,11 @@ Do not delete in the above example because there is a possibility that Alice lov
 Memory Format:
 source -- relationship -- destination
 
-Provide a list of deletion instructions, each specifying the relationship to be deleted."#.to_string()
+Response Format:
+- Your response MUST be a call to the `delete_graph_memory` tool.
+- The `relationships` argument must contain a list of all relationships to be deleted.
+- If no relationships should be deleted, provide an empty list for the `relationships` argument.
+- Do NOT include any other text, reasoning, or explanations in your response."#.to_string()
     }
 
     fn tools() -> Vec<FunctionObject> {
@@ -131,6 +135,10 @@ impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
         tracing::debug!("[DeleteGraphMemoryToolcall::execute] Executing tool call: {:?}", self);
         let input = self.tool_input()
             .ok_or(anyhow::anyhow!("[DeleteGraphMemoryToolcall::execute] No input found"))?;
+
+        if self.relationships.is_empty() {
+            return Ok(0);
+        }
 
         let delete_entities = GraphEntities::new(
             self.relationships.clone(),

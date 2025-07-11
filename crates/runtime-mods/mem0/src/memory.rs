@@ -47,7 +47,7 @@ impl Memory for Mem0Engine {
 
             // 1.2 search db for existing memories
             let update_memory_input = MemoryUpdateToolInput::search_vector_db_and_prepare_input(user_id.clone(), agent_id.clone(), embedding_messages, &self_clone_vector).await?;
-            
+
             // 1.3 get memories to update and push to db
             let (update_memory_tool_call, update_memory_llm_response) = MemoryUpdateToolcall::call(&self_clone_vector, update_memory_input).await?;
             let update_entries = update_memory_tool_call.execute(&update_memory_llm_response, &self_clone_vector).await?;
@@ -122,8 +122,11 @@ impl Memory for Mem0Engine {
                 graph_db_insert_operations, 
                 graph_db_delete_operations
             ).await;
-            graph_db_insert_results??;
-            graph_db_delete_results??;
+            let insert_result = graph_db_insert_results?;
+            let delete_result = graph_db_delete_results?;
+            if insert_result.is_err() || delete_result.is_err() {
+                tracing::warn!("[Mem0Engine::add_messages] Failed to insert or delete relationships. Insert result: {:?}, Delete result: {:?}", insert_result, delete_result);
+            }
             Ok(())
         });
 
@@ -131,8 +134,11 @@ impl Memory for Mem0Engine {
             vector_db_operations, 
             graph_db_operations
         ).await;
-        vector_db_results??;
-        graph_db_results??;
+        let vector_db_results = vector_db_results?;
+        let graph_db_results = graph_db_results?;
+        if vector_db_results.is_err() || graph_db_results.is_err() {
+            tracing::warn!("[Mem0Engine::add_messages] Failed to add messages. Vector DB result: {:?}, Graph DB result: {:?}", vector_db_results, graph_db_results);
+        }
         Ok(())
     }
 

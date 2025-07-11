@@ -26,6 +26,7 @@ impl Mem0Engine {
     }
 
     pub async fn graph_db_add(&self, message: &GraphEntities) -> Result<usize> {
+        tracing::debug!("[Mem0Engine::graph_db_add] Adding graph entities: {:?}", message);
         let user_id = message.user_id;
         let agent_id = message.agent_id;
 
@@ -77,7 +78,7 @@ impl Mem0Engine {
                         .unwrap_or_else(|| "Entity".to_string());
                     let cypher = format!(
                         "MATCH (source:Entity {{id: $source_id}}) \
-                        MERGE (destination:{}:Entity {{name: $destination_name, user_id: $user_id}}) \
+                        MERGE (destination:`{}`:Entity {{name: $destination_name, user_id: $user_id}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $destination_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
@@ -96,7 +97,7 @@ impl Mem0Engine {
                         .unwrap_or_else(|| "Entity".to_string());
                     let cypher = format!(
                         "MATCH (destination:Entity {{id: $dest_id}}) \
-                        MERGE (source:{}:Entity {{name: $source_name, user_id: $user_id}}) \
+                        MERGE (source:`{}`:Entity {{name: $source_name, user_id: $user_id}}) \
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
@@ -118,9 +119,9 @@ impl Mem0Engine {
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
                     let cypher = format!(
-                        "MERGE (source:{}:Entity {{name: $source_name, user_id: $user_id}}) \
+                        "MERGE (source:`{}`:Entity {{name: $source_name, user_id: $user_id}}) \
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
-                        MERGE (destination:{}:Entity {{name: $dest_name, user_id: $user_id}}) \
+                        MERGE (destination:`{}`:Entity {{name: $dest_name, user_id: $user_id}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $dest_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",

@@ -326,6 +326,14 @@ impl ExecutableFunctionCall for MemoryUpdateToolcall {
         let input = self.tool_input()
             .ok_or(anyhow::anyhow!("[MemoryUpdateToolcall::execute] No input found"))?;
 
+        if self.memory.is_empty() {
+            return Ok(BatchUpdateSummary {
+                added: 0,
+                updated: 0,
+                deleted: 0,
+            });
+        }
+
         let memory_update_entries = self.memory.clone().into_iter()
             .map(|entry| MemoryUpdateEntry {
                 id: entry.id,

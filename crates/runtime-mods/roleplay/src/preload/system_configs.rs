@@ -1,3 +1,5 @@
+use async_openai::types::FunctionObject;
+use serde_json::json;
 use sqlx::types::{Json, Uuid};
 use voda_common::get_current_timestamp;
 use voda_runtime::SystemConfig;
@@ -23,7 +25,7 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
 
 ### 3. 创作与互动指南
 - **主动引导，而非被动提问**: 你的主要任务不是向用户提问，而是提供具体的、富有想象力的选项来激发他们的灵感。你要主动编织故事片段、描绘场景、设定可能性，然后让用户选择或补充。
-- **选项格式**: 你为用户提供的所有选项，都**必须**以数字列表的格式呈现（例如：1. ..., 2. ..., 3. ...），以便用户清晰地做出选择。
+- **选项格式**: 你为用户提供的所有选项，都**必须**通过调用 `show_story_options` 工具来呈现。你绝对不能直接在回复中以文本形式罗列出这些选项，唯一的呈现方式是通过调用 `show_story_options` 工具。
 - **共同创作**: 你是在和用户一起"捏人"。根据用户的选择，你要将故事和设定继续发展下去，不断添加细节，丰富角色的各个维度，包括：背景设定、外貌长相、行为模式、性格特点、说话风格等。
 - **格式化**: 为了让用户更好地沉浸在故事中，请严格遵守以下格式：
     - **动作/心理活动/内心OS**: 使用斜体包裹。例如：*我微微皱眉，内心闪过一丝不安，但还是决定把这个更大胆的想法告诉他。*
@@ -39,10 +41,29 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
 - **逻辑连贯性**: 你的引导和描述需要有清晰的逻辑，推动角色创造过程顺利进行。"#.to_string(),
         system_prompt_version: 3,
         openai_base_url: "https://openrouter.ai/api/v1".to_string(),
-        openai_model: "deepseek/deepseek-r1-0528-qwen3-8b".to_string(),
+        openai_model: "google/gemini-2.5-flash".to_string(),
         openai_temperature: 0.7,
         openai_max_tokens: 5000,
-        functions: Json(vec![]),
+        functions: Json(vec![
+            FunctionObject {
+                name: "show_story_options".to_string(),
+                description: Some("向用户呈现角色创建的选项。".to_string()),
+                parameters: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "向用户呈现的角色创建选项列表，内容也需要是中文。"
+                        }
+                    },
+                    "required": ["options"]
+                }).into()),
+                strict: Some(true),
+            }
+        ]),
         updated_at: get_current_timestamp(),
         created_at: get_current_timestamp(),
     }
@@ -69,6 +90,11 @@ pub fn get_system_configs_for_roleplay() -> SystemConfig {
 
 ### 3. 互动与叙事指南
 - **推动故事**: 你的核心任务是与用户共同推进故事。不仅仅是回应，更要主动地通过行动、对话和环境描写来创造情节，激发用户的反应。
+- **提供选项**: 在故事发展的关键节点，或当用户表达不确定性（例如，“我不知道怎么办”、“你来决定吧”）时，你**必须**通过调用 `show_story_options` 工具来提供2-4个清晰、具体的故事走向选项，让用户能够轻松选择。你绝对不能直接在回复中以文本形式（例如，使用列表、数字标号或任何其他形式）罗列出这些选项。唯一的呈现方式是通过 `show_story_options` 工具。以下是你应该主动使用此工具的几个关键时刻：
+    - 当用户输入模糊或过短，难以推动剧情时。
+    - 当发生重大事件，角色有多种合理的反应路线可供选择时。
+    - 当对话陷入僵局或循环，需要新的刺激时。
+    - 当用户明确请求你提供建议或下一步的行动方向时。
 - **沉浸式体验**: 始终使用角色身份进行互动。避免出戏的评论或提问。让用户感觉他们是在与一个真实的角色互动，而不是在和程序聊天。
 - **格式化**: 为了让用户更好地沉浸在故事中，请严格遵守以下格式：
     - **动作/心理活动/内心OS**: 使用斜体包裹。例如：*我微微皱眉，内心闪过一丝不安，但还是决定把这个更大胆的想法告诉他。*
@@ -85,10 +111,29 @@ pub fn get_system_configs_for_roleplay() -> SystemConfig {
 - **逻辑连贯性**: 你的每一句话都必须与前文保持逻辑上的连贯性。保持一个统一、不割裂的故事情节和角色形象。"#.to_string(),
         system_prompt_version: 1,
         openai_base_url: "https://openrouter.ai/api/v1".to_string(),
-        openai_model: "deepseek/deepseek-r1-0528-qwen3-8b".to_string(),
+        openai_model: "google/gemini-2.5-flash".to_string(),
         openai_temperature: 0.7,
         openai_max_tokens: 5000,
-        functions: Json(vec![]),
+        functions: Json(vec![
+            FunctionObject {
+                name: "show_story_options".to_string(),
+                description: Some("向用户呈现故事选项以继续角色扮演。".to_string()),
+                parameters: Some(json!({
+                    "type": "object",
+                    "properties": {
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "向用户呈现的用于继续故事的选项列表，内容也需要是中文。"
+                        }
+                    },
+                    "required": ["options"]
+                }).into()),
+                strict: Some(true),
+            }
+        ]),
         updated_at: get_current_timestamp(),
         created_at: get_current_timestamp(),
     }

@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let db = Arc::new(connect(false, true).await.clone());
+    let db = Arc::new(connect(false, false).await.clone());
     // let mut tx = db.begin().await?;
 
     // // start dumping shit into the db

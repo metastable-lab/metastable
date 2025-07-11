@@ -8,11 +8,20 @@ use sqlx::types::Uuid;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use voda_common::{get_current_timestamp, EnvVars};
-use voda_runtime::{LLMRunResponse, Memory, RuntimeClient, RuntimeEnv, UserUsage, User, SystemConfig, UserRole, MessageRole, MessageType};
+use voda_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, User, UserRole, UserUsage};
 use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use voda_runtime_mem0::Mem0Messages;
 
 use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
+use crate::preload::ShowStoryOptionsToolCall;
+
+toolcalls!(
+    ctx: (),
+    tools: [
+        (ShowStoryOptionsToolCall, "show_story_options", Vec<String>),
+    ]
+);
+
 
 #[derive(Clone)]
 pub struct RoleplayRuntimeClient {
@@ -89,6 +98,11 @@ impl RuntimeClient for RoleplayRuntimeClient {
                         needs_update = true;
                     }
 
+                    if db_config.functions != preload_config.functions {
+                        db_config.functions = preload_config.functions.clone();
+                        needs_update = true;
+                    }
+
                     if needs_update {
                         db_config.update(&mut *tx).await?;
                     }
@@ -154,14 +168,30 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         let time = Instant::now();
         let response = self.send_llm_request(&system_config, &messages).await?;
+
+        let mut final_options = vec![];
+        let mut final_content = response.content.clone();
+
+        if let Some(function_call) = response.maybe_function_call.first() {
+            let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
+            if let Ok(toolcall) = maybe_toolcall {
+                let toolcall_result = toolcall.execute(&response, &()).await;
+                if let Ok(RuntimeToolcallReturn::ShowStoryOptionsToolCall(options)) = toolcall_result {
+                    final_options = options.clone();
+                    final_content = format!("{} \n\n {}", final_content, options.join("\n"));
+                }
+            }
+        }
+        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Options: {:?}", final_options);
         let user_usage = UserUsage::from_llm_response(&response);
         let assistant_message = RoleplayMessage {
             id: Uuid::default(),
             owner: message.owner.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
-            content: response.content.clone(),
+            content: final_content,
             session_id: message.session_id.clone(),
+            options: final_options,
 
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),

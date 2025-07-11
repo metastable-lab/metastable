@@ -78,7 +78,6 @@ impl Memory for RoleplayRawMemory {
 
         self.mem0_messages_tx.send(mem0_messages).await
             .expect("[RoleplayRawMemory::add_messages] Failed to send mem0 messages");
-        // self.mem0.add_messages(&mem0_messages).await?;
         Ok(())
     }
 
@@ -125,6 +124,7 @@ impl Memory for RoleplayRawMemory {
             owner: message.owner,
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
+            options: message.options.clone(),
             content: memory_content,
             created_at: message.created_at,
             updated_at: message.updated_at,

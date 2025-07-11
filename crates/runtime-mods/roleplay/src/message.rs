@@ -20,6 +20,7 @@ pub struct RoleplayMessage {
 
     pub role: MessageRole,
     pub content_type: MessageType,
+    pub options: Vec<String>,
 
     pub content: String,
     pub created_at: i64,
@@ -95,6 +96,7 @@ impl RoleplayMessage {
             owner: user.id.clone(),
             role: MessageRole::System,
             content_type: MessageType::Text,
+            options: vec![],
             content: system_prompt,
             session_id: session.id.clone(),
 
@@ -117,6 +119,7 @@ impl RoleplayMessage {
             owner: user.id.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
+            options: vec![],
             content: first_message,
             session_id: session.id.clone(),
 
@@ -133,6 +136,7 @@ impl RoleplayMessage {
             owner: user_id.clone(),
             role: MessageRole::User,
             content_type: MessageType::Text,
+            options: vec![],
             content: message.to_string(),
             session_id: session_id.clone(),
 
