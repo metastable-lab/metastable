@@ -3,13 +3,18 @@ use pgvector::Vector;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mem0Filter {
+    pub user_id: Uuid,
+    pub character_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+}
+
 #[derive(Debug, Clone)]
 pub struct EmbeddingMessage {
     pub id: Uuid,
 
-    pub user_id: Uuid,
-    pub agent_id: Option<Uuid>,
-
+    pub filter: Mem0Filter,
     pub embedding: Vector,
     pub content: String,
 
@@ -21,9 +26,7 @@ pub struct EmbeddingMessage {
 pub struct GraphEntities {
     pub relationships: Vec<Relationship>,
     pub entity_tags: HashMap<String, String>,
-
-    pub user_id: Uuid,
-    pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,7 +43,7 @@ pub struct EntityTag { // TOOLCALL Return
 }
 
 impl GraphEntities {
-    pub fn new(relationships: Vec<Relationship>, entity_tags: Vec<EntityTag>, user_id: Uuid, agent_id: Option<Uuid>) -> Self {
+    pub fn new(relationships: Vec<Relationship>, entity_tags: Vec<EntityTag>, filter: Mem0Filter) -> Self {
         let entity_tags = entity_tags
             .into_iter()
             .map(|tag| (tag.entity_name, tag.entity_tag))
@@ -50,8 +53,7 @@ impl GraphEntities {
         Self {
             relationships,
             entity_tags,
-            user_id,
-            agent_id,
+            filter,
         }
     }
 }

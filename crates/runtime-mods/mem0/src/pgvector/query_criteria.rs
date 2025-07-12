@@ -1,31 +1,24 @@
 use anyhow::Result;
 use pgvector::Vector;
-use sqlx::{postgres::PgArguments, types::Uuid};
+use sqlx::{postgres::PgArguments};
 
-use crate::DEFAULT_VECTOR_DB_SEARCH_LIMIT;
+use crate::{DEFAULT_VECTOR_DB_SEARCH_LIMIT, Mem0Filter};
 
 pub struct VectorQueryCriteria<'a> {
     embedding_ref: &'a Vector,
-    user_id: Uuid,
-    agent_id: Option<Uuid>,
+    filter: Mem0Filter,
     limit: usize,
     similarity_threshold: Option<f32>,
 }
 
 impl<'a> VectorQueryCriteria<'a> {
-    pub fn new(query_embedding: &'a Vector, user_id: Uuid) -> Self {
+    pub fn new(query_embedding: &'a Vector, filter: Mem0Filter) -> Self {
         Self {
             embedding_ref: query_embedding,
-            user_id,
-            agent_id: None,
+            filter,
             limit: DEFAULT_VECTOR_DB_SEARCH_LIMIT,
             similarity_threshold: None,
         }
-    }
-
-    pub fn with_agent_id(mut self, agent_id: Option<Uuid>) -> Self {
-        self.agent_id = agent_id;
-        self
     }
 
     pub fn with_limit(mut self, limit: usize) -> Self {
@@ -49,14 +42,21 @@ impl<'a> VectorQueryCriteria<'a> {
 
         let placeholder = format!("${}", arguments.len() + 1);
         conditions.push(format!("user_id = {}", placeholder));
-        arguments.add(self.user_id)
+        arguments.add(self.filter.user_id)
             .map_err(|e| anyhow::anyhow!("[VectorQueryCriteria::build_query] Failed to add user_id to arguments: {}", e))?;
 
-        if let Some(agent_id) = self.agent_id {
+        if let Some(character_id) = self.filter.character_id {
             let placeholder = format!("${}", arguments.len() + 1);
-            conditions.push(format!("agent_id = {}", placeholder));
-            arguments.add(agent_id)
-                .map_err(|e| anyhow::anyhow!("[VectorQueryCriteria::build_query] Failed to add agent_id to arguments: {}", e))?;
+            conditions.push(format!("character_id = {}", placeholder));
+            arguments.add(character_id)
+                .map_err(|e| anyhow::anyhow!("[VectorQueryCriteria::build_query] Failed to add character_id to arguments: {}", e))?;
+        }
+
+        if let Some(session_id) = self.filter.session_id {
+            let placeholder = format!("${}", arguments.len() + 1);
+            conditions.push(format!("session_id = {}", placeholder));
+            arguments.add(session_id)
+                .map_err(|e| anyhow::anyhow!("[VectorQueryCriteria::build_query] Failed to add session_id to arguments: {}", e))?;
         }
 
         if let Some(threshold) = self.similarity_threshold {
@@ -66,7 +66,7 @@ impl<'a> VectorQueryCriteria<'a> {
                 .map_err(|e| anyhow::anyhow!("[VectorQueryCriteria::build_query] Failed to add similarity_threshold to arguments: {}", e))?;
         }
 
-        let mut query = String::from("SELECT id, user_id, agent_id, embedding, content, created_at, updated_at, 1 - (embedding <=> $1) as similarity FROM embeddings");
+        let mut query = String::from("SELECT id, user_id, character_id, session_id, embedding, content, created_at, updated_at, 1 - (embedding <=> $1) as similarity FROM embeddings");
 
         if !conditions.is_empty() {
             query.push_str(" WHERE ");

@@ -27,8 +27,9 @@ impl Mem0Engine {
 
     pub async fn graph_db_add(&self, message: &GraphEntities) -> Result<usize> {
         tracing::debug!("[Mem0Engine::graph_db_add] Adding graph entities: {:?}", message);
-        let user_id = message.user_id;
-        let agent_id = message.agent_id;
+        let user_id = message.filter.user_id;
+        let character_id = message.filter.character_id;
+        let session_id = message.filter.session_id;
 
         let mut entity_names = HashSet::new();
         for relationship in &message.relationships {
@@ -44,7 +45,7 @@ impl Mem0Engine {
         let mut name_to_id = HashMap::new();
         for name in &entity_names {
             let embedding = name_to_embedding.get(name).unwrap();
-            let id = self.graph_db_search_entity_with_similarity(embedding, &user_id, agent_id).await?;
+            let id = self.graph_db_search_entity_with_similarity(embedding, &message.filter).await?;
                 if let Some(id_val) = id {
                 name_to_id.insert(name.clone(), id_val);
             }
@@ -76,38 +77,58 @@ impl Mem0Engine {
                         .get(&relationship.destination)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
+                    
+                    let mut merge_properties = vec!["name: $destination_name", "user_id: $user_id"];
+                    if character_id.is_some() { merge_properties.push("character_id: $character_id"); }
+                    if session_id.is_some() { merge_properties.push("session_id: $session_id"); }
+
                     let cypher = format!(
                         "MATCH (source:Entity {{id: $source_id}}) \
-                        MERGE (destination:`{}`:Entity {{name: $destination_name, user_id: $user_id}}) \
+                        MERGE (destination:`{}`:Entity {{{}}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $destination_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
-                        dest_type, relationship.relationship
+                        dest_type, merge_properties.join(", "), relationship.relationship
                     );
-                    query(&cypher)
+
+                    let mut q = query(&cypher)
                         .param("source_id", source_id.clone())
                         .param("destination_name", relationship.destination.clone())
-                        .param("destination_embedding", dest_embed.clone())
-                        .param("user_id", user_id.clone().to_string())
+                        .param("user_id", user_id.to_string())
+                        .param("destination_embedding", dest_embed.clone());
+                    
+                    if let Some(cid) = character_id { q = q.param("character_id", cid.to_string()); }
+                    if let Some(sid) = session_id { q = q.param("session_id", sid.to_string()); }
+                    q
                 }
                 (None, Some(dest_id)) => {
                     let source_type = message.entity_tags
                         .get(&relationship.source)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
+
+                    let mut merge_properties = vec!["name: $source_name", "user_id: $user_id"];
+                    if character_id.is_some() { merge_properties.push("character_id: $character_id"); }
+                    if session_id.is_some() { merge_properties.push("session_id: $session_id"); }
+
                     let cypher = format!(
                         "MATCH (destination:Entity {{id: $dest_id}}) \
-                        MERGE (source:`{}`:Entity {{name: $source_name, user_id: $user_id}}) \
+                        MERGE (source:`{}`:Entity {{{}}}) \
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
-                        source_type, relationship.relationship
+                        source_type, merge_properties.join(", "), relationship.relationship
                     );
-                    query(&cypher)
+                    
+                    let mut q = query(&cypher)
                         .param("dest_id", dest_id.clone())
                         .param("source_name", relationship.source.clone())
-                        .param("source_embedding", source_embed.clone())
-                        .param("user_id", user_id.clone().to_string())
+                        .param("user_id", user_id.to_string())
+                        .param("source_embedding", source_embed.clone());
+
+                    if let Some(cid) = character_id { q = q.param("character_id", cid.to_string()); }
+                    if let Some(sid) = session_id { q = q.param("session_id", sid.to_string()); }
+                    q
                 }
                 (None, None) => {
                     let source_type = message.entity_tags
@@ -118,21 +139,39 @@ impl Mem0Engine {
                         .get(&relationship.destination)
                         .cloned()
                         .unwrap_or_else(|| "Entity".to_string());
+
+                    let mut source_merge_props = vec!["name: $source_name", "user_id: $user_id"];
+                    let mut dest_merge_props = vec!["name: $dest_name", "user_id: $user_id"];
+
+                    if character_id.is_some() {
+                        source_merge_props.push("character_id: $character_id");
+                        dest_merge_props.push("character_id: $character_id");
+                    }
+                    if session_id.is_some() {
+                        source_merge_props.push("session_id: $session_id");
+                        dest_merge_props.push("session_id: $session_id");
+                    }
+
                     let cypher = format!(
-                        "MERGE (source:`{}`:Entity {{name: $source_name, user_id: $user_id}}) \
+                        "MERGE (source:`{}`:Entity {{{}}}) \
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
-                        MERGE (destination:`{}`:Entity {{name: $dest_name, user_id: $user_id}}) \
+                        MERGE (destination:`{}`:Entity {{{}}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $dest_embedding \
                         MERGE (source)-[r:{}]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
-                        source_type, dest_type, relationship.relationship
+                        source_type, source_merge_props.join(", "), dest_type, dest_merge_props.join(", "), relationship.relationship
                     );
-                    query(&cypher)
+
+                    let mut q = query(&cypher)
                         .param("source_name", relationship.source.clone())
                         .param("dest_name", relationship.destination.clone())
                         .param("source_embedding", source_embed.clone())
                         .param("dest_embedding", dest_embed.clone())
-                        .param("user_id", user_id.clone().to_string())
+                        .param("user_id", user_id.to_string());
+                    
+                    if let Some(cid) = character_id { q = q.param("character_id", cid.to_string()); }
+                    if let Some(sid) = session_id { q = q.param("session_id", sid.to_string()); }
+                    q
                 }
             };
 
@@ -147,22 +186,40 @@ impl Mem0Engine {
 
     pub async fn graph_db_delete(&self, message: &GraphEntities) -> Result<usize> {
         let mut count = 0;
-        let user_id = message.user_id;
         let mut tx = self.get_graph_db().start_txn().await?;
         for relationship in &message.relationships {
-            let cypher = format!(r#"
-                MATCH (n:Entity {{name: $source_name, user_id: $user_id}})
-                -[r:{}]->
-                (m:Entity {{name: $dest_name, user_id: $user_id}})
-                DELETE r
-            "#, relationship.relationship);
+            let mut source_match_props = vec!["name: $source_name", "user_id: $user_id"];
+            let mut dest_match_props = vec!["name: $dest_name", "user_id: $user_id"];
 
-            let query = query(&cypher)
+            if message.filter.character_id.is_some() {
+                source_match_props.push("character_id: $character_id");
+                dest_match_props.push("character_id: $character_id");
+            }
+            if message.filter.session_id.is_some() {
+                source_match_props.push("session_id: $session_id");
+                dest_match_props.push("session_id: $session_id");
+            }
+
+            let cypher = format!(r#"
+                MATCH (n:Entity {{{}}})
+                -[r:{}]->
+                (m:Entity {{{}}})
+                DELETE r
+            "#, source_match_props.join(", "), relationship.relationship, dest_match_props.join(", "));
+
+            let mut final_query = query(&cypher)
                 .param("source_name", relationship.source.clone())
                 .param("dest_name", relationship.destination.clone())
-                .param("user_id", user_id.clone().to_string());
-            
-            let mut result = tx.execute(query).await?;
+                .param("user_id", message.filter.user_id.to_string());
+
+            if let Some(cid) = message.filter.character_id {
+                final_query = final_query.param("character_id", cid.to_string());
+            }
+            if let Some(sid) = message.filter.session_id {
+                final_query = final_query.param("session_id", sid.to_string());
+            }
+
+            let mut result = tx.execute(final_query).await?;
             while let Ok(Some(_)) = result.next(&mut tx.handle()).await { count += 1; }
         }
 

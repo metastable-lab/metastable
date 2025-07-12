@@ -7,6 +7,7 @@ edition = "2021"
 voda-runtime = { path = "../../crates/runtime" }
 voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
 voda-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
+voda-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
 voda-database = { path = "../../crates/database" }
 voda-common = { path = "../../crates/common" }
 

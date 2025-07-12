@@ -4,7 +4,7 @@ use voda_common::get_current_timestamp;
 use voda_runtime::{ExecutableFunctionCall, Memory, Message, MessageRole, MessageType, SystemConfig};
 
 use crate::pgvector::VectorQueryCriteria;
-use crate::EmbeddingMessage;
+use crate::{EmbeddingMessage, Mem0Filter};
 use crate::{message::Mem0Messages, Mem0Engine};
 use crate::llm::{
     LlmTool,
@@ -26,19 +26,22 @@ impl Memory for Mem0Engine {
     }
 
     async fn add_messages(&self, messages: &[Mem0Messages]) -> Result<()> {
-        let user_id = messages[0].user_id.clone();
-        let agent_id = messages[0].agent_id.clone();
+        let filter = Mem0Filter {
+            user_id: messages[0].user_id.clone(),
+            character_id: messages[0].character_id.clone(),
+            session_id: messages[0].session_id.clone(),
+        };
 
         let flattened_message = Mem0Messages::pack_flat_messages(messages)?;
         
         // 1. TASK 1 - VectorDB Operations
         let self_clone_vector = self.clone();
         let flattened_message_clone = flattened_message.clone();
+        let filter_clone = filter.clone();
         let vector_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting vector DB operations");
             let facts_tool_input = ExtractFactsToolInput {
-                user_id: user_id.clone(),
-                agent_id: agent_id.clone(),
+                filter: filter_clone.clone(),
                 new_message: flattened_message_clone.clone(),
             };
             let (facts_tool_call, facts_llm_response) = FactsToolcall::call(&self_clone_vector, facts_tool_input).await?;
@@ -46,7 +49,7 @@ impl Memory for Mem0Engine {
             let embedding_messages = facts_tool_call.execute(&facts_llm_response, &self_clone_vector).await?;
 
             // 1.2 search db for existing memories
-            let update_memory_input = MemoryUpdateToolInput::search_vector_db_and_prepare_input(user_id.clone(), agent_id.clone(), embedding_messages, &self_clone_vector).await?;
+            let update_memory_input = MemoryUpdateToolInput::search_vector_db_and_prepare_input(&filter_clone, embedding_messages, &self_clone_vector).await?;
 
             // 1.3 get memories to update and push to db
             let (update_memory_tool_call, update_memory_llm_response) = MemoryUpdateToolcall::call(&self_clone_vector, update_memory_input).await?;
@@ -61,12 +64,12 @@ impl Memory for Mem0Engine {
         // 2. TASK 2 - GraphDB Operations
         let self_clone_graph = self.clone();
         let flattened_message_clone = flattened_message.clone();
+        let filter_clone = filter.clone();
         let graph_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting graph DB operations");
             // 2.1 extract entities
             let entities_tool_input = ExtractEntityToolInput {
-                user_id: user_id.clone(),
-                agent_id: agent_id.clone(),
+                filter: filter.clone(),
                 new_message: flattened_message_clone.clone(),
             };
             let (entities_tool_call, entities_llm_response) = EntitiesToolcall::call(&self_clone_graph, entities_tool_input).await?;
@@ -80,7 +83,7 @@ impl Memory for Mem0Engine {
                 tracing::debug!("[Mem0Engine::add_messages] Starting graph DB insert operations");
                 // 2.2 get relationships on the new information
                 let relationship_tool_input = ExtractRelationshipToolInput {
-                    user_id: user_id.clone(), agent_id: agent_id.clone(),
+                    filter: filter_clone.clone(),
                     entities: type_mapping_clone.clone(),
                     new_information: flattened_message_clone.clone(),
                 };
@@ -95,18 +98,19 @@ impl Memory for Mem0Engine {
             let self_clone_delete = self_clone_graph.clone();
             let type_mapping_clone = type_mapping.clone();
             let flattened_message_clone = flattened_message.clone();
+            let filter_clone = filter.clone();
             let graph_db_delete_operations: AsyncTask = tokio::spawn(async move {
                 tracing::debug!("[Mem0Engine::add_messages] Starting graph DB delete operations");
                 // 2.3 search for exisiting nodes
                 let type_mapping_keys = type_mapping_clone.clone().iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>();
                 tracing::debug!("[Mem0Engine::add_messages] Searching for existing nodes with keys: {:?}", type_mapping_keys);
-                let nodes = self_clone_delete.graph_db_search(type_mapping_keys, user_id.clone(), agent_id.clone()).await?;
+                let nodes = self_clone_delete.graph_db_search(type_mapping_keys, &filter_clone).await?;
                 let relationships = nodes.iter().map(|node| node.into()).collect::<Vec<_>>();
                 tracing::debug!("[Mem0Engine::add_messages] Found {} existing nodes", nodes.len());
 
                 // 2.4 Delete existing relationships if we have to
                 let delete_relationship_tool_input = DeleteGraphMemoryToolInput {
-                    user_id: user_id.clone(), agent_id: agent_id.clone(),
+                    filter: filter_clone.clone(),
                     type_mapping: type_mapping_clone.clone(),
                     existing_memories: relationships,
                     new_message: flattened_message_clone.clone(),
@@ -145,16 +149,18 @@ impl Memory for Mem0Engine {
     async fn search(&self, message: &Mem0Messages, limit: u64) -> Result<
         (Vec<Mem0Messages>, SystemConfig)
     > {
-        let user_id = message.user_id;
-        let agent_id = message.agent_id;
+        let filter = Mem0Filter {
+            user_id: message.user_id.clone(),
+            character_id: message.character_id.clone(),
+            session_id: message.session_id.clone(),
+        };
         let content = message.content.clone();
         tracing::debug!("[Mem0Engine::search] Searching for message content: {}", content);
 
         let embeddings = self.embed(vec![content.clone()]).await?;
         let embedding_message = EmbeddingMessage {
             id: Uuid::new_v4(),
-            user_id: user_id.clone(),
-            agent_id: agent_id.clone(),
+            filter: filter.clone(),
             embedding: embeddings[0].clone().into(),
             content: content.clone(),
             created_at: get_current_timestamp(),
@@ -162,11 +168,10 @@ impl Memory for Mem0Engine {
         };
         tracing::debug!("[Mem0Engine::search] Generated embedding for search");
 
-        let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id.clone())
-            .with_limit(limit as usize)
-            .with_agent_id(agent_id);
+        let criteria = VectorQueryCriteria::new(&embedding_message.embedding, filter.clone())
+            .with_limit(limit as usize);
         let vector_search_query = self.vector_db_search_embeddings(criteria);
-        let graph_search_query = self.graph_db_search(vec![content], user_id.clone(), agent_id.clone());
+        let graph_search_query = self.graph_db_search(vec![content], &filter);
 
         let (vector_search_results, graph_search_results) = futures::future::join(vector_search_query, graph_search_query).await;
         let vector_search_results = vector_search_results.map_err(|e| anyhow!("[Mem0Engine::search] Error in vector_db_search_embeddings: {:?}", e))?;
@@ -180,8 +185,9 @@ impl Memory for Mem0Engine {
         tracing::debug!("[Mem0Engine::search] Vector search memories: {:?}", embedding_messages);
         memories.push(Mem0Messages {
             id: embedding_message.id,
-            user_id: embedding_message.user_id,
-            agent_id: embedding_message.agent_id,
+            user_id: embedding_message.filter.user_id,
+            character_id: embedding_message.filter.character_id,
+            session_id: embedding_message.filter.session_id,
             content_type: MessageType::Text,
             role: MessageRole::User,
             content: embedding_messages.join("\n"),
@@ -196,8 +202,9 @@ impl Memory for Mem0Engine {
 
         memories.push(Mem0Messages {
             id: Uuid::new_v4(),
-            user_id: user_id.clone(),
-            agent_id: agent_id.clone(),
+            user_id: filter.user_id,
+            character_id: filter.character_id,
+            session_id: filter.session_id,
             content_type: MessageType::Text,
             role: MessageRole::User,
             content: relations.join("\n"),

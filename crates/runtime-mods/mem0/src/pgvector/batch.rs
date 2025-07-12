@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
 
-use crate::{raw_message::EmbeddingMessage, Mem0Engine};
+use crate::raw_message::{EmbeddingMessage, Mem0Filter};
+use crate::Mem0Engine;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -17,8 +18,7 @@ pub enum MemoryEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryUpdateEntry {
     pub id: Uuid,
-    pub user_id: Uuid,
-    pub agent_id: Uuid,
+    pub filter: Mem0Filter,
     pub event: MemoryEvent,
     pub content: String,
 }
@@ -70,12 +70,9 @@ impl Mem0Engine {
             .into_iter()
             .zip(add_embeddings)
             .filter_map(|(update, embedding)| {
-                let user_id = update.user_id;
-                let agent_id = update.agent_id;
                 Some(EmbeddingMessage {
                     id: Uuid::new_v4(),
-                    user_id,
-                    agent_id: Some(agent_id),
+                    filter: update.filter,
                     embedding: embedding.clone().into(),
                     content: update.content,
                     created_at: now,
@@ -89,12 +86,9 @@ impl Mem0Engine {
             .zip(update_embeddings)
             .filter_map(|(update, embedding)| {
                 let id = update.id;
-                let user_id = update.user_id;
-                let agent_id = update.agent_id;
                 Some(EmbeddingMessage {
                     id,
-                    user_id,
-                    agent_id: Some(agent_id),
+                    filter: update.filter,
                     embedding: embedding.clone().into(),
                     content: update.content,
                     created_at: now,
@@ -108,13 +102,14 @@ impl Mem0Engine {
         for embedding in add_messages {
             sqlx::query(
                 r#"
-                INSERT INTO embeddings (id, user_id, agent_id, embedding, content, created_at, updated_at)
+                INSERT INTO embeddings (id, user_id, character_id, session_id, embedding, content, created_at, updated_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
             )
             .bind(embedding.id)
-            .bind(embedding.user_id)
-            .bind(embedding.agent_id)
+            .bind(embedding.filter.user_id)
+            .bind(embedding.filter.character_id)
+            .bind(embedding.filter.session_id)
             .bind(embedding.embedding)
             .bind(embedding.content)
             .bind(embedding.created_at)

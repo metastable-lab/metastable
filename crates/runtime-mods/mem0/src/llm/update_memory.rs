@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
-use crate::{llm::{LlmTool, ToolInput}, pgvector::{BatchUpdateSummary, MemoryEvent, MemoryUpdateEntry, VectorQueryCriteria}, EmbeddingMessage, Mem0Engine};
+
+use crate::llm::{LlmTool, ToolInput};
+use crate::pgvector::{BatchUpdateSummary, MemoryEvent, MemoryUpdateEntry, VectorQueryCriteria};
+use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputMemory {
@@ -14,14 +17,13 @@ pub struct InputMemory {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryUpdateToolInput {
-    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
     pub retrieved_facts: Vec<String>,
     pub old_memories: Vec<InputMemory>,
 }
 
 impl ToolInput for MemoryUpdateToolInput {
-    fn user_id(&self) -> Uuid { self.user_id.clone() }
-    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+    fn filter(&self) -> &Mem0Filter { &self.filter }
 
     fn build(&self) -> String {
         "Please update the memory based on the new facts.".to_string()
@@ -30,15 +32,14 @@ impl ToolInput for MemoryUpdateToolInput {
 
 impl MemoryUpdateToolInput {
     pub async fn search_vector_db_and_prepare_input(
-        user_id: Uuid, agent_id: Option<Uuid>, 
+        filter: &Mem0Filter, 
         embedding_messages: Vec<EmbeddingMessage>,
         engine: &Mem0Engine,
     ) -> Result<Self> {
         tracing::debug!("[MemoryUpdateToolInput::prepare_input] Searching vector DB for existing memories");
         let queries = embedding_messages.iter().map(|embedding_message| {
-            let criteria = VectorQueryCriteria::new(&embedding_message.embedding, user_id)
-                .with_limit(5)
-                .with_agent_id(agent_id);
+            let criteria = VectorQueryCriteria::new(&embedding_message.embedding, filter.clone())
+                .with_limit(5);
             engine.vector_db_search_embeddings(criteria)
         }).collect::<Vec<_>>();
         let results = futures::future::join_all(queries).await;
@@ -58,7 +59,7 @@ impl MemoryUpdateToolInput {
         tracing::debug!("[MemoryUpdateToolInput::prepare_input] Found {} existing memories", existing_memories.len());
 
         Ok(Self {
-            user_id, agent_id, 
+            filter: filter.clone(), 
             retrieved_facts: embedding_messages.iter().map(|embedding_message| embedding_message.content.clone()).collect(), 
             old_memories: existing_memories,
         })
@@ -337,8 +338,7 @@ impl ExecutableFunctionCall for MemoryUpdateToolcall {
         let memory_update_entries = self.memory.clone().into_iter()
             .map(|entry| MemoryUpdateEntry {
                 id: entry.id,
-                user_id: input.user_id,
-                agent_id: input.agent_id.clone().unwrap_or_default(),
+                filter: input.filter.clone(),
                 event: entry.event,
                 content: entry.content,
             }).collect();

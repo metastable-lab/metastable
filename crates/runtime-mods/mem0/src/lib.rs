@@ -11,7 +11,7 @@ mod message;
 mod memory;
 
 pub use engine::Mem0Engine;
-pub use raw_message::{EmbeddingMessage, GraphEntities, EntityTag};
+pub use raw_message::{EmbeddingMessage, GraphEntities, EntityTag, Mem0Filter};
 pub use message::Mem0Messages;
 
 pub type Embedding = Vec<f32>;
@@ -73,7 +73,8 @@ macro_rules! init_pgvector_pool {
                     CREATE TABLE IF NOT EXISTS embeddings (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                         user_id UUID NOT NULL,
-                        agent_id UUID,
+                        character_id UUID,
+                        session_id UUID,
                         content TEXT NOT NULL,
                         embedding vector(1024),
                         created_at BIGINT NOT NULL DEFAULT floor(extract(epoch from now())),

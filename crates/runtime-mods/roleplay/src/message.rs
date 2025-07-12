@@ -4,6 +4,7 @@ use sqlx::types::Uuid;
 use voda_common::get_time_in_utc8;
 use voda_database::SqlxObject;
 use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
+use voda_runtime_mem0::Mem0Messages;
 
 use super::{Character, RoleplaySession};
 
@@ -142,6 +143,31 @@ impl RoleplayMessage {
 
             created_at: 0,
             updated_at: 0,
+        }
+    }
+
+    pub fn from_mem0_messages(
+        session_id: &Uuid,
+        memory_message: &Mem0Messages,
+        relationship_message: &Mem0Messages,
+    ) -> Self {
+        let content = format!(r#"
+记忆片段：
+{}
+关系片段：
+{}
+"#, memory_message.content, relationship_message.content);
+        
+        Self {
+            id: Uuid::default(),
+            owner: memory_message.user_id,
+            role: MessageRole::User,
+            content_type: MessageType::Text,
+            options: vec![],
+            content,
+            session_id: session_id.clone(),
+            created_at: memory_message.created_at,
+            updated_at: memory_message.updated_at,
         }
     }
 }

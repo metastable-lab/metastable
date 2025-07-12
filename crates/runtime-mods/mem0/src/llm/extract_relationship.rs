@@ -3,21 +3,20 @@ use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use crate::{llm::{LlmTool, ToolInput}, raw_message::Relationship, EntityTag, GraphEntities, Mem0Engine};
+use crate::llm::{LlmTool, ToolInput};
+use crate::{raw_message::Relationship, EntityTag, GraphEntities, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractRelationshipToolInput {
-    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
     pub entities: Vec<EntityTag>,
     pub new_information: String,
 }
 
 impl ToolInput for ExtractRelationshipToolInput {
-    fn user_id(&self) -> Uuid { self.user_id.clone() }
-    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+    fn filter(&self) -> &Mem0Filter { &self.filter }
 
     fn build(&self) -> String {
         let entities_names_text = self.entities.iter().map(|entity| entity.entity_name.clone()).collect::<Vec<_>>().join(", ");
@@ -58,7 +57,7 @@ Entity Consistency:
 Strive to construct a coherent and easily understandable knowledge graph by eshtablishing all the relationships among the entities and adherence to the user’s context.
 
 Adhere strictly to these guidelines to ensure high-quality knowledge graph extraction."#,
-        input.user_id())
+        input.filter().user_id.to_string())
     }
 
     fn tools() -> Vec<FunctionObject> {
@@ -109,8 +108,7 @@ impl ExecutableFunctionCall for RelationshipsToolcall {
         let add_entities = GraphEntities::new(
             self.relationships.clone(),
             input.entities.clone(),
-            input.user_id(),
-            input.agent_id(),
+            input.filter.clone(),
         );
 
         let add_size = execution_context.graph_db_add(&add_entities).await?;

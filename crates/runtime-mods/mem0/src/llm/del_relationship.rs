@@ -3,18 +3,17 @@ use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 use crate::{ 
     llm::{LlmTool, ToolInput}, 
     raw_message::Relationship, 
-    EntityTag, GraphEntities, Mem0Engine
+    EntityTag, GraphEntities, Mem0Engine, Mem0Filter
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteGraphMemoryToolInput {
-    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
 
     pub type_mapping: Vec<EntityTag>,
     pub existing_memories: Vec<Relationship>,
@@ -22,9 +21,7 @@ pub struct DeleteGraphMemoryToolInput {
 }
 
 impl ToolInput for DeleteGraphMemoryToolInput {
-    fn user_id(&self) -> Uuid { self.user_id.clone() }
-    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
-
+    fn filter(&self) -> &Mem0Filter { &self.filter }
     fn build(&self) -> String {
         let existing_memories_text = self.existing_memories.iter()
             .map(|r| format!("{} -- {} -- {}", r.source, r.relationship, r.destination))
@@ -143,8 +140,7 @@ impl ExecutableFunctionCall for DeleteGraphMemoryToolcall {
         let delete_entities = GraphEntities::new(
             self.relationships.clone(),
             input.type_mapping.clone(),
-            input.user_id,
-            input.agent_id,
+            input.filter.clone(),
         );
 
         tracing::debug!("[Mem0Engine::add_messages] Deleting relationships from graph DB");

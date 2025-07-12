@@ -1,22 +1,22 @@
 use anyhow::Result;
 use async_openai::types::FunctionObject;
-use sqlx::types::Uuid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 use voda_common::{get_current_timestamp, get_time_in_utc8};
-use crate::{llm::{LlmTool, ToolInput}, EmbeddingMessage, Mem0Engine};
+use crate::llm::{LlmTool, ToolInput};
+use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractFactsToolInput {
-    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
     pub new_message: String,
 }
 
 impl ToolInput for ExtractFactsToolInput {
-    fn user_id(&self) -> Uuid { self.user_id.clone() }
-    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+    fn filter(&self) -> &Mem0Filter { &self.filter }
 
     fn build(&self) -> String {
         format!("Input: {}", self.new_message)
@@ -92,7 +92,7 @@ Remember the following:
 - Detect the language of the user input and record the facts in the same language.
 
 Following is a conversation between the user and the assistant. You have to extract the relevant facts and preferences about the user, if any, from the conversation and call the `extract_facts` tool with them."#,
-        get_time_in_utc8(), input.user_id() )
+        get_time_in_utc8(), input.filter().user_id.to_string() )
     }
 
     fn tools() -> Vec<FunctionObject> {
@@ -136,8 +136,7 @@ impl ExecutableFunctionCall for FactsToolcall {
         let embedding_messages = embeddings.iter().zip(facts.clone())
             .map(|(embedding, fact)| EmbeddingMessage {
                 id: Uuid::new_v4(),
-                user_id: input.user_id(),
-                agent_id: input.agent_id(),
+                filter: input.filter.clone(),
                 embedding: embedding.clone().into(),
                 content: fact.clone(),
                 created_at: get_current_timestamp(),

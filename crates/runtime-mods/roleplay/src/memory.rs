@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use voda_database::{
     SqlxCrud, QueryCriteria, SqlxFilterQuery
 };
-use voda_runtime::{Memory, MessageRole, MessageType, SystemConfig};
+use voda_runtime::{Memory, SystemConfig};
 use voda_runtime_mem0::{Mem0Engine, Mem0Messages};
 
 use crate::RoleplaySession;
@@ -67,7 +67,8 @@ impl Memory for RoleplayRawMemory {
                 Mem0Messages {
                     id: m.id,
                     user_id: m.owner,
-                    agent_id: Some(character.id.clone()),
+                    character_id: Some(character.id.clone()),
+                    session_id: Some(m.session_id.clone()),
                     content_type: m.content_type.clone(),
                     role: m.role.clone(),
                     content: m.content.clone(),
@@ -106,7 +107,8 @@ impl Memory for RoleplayRawMemory {
         let mem0_query = Mem0Messages {
             id: message.id,
             user_id: message.owner,
-            agent_id: Some(character.id.clone()),
+            character_id: Some(character.id.clone()),
+            session_id: Some(message.session_id.clone()),
             content_type: message.content_type.clone(),
             role: message.role.clone(),
             content: message.content.clone(),
@@ -115,22 +117,12 @@ impl Memory for RoleplayRawMemory {
         };
 
         let (mem0_messages, _) = self.mem0.search(&mem0_query, 100).await?;
-
-        let memory_content = format!("{} \n\n {}", mem0_messages[0].content.clone(), mem0_messages[1].content.clone());
-        tracing::debug!("[RoleplayRawMemory::search] Memory content from mem0: {}", memory_content);
-        let memory = RoleplayMessage {
-            id: Uuid::new_v4(),
-            session_id: message.session_id.clone(),
-            owner: message.owner,
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            options: message.options.clone(),
-            content: memory_content,
-            created_at: message.created_at,
-            updated_at: message.updated_at,
-        };
-
-        messages.push(memory);
+        // NOTE: mem0 search ALWAYS returns 2 messages
+        // the first is the memory
+        // the second is the relationship
+        messages.push(RoleplayMessage::from_mem0_messages(
+            &message.session_id, &mem0_messages[0], &mem0_messages[1]
+        ));
 
         if history.len() <= 10 {
             messages.extend(history.iter().cloned());
