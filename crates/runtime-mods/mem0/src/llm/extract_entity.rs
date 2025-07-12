@@ -2,20 +2,19 @@ use anyhow::Result;
 use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use crate::{llm::{LlmTool, ToolInput}, EntityTag, Mem0Engine};
+use crate::llm::{LlmTool, ToolInput};
+use crate::{EntityTag, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractEntityToolInput {
-    pub user_id: Uuid, pub agent_id: Option<Uuid>,
+    pub filter: Mem0Filter,
     pub new_message: String,
 }
 
 impl ToolInput for ExtractEntityToolInput {
-    fn user_id(&self) -> Uuid { self.user_id.clone() }
-    fn agent_id(&self) -> Option<Uuid> { self.agent_id.clone() }
+    fn filter(&self) -> &Mem0Filter { &self.filter }
 
     fn build(&self) -> String {
         self.new_message.clone()
@@ -44,7 +43,7 @@ impl LlmTool for EntitiesToolcall {
     fn system_prompt(input: &Self::ToolInput) -> String {
         format!(
             "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
-            input.user_id()
+            input.filter().user_id.to_string()
         )
     }
 

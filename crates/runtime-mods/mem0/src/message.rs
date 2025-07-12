@@ -6,7 +6,9 @@ pub struct Mem0Messages {
     pub id: Uuid,
 
     pub user_id: Uuid,
-    pub agent_id: Option<Uuid>,
+    pub character_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+
     pub content_type: MessageType,
     pub role: MessageRole,
 

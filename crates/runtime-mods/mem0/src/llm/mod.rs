@@ -9,9 +9,8 @@ use anyhow::{anyhow, Result};
 use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionToolArgs, ChatCompletionToolChoiceOption, CreateChatCompletionRequestArgs, FunctionObject
 };
-use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse, SystemConfig};
-use crate::Mem0Engine;
+use crate::{Mem0Engine, Mem0Filter};
 
 pub use del_relationship::{DeleteGraphMemoryToolcall, DeleteGraphMemoryToolInput};
 pub use extract_entity::{EntitiesToolcall, ExtractEntityToolInput};
@@ -20,8 +19,7 @@ pub use extract_relationship::{RelationshipsToolcall, ExtractRelationshipToolInp
 pub use update_memory::{MemoryUpdateToolcall, MemoryUpdateToolInput};
 
 pub trait ToolInput: std::fmt::Debug + Send + Sync {
-    fn user_id(&self) -> Uuid;
-    fn agent_id(&self) -> Option<Uuid>;
+    fn filter(&self) -> &Mem0Filter;
     fn build(&self) -> String;
 }
 
@@ -93,7 +91,7 @@ pub trait LlmTool: ExecutableFunctionCall {
             .collect::<Vec<_>>();
 
         let llm_response = LLMRunResponse {
-            caller: tool_input.user_id(),
+            caller: tool_input.filter().user_id,
             content,
             usage,
             maybe_function_call: maybe_function_call.clone(),

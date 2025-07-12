@@ -1,14 +1,9 @@
 use anyhow::Result;
 use neo4rs::query;
 use serde::{Deserialize, Serialize};
-use sqlx::types::Uuid;
 
 use crate::{
-    raw_message::Relationship, 
-    Embedding, Mem0Engine, 
-    DEFAULT_GRAPH_DB_SEARCH_LIMIT, 
-    DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, 
-    DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD
+    raw_message::Relationship, Embedding, Mem0Engine, Mem0Filter, DEFAULT_GRAPH_DB_SEARCH_LIMIT, DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -30,10 +25,15 @@ impl From<&RelationInfo> for Relationship {
 }
 impl Mem0Engine {
     pub async fn graph_db_search_entity_with_similarity(&self,
-        embedding: &Embedding, user_id: &Uuid, agent_id: Option<Uuid>
+        embedding: &Embedding, filter: &Mem0Filter,
     ) -> Result<Option<String>> {
-        let agent_id_filter = if let Some(agent_id) = agent_id {
-            format!("AND candidate.agent_id = '{}'", agent_id)
+        let character_id_filter = if let Some(character_id) = filter.character_id {
+            format!("AND candidate.character_id = '{}'", character_id)
+        } else {
+            "".to_string()
+        };
+        let session_id_filter = if let Some(session_id) = filter.session_id {
+            format!("AND candidate.session_id = '{}'", session_id)
         } else {
             "".to_string()
         };
@@ -42,14 +42,15 @@ impl Mem0Engine {
             CALL db.index.vector.queryNodes("memzero", 1, $source_embedding)
             YIELD node AS candidate, score AS similarity
             WHERE candidate.user_id = $user_id
-            {agent_id_filter}
+            {character_id_filter}
+            {session_id_filter}
             AND similarity >= {DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD}
             RETURN id(candidate);
         "#);
 
         let q = query(&q)
             .param("source_embedding", embedding.clone())
-            .param("user_id", user_id.to_string());
+            .param("user_id", filter.user_id.to_string());
 
         let mut result = self.get_graph_db().execute(q).await?;
         let mut results = Vec::new();
@@ -66,13 +67,20 @@ impl Mem0Engine {
 
     pub async fn graph_db_search(&self,
         nodes: Vec<String>,
-        user_id: Uuid,
-        agent_id: Option<Uuid>
+        filter: &Mem0Filter,
     ) -> Result<Vec<RelationInfo>> {
-        let (agent_id_filter_n, agent_id_filter_m) = if let Some(agent_id) = agent_id {
+        let (character_id_filter_n, character_id_filter_m) = if let Some(character_id) = filter.character_id {
             (
-                format!("AND n.agent_id = '{}'", agent_id),
-                format!("AND m.agent_id = '{}'", agent_id)
+                format!("AND n.character_id = '{}'", character_id),
+                format!("AND m.character_id = '{}'", character_id)
+            )
+        } else {
+            ("".to_string(), "".to_string())
+        };
+        let (session_id_filter_n, session_id_filter_m) = if let Some(session_id) = filter.session_id {
+            (
+                format!("AND n.session_id = '{}'", session_id),
+                format!("AND m.session_id = '{}'", session_id)
             )
         } else {
             ("".to_string(), "".to_string())
@@ -85,18 +93,18 @@ impl Mem0Engine {
         for embedding in embeddings {
             let query_str = format!(r#"
                 MATCH (n:Entity)
-                WHERE n.embedding IS NOT NULL AND n.user_id = $user_id {agent_id_filter_n}
+                WHERE n.embedding IS NOT NULL AND n.user_id = $user_id {character_id_filter_n} {session_id_filter_n}
                 WITH n, round(2 * vector.similarity.cosine(n.embedding, $embedding) - 1, 4) AS similarity
                 WHERE similarity >= {DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD}
                 CALL {{
                     WITH n
                     MATCH (n)-[r]->(m:Entity)
-                    WHERE m.user_id = $user_id {agent_id_filter_m}
+                    WHERE m.user_id = $user_id {character_id_filter_m} {session_id_filter_m}
                     RETURN n.name AS source, elementId(n) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, m.name AS destination, elementId(m) AS destination_id
                     UNION
                     WITH n
                     MATCH (m:Entity)-[r]->(n)
-                    WHERE m.user_id = $user_id {agent_id_filter_m}
+                    WHERE m.user_id = $user_id {character_id_filter_m} {session_id_filter_m}
                     RETURN m.name AS source, elementId(m) AS source_id, type(r) AS relationship, elementId(r) AS relation_id, n.name AS destination, elementId(n) AS destination_id
                 }}
                 WITH distinct source, source_id, relationship, relation_id, destination, destination_id, similarity
@@ -108,13 +116,15 @@ impl Mem0Engine {
                 ORDER BY similarity DESC
                 LIMIT {DEFAULT_GRAPH_DB_SEARCH_LIMIT}
             "#,
-            agent_id_filter_n = agent_id_filter_n,
-            agent_id_filter_m = agent_id_filter_m
+            character_id_filter_n = character_id_filter_n,
+            character_id_filter_m = character_id_filter_m,
+            session_id_filter_n = session_id_filter_n,
+            session_id_filter_m = session_id_filter_m
             );
 
             let q = query(&query_str)
                 .param("embedding", embedding)
-                .param("user_id", user_id.to_string());
+                .param("user_id", filter.user_id.to_string());
 
             let mut result = self.get_graph_db().execute(q).await?;
             while let Some(row) = result.next().await? {
