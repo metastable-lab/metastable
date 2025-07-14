@@ -10,6 +10,7 @@ use crate::{EntityTag, Mem0Engine, Mem0Filter};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractEntityToolInput {
     pub filter: Mem0Filter,
+    pub user_aka: String,
     pub new_message: String,
 }
 
@@ -43,7 +44,7 @@ impl LlmTool for EntitiesToolcall {
     fn system_prompt(input: &Self::ToolInput) -> String {
         format!(
             "You are a smart assistant who understands entities and their types in a given text. If user message contains self reference such as 'I', 'me', 'my' etc. then use {} as the source entity. Extract all the entities from the text. ***DO NOT*** answer the question itself if the given text is a question.",
-            input.filter().user_id.to_string()
+            input.user_aka.clone()
         )
     }
 

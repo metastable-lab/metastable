@@ -14,6 +14,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteGraphMemoryToolInput {
     pub filter: Mem0Filter,
+    pub user_aka: String,
 
     pub type_mapping: Vec<EntityTag>,
     pub existing_memories: Vec<Relationship>,
@@ -49,12 +50,12 @@ impl LlmTool for DeleteGraphMemoryToolcall {
         self.input = Some(tool_input);
     }
 
-    fn system_prompt(_input: &Self::ToolInput) -> String {
-        r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
+    fn system_prompt(input: &Self::ToolInput) -> String {
+        format!(r#"You are a graph memory manager specializing in identifying, managing, and optimizing relationships within graph-based memories. Your primary task is to analyze a list of existing relationships and determine which ones should be deleted based on the new information provided.
 Input:
 1. Existing Graph Memories: A list of current graph memories, each containing source, relationship, and destination information.
 2. New Text: The new information to be integrated into the existing graph structure.
-3. Use "{user_id}" as node for any self-references (e.g., "I," "me," "my," etc.) in user messages.
+3. Use "{}" as node for any self-references (e.g., "I," "me," "my," etc.) in user messages.
 
 Guidelines:
 1. Identification: Use the new information to evaluate existing relationships in the memory graph.
@@ -86,8 +87,8 @@ Response Format:
 - Your response MUST be a call to the `delete_graph_memory` tool.
 - The `relationships` argument must contain a list of all relationships to be deleted.
 - If no relationships should be deleted, provide an empty list for the `relationships` argument.
-- Do NOT include any other text, reasoning, or explanations in your response."#.to_string()
-    }
+- Do NOT include any other text, reasoning, or explanations in your response."#, input.user_aka.clone())
+        }
 
     fn tools() -> Vec<FunctionObject> {
         vec![FunctionObject {

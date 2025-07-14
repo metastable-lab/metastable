@@ -30,7 +30,7 @@ impl Memory for Mem0Engine {
             character_id: messages[0].character_id.clone(),
             session_id: messages[0].session_id.clone(),
         };
-
+        let user_aka = messages[0].user_aka.clone();
         let flattened_message = Mem0Messages::pack_flat_messages(messages)?;
         
         // 1. TASK 1 - VectorDB Operations
@@ -64,12 +64,14 @@ impl Memory for Mem0Engine {
         let self_clone_graph = self.clone();
         let flattened_message_clone = flattened_message.clone();
         let filter_clone = filter.clone();
+        let user_aka_clone = user_aka.clone();
         let graph_db_operations: AsyncTask = tokio::spawn(async move {
             tracing::debug!("[Mem0Engine::add_messages] Starting graph DB operations");
             // 2.1 extract entities
             let entities_tool_input = ExtractEntityToolInput {
                 filter: filter.clone(),
                 new_message: flattened_message_clone.clone(),
+                user_aka: user_aka_clone.clone(),
             };
             let (entities_tool_call, entities_llm_response) = EntitiesToolcall::call(&self_clone_graph, entities_tool_input).await?;
             let type_mapping = entities_tool_call.execute(&entities_llm_response, &self_clone_graph).await?;
@@ -85,6 +87,7 @@ impl Memory for Mem0Engine {
                     filter: filter_clone.clone(),
                     entities: type_mapping_clone.clone(),
                     new_information: flattened_message_clone.clone(),
+                    user_aka: user_aka_clone.clone(),
                 };
                 let (relationship_tool_call, relationship_llm_response) = RelationshipsToolcall::call(&self_clone_insert, relationship_tool_input).await?;
                 // insert new relationships into GraphDB
@@ -113,6 +116,7 @@ impl Memory for Mem0Engine {
                     type_mapping: type_mapping_clone.clone(),
                     existing_memories: relationships,
                     new_message: flattened_message_clone.clone(),
+                    user_aka: user_aka.clone(),
                 };
                 let (delete_relationship_tool_call, delete_relationship_llm_response) = DeleteGraphMemoryToolcall::call(&self_clone_delete, delete_relationship_tool_input).await?;
                 let delete_size = delete_relationship_tool_call.execute(&delete_relationship_llm_response, &self_clone_delete).await?;
@@ -154,6 +158,7 @@ impl Memory for Mem0Engine {
             session_id: message.session_id.clone(),
         };
         let content = message.content.clone();
+        let user_aka = message.user_aka.clone();
         tracing::debug!("[Mem0Engine::search] Searching for message content: {}", content);
 
         // NOTE: the vector_search always returns a corresponding embedding message for each fact
@@ -186,6 +191,7 @@ impl Memory for Mem0Engine {
             user_id: the_embedding_query.user_id,
             character_id: the_embedding_query.character_id,
             session_id: the_embedding_query.session_id,
+            user_aka: user_aka.clone(),
             content_type: MessageType::Text,
             role: MessageRole::User,
             content: existing_memories.join("\n"),
@@ -203,6 +209,7 @@ impl Memory for Mem0Engine {
             user_id: filter.user_id,
             character_id: filter.character_id,
             session_id: filter.session_id,
+            user_aka: user_aka.clone(),
             content_type: MessageType::Text,
             role: MessageRole::User,
             content: relations.join("\n"),

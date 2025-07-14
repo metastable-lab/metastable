@@ -54,6 +54,9 @@ impl Memory for RoleplayRawMemory {
         ).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
 
+        let user = session.fetch_owner(&mut *tx).await?
+            .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] User not found"))?;
+
         for message in messages {
             let m = message.clone();
             let created_m = m.create(&mut *tx).await?;
@@ -69,6 +72,7 @@ impl Memory for RoleplayRawMemory {
                     user_id: m.owner,
                     character_id: Some(character.id.clone()),
                     session_id: Some(m.session_id.clone()),
+                    user_aka: user.user_aka.clone(),
                     content_type: m.content_type.clone(),
                     role: m.role.clone(),
                     content: m.content.clone(),
@@ -109,6 +113,7 @@ impl Memory for RoleplayRawMemory {
             user_id: message.owner,
             character_id: Some(character.id.clone()),
             session_id: Some(message.session_id.clone()),
+            user_aka: user.user_aka.clone(),
             content_type: message.content_type.clone(),
             role: message.role.clone(),
             content: message.content.clone(),

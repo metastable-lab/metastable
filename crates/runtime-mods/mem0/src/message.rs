@@ -9,6 +9,8 @@ pub struct Mem0Messages {
     pub character_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
 
+    pub user_aka: String,
+
     pub content_type: MessageType,
     pub role: MessageRole,
 

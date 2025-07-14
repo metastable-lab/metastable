@@ -13,6 +13,7 @@ pub struct ExtractRelationshipToolInput {
     pub filter: Mem0Filter,
     pub entities: Vec<EntityTag>,
     pub new_information: String,
+    pub user_aka: String,
 }
 
 impl ToolInput for ExtractRelationshipToolInput {
@@ -57,7 +58,7 @@ Entity Consistency:
 Strive to construct a coherent and easily understandable knowledge graph by eshtablishing all the relationships among the entities and adherence to the user’s context.
 
 Adhere strictly to these guidelines to ensure high-quality knowledge graph extraction."#,
-        input.filter().user_id.to_string())
+        input.user_aka.clone())
     }
 
     fn tools() -> Vec<FunctionObject> {
