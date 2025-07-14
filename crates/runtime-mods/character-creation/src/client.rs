@@ -66,7 +66,7 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
 
         let preload_config = preload::get_system_configs_for_char_creation();
         match SystemConfig::find_one_by_criteria(
-            QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
+            QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone())),
             &mut *tx
         ).await? {
             Some(mut db_config) => {

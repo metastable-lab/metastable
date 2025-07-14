@@ -37,7 +37,7 @@ async fn tts(
 
     let message = value["message"].as_str().ok_or(anyhow!("[/tts] message is required"))?.to_string();
     let character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", character_id)?,
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
         &*state.roleplay_client.get_db().clone()
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[/tts] Character not found")))?;

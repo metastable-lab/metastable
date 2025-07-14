@@ -60,12 +60,12 @@ async fn roleplay_create_session(
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
     let _character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", payload.character_id)?,
+        QueryCriteria::new().add_valued_filter("id", "=", payload.character_id),
         &mut *tx
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] Character not found")))?;
     let _system_config = SystemConfig::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", payload.system_config_id)?,
+        QueryCriteria::new().add_valued_filter("id", "=", payload.system_config_id),
         &mut *tx
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] System config not found")))?;
@@ -146,7 +146,7 @@ async fn character_creation_review(
 
     let mut tx = state.character_creation_client.get_db().begin().await?;
     let mut character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_filter("id", "=", Some(character_id))?,
+        QueryCriteria::new().add_filter("id", "=", Some(character_id)),
         &mut *tx
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] Character not found")))?;

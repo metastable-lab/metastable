@@ -536,8 +536,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     {
                         if let Some(id_val_ref) = &#self_field_access {
                             let criteria = ::voda_database::QueryCriteria::new()
-                                .add_valued_filter(#id_column_name_of_related_type, "=", *id_val_ref)
-                                .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for Option<ForeignKey>.");
+                                .add_valued_filter(#id_column_name_of_related_type, "=", *id_val_ref);
                             <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                         } else {
                             Ok(None)
@@ -555,8 +554,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
                     {
                         let criteria = ::voda_database::QueryCriteria::new()
-                            .add_valued_filter(#id_column_name_of_related_type, "=", #self_field_access)
-                            .expect("SqlxObject derive: Failed to build QueryCriteria in fetch helper for ForeignKey.");
+                            .add_valued_filter(#id_column_name_of_related_type, "=", #self_field_access);
                         <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                     }
                 });
@@ -777,20 +775,20 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 let mut arguments = ::sqlx::postgres::PgArguments::default();
                 let mut placeholder_idx = 1;
                 let mut select_columns = (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", ");
+                let mut where_clauses: Vec<String> = Vec::new();
 
-                if let Some((vector, as_field)) = &criteria.find_similarity {
+                if let Some(ss) = &criteria.similarity_search {
                     use ::sqlx::Arguments;
-                    arguments.add(vector.clone()).map_err(::sqlx::Error::Encode)?;
-                    select_columns = format!("*, 1 - (embedding <=> ${}) as {}", placeholder_idx, as_field);
+                    arguments.add(ss.vector.clone()).map_err(::sqlx::Error::Encode)?;
+                    let vector_placeholder = placeholder_idx;
                     placeholder_idx += 1;
-                }
+                    select_columns = format!("*, 1 - (embedding <=> ${}) as {}", vector_placeholder, ss.as_field);
 
-                if let Some(threshold) = criteria.similarity_threshold {
-                    if criteria.find_similarity.is_some() {
-                        // This argument depends on the vector from find_similarity being placeholder $1
-                        use ::sqlx::Arguments;
+                    if let Some(threshold) = ss.threshold {
                         arguments.add(threshold).map_err(::sqlx::Error::Encode)?;
-                        // Placeholder index will be incremented later when the WHERE clause is built
+                        let threshold_placeholder = placeholder_idx;
+                        placeholder_idx += 1;
+                        where_clauses.push(format!("1 - (embedding <=> ${}) >= ${}", vector_placeholder, threshold_placeholder));
                     }
                 }
 
@@ -799,8 +797,6 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     select_columns, 
                     <Self as ::voda_database::SqlxSchema>::TABLE_NAME
                 ));
-
-                let mut where_clauses: Vec<String> = Vec::new();
 
                 for condition in &criteria.conditions {
                     let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
@@ -813,17 +809,6 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     }
                     where_clauses.push(current_condition_sql);
                 }
-
-                if let Some(_threshold) = criteria.similarity_threshold {
-                     if criteria.find_similarity.is_some() {
-                        // The vector is always $1, the threshold is now $2 if it exists
-                        let vector_placeholder = 1;
-                        let threshold_placeholder = if criteria.find_similarity.is_some() { 2 } else { 1 };
-                        where_clauses.push(format!("1 - (embedding <=> ${}) >= ${}", vector_placeholder, threshold_placeholder));
-                        // Placeholder index for filters will start after vector and threshold
-                        placeholder_idx = 3; 
-                    }
-                }
                 
                 if !where_clauses.is_empty() {
                     sql_query_parts.push(format!("WHERE {}", where_clauses.join(" AND ")));
@@ -833,7 +818,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 if !criteria.order_by.is_empty() {
                     sql_query_parts.push("ORDER BY".to_string());
                     let order_clauses: Vec<String> = criteria.order_by.iter().map(|&(col, dir)| {
-                        if criteria.find_similarity.as_ref().map_or(false, |ssi| ssi.1 == col) {
+                        if criteria.similarity_search.as_ref().map_or(false, |ssi| ssi.as_field == col) {
                             format!("{} {}", col, dir.as_sql())
                         } else {
                             format!("\"{}\" {}", col, dir.as_sql())

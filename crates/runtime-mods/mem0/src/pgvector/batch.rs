@@ -118,10 +118,9 @@ impl Mem0Engine {
 
         if !to_delete_ids.is_empty() {
             EmbeddingMessage::delete_by_criteria(
-                QueryCriteria::new().add_filter("id", "in", Some(to_delete_ids))?,
-                &mut *tx,
-            )
-            .await?;
+                QueryCriteria::new().add_filter("id", " = ANY($1)", Some(to_delete_ids)),
+                &mut *tx
+            ).await?;
         }
         
         tx.commit().await?;

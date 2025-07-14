@@ -62,7 +62,7 @@ async fn try_login(
 
     // 1. check if the user already exists
     let user = User::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("user_id", "=", payload.user_id.clone())?,
+        QueryCriteria::new().add_valued_filter("user_id", "=", payload.user_id.clone()),
         &mut *tx
     ).await?;
 
@@ -102,7 +102,7 @@ async fn register(
 
     // 1. check if the user already exists
     let user = User::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("user_id", "=", payload.user_id.clone())?,
+        QueryCriteria::new().add_valued_filter("user_id", "=", payload.user_id.clone()),
         &mut *tx
     ).await?;
 
@@ -111,7 +111,7 @@ async fn register(
     }
 
     let mut referral_code = UserReferral::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("code", "=", payload.referral_code.clone())?,
+        QueryCriteria::new().add_valued_filter("code", "=", payload.referral_code.clone()),
         &mut *tx
     ).await?
         .ok_or(anyhow::anyhow!("[/user/register] Referral code not found"))?;

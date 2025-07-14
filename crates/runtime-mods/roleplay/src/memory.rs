@@ -49,7 +49,7 @@ impl Memory for RoleplayRawMemory {
         // NOTE: ASSUME ALL MESSAGES HAVE THE SAME SESSION_ID
         let mut session = RoleplaySession::find_one_by_criteria(
             QueryCriteria::new()
-                .add_valued_filter("id", "=", messages[0].session_id)?,
+                .add_valued_filter("id", "=", messages[0].session_id),
             &mut *tx
         ).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Session not found"))?;
@@ -88,7 +88,7 @@ impl Memory for RoleplayRawMemory {
         let mut tx = self.db.begin().await?;
 
         let criteria = QueryCriteria::new()
-            .add_valued_filter("id", "=", message.session_id.clone())?;
+            .add_valued_filter("id", "=", message.session_id.clone());
         let session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::search] Session not found"))?;
 
@@ -149,7 +149,7 @@ impl Memory for RoleplayRawMemory {
 
     async fn delete(&self, message_ids: &[Uuid]) -> Result<()> {
         let criteria = QueryCriteria::new()
-            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()))?;
+            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()));
 
         RoleplayMessage::delete_by_criteria(criteria, &*self.db).await?;
         Ok(())
@@ -159,13 +159,13 @@ impl Memory for RoleplayRawMemory {
         let mut tx = self.db.begin().await?;
         RoleplaySession::delete_by_criteria(
             QueryCriteria::new()
-                .add_valued_filter("owner", "=", user_id.clone())?,
+                .add_valued_filter("owner", "=", user_id.clone()),
             &mut *tx
         ).await?;
 
         RoleplayMessage::delete_by_criteria(
             QueryCriteria::new()
-                .add_valued_filter("owner", "=", user_id.clone())?,
+                .add_valued_filter("owner", "=", user_id.clone()),
             &mut *tx
         ).await?;
 

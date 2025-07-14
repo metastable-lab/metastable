@@ -45,7 +45,7 @@ pub async fn ensure_account<S: RuntimeClient>(
 
     let mut tx = state.get_db().begin().await?;
     match User::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone())?,
+        QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone()),
         &mut *tx
     ).await? {
         Some(mut user) => {

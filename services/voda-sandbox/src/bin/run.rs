@@ -150,8 +150,8 @@ async fn get_or_create_user(pool: &sqlx::PgPool) -> Result<User> {
     let template_user = get_normal_user();
     let user_id = template_user.user_id.clone();
     let criteria = QueryCriteria::new()
-        .add_filter("user_id", "=", Some(user_id))?
-        .limit(1)?;
+        .add_filter("user_id", "=", Some(user_id))
+        .limit(1);
 
     match User::find_one_by_criteria(criteria, pool).await? {
         Some(user) => {

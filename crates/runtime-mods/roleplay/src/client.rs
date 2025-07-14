@@ -72,50 +72,50 @@ impl RuntimeClient for RoleplayRuntimeClient {
         ];
         
         for preload_config in preload_configs {
-            match SystemConfig::find_one_by_criteria(
-                QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone()))?,
+            let existing_config = SystemConfig::find_one_by_criteria(
+                QueryCriteria::new().add_filter("name", "=", Some(preload_config.name.clone())),
                 &mut *tx
-            ).await? {
-                Some(mut db_config) => {
-                    let mut needs_update = false;
-                    if db_config.system_prompt != preload_config.system_prompt {
-                        db_config.system_prompt = preload_config.system_prompt.clone();
-                        needs_update = true;
-                    }
+            ).await?;
 
-                    if db_config.openai_model != preload_config.openai_model {
-                        db_config.openai_model = preload_config.openai_model.clone();
-                        needs_update = true;
-                    }
-
-                    if db_config.openai_temperature != preload_config.openai_temperature {
-                        db_config.openai_temperature = preload_config.openai_temperature;
-                        needs_update = true;
-                    }
-
-                    if db_config.openai_max_tokens != preload_config.openai_max_tokens {
-                        db_config.openai_max_tokens = preload_config.openai_max_tokens;
-                        needs_update = true;
-                    }
-
-                    if db_config.functions != preload_config.functions {
-                        db_config.functions = preload_config.functions.clone();
-                        needs_update = true;
-                    }
-
-                    if needs_update {
-                        db_config.update(&mut *tx).await?;
-                    }
+            if existing_config.is_none() {
+                preload_config.create(&mut *tx).await?;
+            } else {
+                let mut db_config = existing_config.unwrap();
+                let mut needs_update = false;
+                if db_config.system_prompt != preload_config.system_prompt {
+                    db_config.system_prompt = preload_config.system_prompt.clone();
+                    needs_update = true;
                 }
-                None => {
-                    preload_config.create(&mut *tx).await?;
+
+                if db_config.openai_model != preload_config.openai_model {
+                    db_config.openai_model = preload_config.openai_model.clone();
+                    needs_update = true;
                 }
-            };
+
+                if db_config.openai_temperature != preload_config.openai_temperature {
+                    db_config.openai_temperature = preload_config.openai_temperature;
+                    needs_update = true;
+                }
+
+                if db_config.openai_max_tokens != preload_config.openai_max_tokens {
+                    db_config.openai_max_tokens = preload_config.openai_max_tokens;
+                    needs_update = true;
+                }
+
+                if db_config.functions != preload_config.functions {
+                    db_config.functions = preload_config.functions.clone();
+                    needs_update = true;
+                }
+
+                if needs_update {
+                    db_config.update(&mut *tx).await?;
+                }
+            }
         }
 
         // 2. find admin user
         let admin_user = User::find_one_by_criteria(
-            QueryCriteria::new().add_filter("role", "=", Some(UserRole::Admin.to_string()))?,
+            QueryCriteria::new().add_filter("role", "=", Some(UserRole::Admin.to_string())),
             &mut *tx
         ).await?
             .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_init] No admin user found"))?;
@@ -123,31 +123,31 @@ impl RuntimeClient for RoleplayRuntimeClient {
         // 3. upsert characters
         let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
         for preload_char in preload_chars {
-            match Character::find_one_by_criteria(
-                QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone()))?,
+            let existing_char = Character::find_one_by_criteria(
+                QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone())),
                 &mut *tx
-            ).await? {
-                Some(mut db_char) => {
-                    let mut updated = false;
-                    if db_char.description != preload_char.description {
-                        db_char.description = preload_char.description;
-                        updated = true;
-                    }
-                    if db_char.features != preload_char.features {
-                        db_char.features = preload_char.features.clone();
-                        updated = true;
-                    }
-                    if db_char.version != preload_char.version {
-                        db_char.version = preload_char.version;
-                        updated = true;
-                    }
+            ).await?;
 
-                    if updated {
-                        db_char.update(&mut *tx).await?;
-                    }
+            if existing_char.is_none() {
+                preload_char.create(&mut *tx).await?;
+            } else {
+                let mut db_char = existing_char.unwrap();
+                let mut updated = false;
+                if db_char.description != preload_char.description {
+                    db_char.description = preload_char.description;
+                    updated = true;
                 }
-                None => {
-                    preload_char.create(&mut *tx).await?;
+                if db_char.features != preload_char.features {
+                    db_char.features = preload_char.features.clone();
+                    updated = true;
+                }
+                if db_char.version != preload_char.version {
+                    db_char.version = preload_char.version;
+                    updated = true;
+                }
+
+                if updated {
+                    db_char.update(&mut *tx).await?;
                 }
             }
         }

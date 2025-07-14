@@ -28,7 +28,7 @@ impl Memory for CharacterCreationMemory {
 
     async fn initialize(&mut self) -> Result<()> {
         let system_config = SystemConfig::find_one_by_criteria(
-            QueryCriteria::new().add_filter("name", "=", Some(self.system_config_name.clone()))?,
+            QueryCriteria::new().add_filter("name", "=", Some(self.system_config_name.clone())),
             &*self.db
         ).await?;
         self.system_config = system_config
@@ -57,7 +57,7 @@ impl Memory for CharacterCreationMemory {
         let mut tx = self.db.begin().await?;
 
         let criteria = QueryCriteria::new()
-            .add_valued_filter("id", "=", message.roleplay_session_id.clone())?;
+            .add_valued_filter("id", "=", message.roleplay_session_id.clone());
         let session = RoleplaySession::find_one_by_criteria(criteria, &mut *tx).await?
             .ok_or(anyhow::anyhow!("[CharacterCreationMemory::search] Session not found"))?;
 
@@ -105,7 +105,7 @@ impl Memory for CharacterCreationMemory {
 
     async fn delete(&self, message_ids: &[Uuid]) -> Result<()> {
         let criteria = QueryCriteria::new()
-            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()))?;
+            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()));
 
         CharacterCreationMessage::delete_by_criteria(criteria, &*self.db).await?;
         Ok(())
@@ -114,7 +114,7 @@ impl Memory for CharacterCreationMemory {
     async fn reset(&self, user_id: &Uuid) -> Result<()> {
         CharacterCreationMessage::delete_by_criteria(
             QueryCriteria::new()
-                .add_valued_filter("owner", "=", user_id.clone())?,
+                .add_valued_filter("owner", "=", user_id.clone()),
             &*self.db
         ).await?;
 
