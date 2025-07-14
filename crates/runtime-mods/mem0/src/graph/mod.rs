@@ -64,7 +64,7 @@ impl Mem0Engine {
                 (Some(source_id), Some(dest_id)) => {
                     let cypher = format!(
                         "MATCH (source:Entity {{id: $source_id}}), (destination:Entity {{id: $dest_id}}) \
-                        MERGE (source)-[r:{}]->(destination) \
+                        MERGE (source)-[r:`{}`]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
                         relationship.relationship
                     );
@@ -86,7 +86,7 @@ impl Mem0Engine {
                         "MATCH (source:Entity {{id: $source_id}}) \
                         MERGE (destination:`{}`:Entity {{{}}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $destination_embedding \
-                        MERGE (source)-[r:{}]->(destination) \
+                        MERGE (source)-[r:`{}`]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
                         dest_type, merge_properties.join(", "), relationship.relationship
                     );
@@ -115,7 +115,7 @@ impl Mem0Engine {
                         "MATCH (destination:Entity {{id: $dest_id}}) \
                         MERGE (source:`{}`:Entity {{{}}}) \
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
-                        MERGE (source)-[r:{}]->(destination) \
+                        MERGE (source)-[r:`{}`]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
                         source_type, merge_properties.join(", "), relationship.relationship
                     );
@@ -157,7 +157,7 @@ impl Mem0Engine {
                         ON CREATE SET source.created_at = timestamp(), source.embedding = $source_embedding \
                         MERGE (destination:`{}`:Entity {{{}}}) \
                         ON CREATE SET destination.created_at = timestamp(), destination.embedding = $dest_embedding \
-                        MERGE (source)-[r:{}]->(destination) \
+                        MERGE (source)-[r:`{}`]->(destination) \
                         ON CREATE SET r.created_at = timestamp(), r.updated_at = timestamp()",
                         source_type, source_merge_props.join(", "), dest_type, dest_merge_props.join(", "), relationship.relationship
                     );
@@ -202,7 +202,7 @@ impl Mem0Engine {
 
             let cypher = format!(r#"
                 MATCH (n:Entity {{{}}})
-                -[r:{}]->
+                -[r:`{}`]->
                 (m:Entity {{{}}})
                 DELETE r
             "#, source_match_props.join(", "), relationship.relationship, dest_match_props.join(", "));
