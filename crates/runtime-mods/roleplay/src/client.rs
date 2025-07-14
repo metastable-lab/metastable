@@ -170,15 +170,12 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let response = self.send_llm_request(&system_config, &messages).await?;
 
         let mut final_options = vec![];
-        let mut final_content = response.content.clone();
-
         if let Some(function_call) = response.maybe_function_call.first() {
             let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
             if let Ok(toolcall) = maybe_toolcall {
                 let toolcall_result = toolcall.execute(&response, &()).await;
                 if let Ok(RuntimeToolcallReturn::ShowStoryOptionsToolCall(options)) = toolcall_result {
                     final_options = options.clone();
-                    final_content = format!("{} \n\n {}", final_content, options.join("\n"));
                 }
             }
         }
@@ -189,7 +186,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
             owner: message.owner.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
-            content: final_content,
+            content: response.content.clone(),
             session_id: message.session_id.clone(),
             options: final_options,
 
