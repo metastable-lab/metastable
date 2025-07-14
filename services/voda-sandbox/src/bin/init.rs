@@ -1,16 +1,23 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use voda_database::{init_db_pool, SqlxCrud};
+use voda_database::init_databases;
 use voda_runtime::{RuntimeClient, SystemConfig, User, UserBadge, UserFollow, UserReferral, UserUrl, UserUsage};
-use voda_runtime_mem0::init_pgvector_pool;
 use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
 use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
 
-use voda_sandbox::config::{ get_admin_user, get_normal_user };
+// use voda_sandbox::config::{ get_admin_user, get_normal_user };
 
-init_db_pool!( UserFollow );
-init_pgvector_pool!( );
+init_databases!(
+    default: [
+        User, UserUsage, UserUrl, UserReferral, UserBadge, UserFollow, SystemConfig,
+        Character, RoleplaySession, RoleplayMessage, AuditLog,
+        CharacterCreationMessage
+    ],
+    pgvector: [
+        voda_runtime_mem0::EmbeddingMessage
+    ]
+);
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -20,9 +27,8 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let db = Arc::new(connect(false, false).await.clone());
-    let pgvector_db = Arc::new(connect_pgvector(true, true).await.clone());
+    let _pgvector_db = Arc::new(connect_pgvector(true, true).await.clone());
     // let mut tx = db.begin().await?;
-
     // // start dumping shit into the db
     // let admin = get_admin_user();
     // admin.create(&mut *tx).await?;

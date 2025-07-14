@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use pgvector::Vector;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
@@ -8,18 +7,6 @@ pub struct Mem0Filter {
     pub user_id: Uuid,
     pub character_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone)]
-pub struct EmbeddingMessage {
-    pub id: Uuid,
-
-    pub filter: Mem0Filter,
-    pub embedding: Vector,
-    pub content: String,
-
-    pub created_at: i64,
-    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone)]

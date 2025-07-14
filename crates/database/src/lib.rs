@@ -1,6 +1,9 @@
 mod env;
 
 #[cfg(feature = "postgres")]
+mod postgres_connect;
+
+#[cfg(feature = "postgres")]
 mod sqlx_postgres;
 
 #[cfg(feature = "mongodb")]
@@ -16,3 +19,6 @@ pub use mongodb::*;
 
 #[cfg(feature = "postgres")]
 pub use sqlx_postgres::*;
+
+#[cfg(feature = "postgres")]
+pub use pgvector::Vector;

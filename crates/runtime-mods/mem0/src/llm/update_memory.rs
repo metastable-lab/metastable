@@ -6,7 +6,7 @@ use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 use crate::llm::{LlmTool, ToolInput};
-use crate::pgvector::{BatchUpdateSummary, MemoryEvent, MemoryUpdateEntry, VectorQueryCriteria};
+use crate::pgvector::{BatchUpdateSummary, MemoryEvent, MemoryUpdateEntry};
 use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,27 +37,10 @@ impl MemoryUpdateToolInput {
         engine: &Mem0Engine,
     ) -> Result<Self> {
         tracing::debug!("[MemoryUpdateToolInput::prepare_input] Searching vector DB for existing memories");
-        let queries = embedding_messages.iter().map(|embedding_message| {
-            let criteria = VectorQueryCriteria::new(&embedding_message.embedding, filter.clone())
-                .with_limit(5);
-            engine.vector_db_search_embeddings(criteria)
-        }).collect::<Vec<_>>();
-        let results = futures::future::join_all(queries).await;
-        let mut existing_memories = Vec::new();
-        for result in results {
-            match result {
-                Ok(res) => {
-                    existing_memories.extend(res.into_iter().map(|(embedding_message, _)| {
-                        InputMemory { id: embedding_message.id, content: embedding_message.content }
-                    }));
-                }
-                Err(e) => {
-                    tracing::warn!("[MemoryUpdateToolInput::prepare_input] Error in vector_db_search_embeddings: {:?}", e);
-                }
-            }
-        }
-        tracing::debug!("[MemoryUpdateToolInput::prepare_input] Found {} existing memories", existing_memories.len());
-
+        let existing_memories = EmbeddingMessage::batch_search(engine, filter, &embedding_messages, 5).await?;
+        let existing_memories = existing_memories.iter().flatten()
+            .map(|memory| InputMemory { id: memory.id, content: memory.content.clone() })
+            .collect();
         Ok(Self {
             filter: filter.clone(), 
             retrieved_facts: embedding_messages.iter().map(|embedding_message| embedding_message.content.clone()).collect(), 

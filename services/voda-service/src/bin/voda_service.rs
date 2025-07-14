@@ -9,19 +9,33 @@ use voda_service_api::{
     graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, GlobalState
 };
 
-use voda_runtime_mem0::{init_pgvector_pool, Mem0Engine};
-use voda_database::init_db_pool;
-use voda_runtime::{SystemConfig, User, UserBadge, UserReferral, UserUrl, UserUsage, Memory};
-use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
-use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
+use voda_runtime_mem0::Mem0Engine;
+use voda_database::init_databases;
+use voda_runtime_character_creation::CharacterCreationRuntimeClient;
+use voda_runtime_roleplay::RoleplayRuntimeClient;
+use voda_runtime::Memory;
 
-init_db_pool!(
-    User, UserUsage, UserUrl, UserReferral, UserBadge, SystemConfig,
-    Character, RoleplaySession, RoleplayMessage, AuditLog,
-    CharacterCreationMessage
+init_databases!(
+    default: [
+        voda_runtime::User,
+        voda_runtime::UserUsage,
+        voda_runtime::UserUrl,
+        voda_runtime::UserReferral,
+        voda_runtime::UserBadge,
+        voda_runtime::UserFollow,
+        voda_runtime::SystemConfig,
+
+        voda_runtime_roleplay::Character,
+        voda_runtime_roleplay::RoleplaySession,
+        voda_runtime_roleplay::RoleplayMessage,
+        voda_runtime_roleplay::AuditLog,
+
+        voda_runtime_character_creation::CharacterCreationMessage
+    ],
+    pgvector: [
+        voda_runtime_mem0::EmbeddingMessage
+    ]
 );
-
-init_pgvector_pool!();
 
 #[tokio::main]
 async fn main() -> Result<()> {

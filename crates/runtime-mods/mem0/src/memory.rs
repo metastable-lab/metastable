@@ -3,7 +3,6 @@ use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
 use voda_runtime::{ExecutableFunctionCall, Memory, Message, MessageRole, MessageType, SystemConfig};
 
-use crate::pgvector::VectorQueryCriteria;
 use crate::{EmbeddingMessage, Mem0Filter};
 use crate::{message::Mem0Messages, Mem0Engine};
 use crate::llm::{
@@ -157,20 +156,13 @@ impl Memory for Mem0Engine {
         let content = message.content.clone();
         tracing::debug!("[Mem0Engine::search] Searching for message content: {}", content);
 
-        let embeddings = self.embed(vec![content.clone()]).await?;
-        let embedding_message = EmbeddingMessage {
-            id: Uuid::new_v4(),
-            filter: filter.clone(),
-            embedding: embeddings[0].clone().into(),
-            content: content.clone(),
-            created_at: get_current_timestamp(),
-            updated_at: get_current_timestamp(),
-        };
+        // NOTE: the vector_search always returns a corresponding embedding message for each fact
+        // so we can safely get the first element
+        let embedding_query = EmbeddingMessage::batch_create(self, &[content.clone()], &filter).await?;
+        let the_embedding_query = embedding_query[0].clone();
         tracing::debug!("[Mem0Engine::search] Generated embedding for search");
 
-        let criteria = VectorQueryCriteria::new(&embedding_message.embedding, filter.clone())
-            .with_limit(limit as usize);
-        let vector_search_query = self.vector_db_search_embeddings(criteria);
+        let vector_search_query = EmbeddingMessage::batch_search(self, &filter, &embedding_query, limit as i64);
         let graph_search_query = self.graph_db_search(vec![content], &filter);
 
         let (vector_search_results, graph_search_results) = futures::future::join(vector_search_query, graph_search_query).await;
@@ -181,18 +173,24 @@ impl Memory for Mem0Engine {
 
         let mut memories = Vec::new();
 
-        let embedding_messages = vector_search_results.iter().map(|(embedding_message, _)| embedding_message.content.clone()).collect::<Vec<_>>(); 
-        tracing::debug!("[Mem0Engine::search] Vector search memories: {:?}", embedding_messages);
+        // NOTE: the vector_search always returns a corresponding embedding message for each fact
+        // so we can safely get the first element
+        let existing_memories = vector_search_results[0]
+            .iter()
+            .map(|m| m.content.clone())
+            .collect::<Vec<_>>(); 
+
+        tracing::debug!("[Mem0Engine::search] Vector search memories: {:?}", existing_memories);
         memories.push(Mem0Messages {
-            id: embedding_message.id,
-            user_id: embedding_message.filter.user_id,
-            character_id: embedding_message.filter.character_id,
-            session_id: embedding_message.filter.session_id,
+            id: the_embedding_query.id,
+            user_id: the_embedding_query.user_id,
+            character_id: the_embedding_query.character_id,
+            session_id: the_embedding_query.session_id,
             content_type: MessageType::Text,
             role: MessageRole::User,
-            content: embedding_messages.join("\n"),
-            created_at: embedding_message.created_at,
-            updated_at: embedding_message.updated_at,
+            content: existing_memories.join("\n"),
+            created_at: the_embedding_query.created_at,
+            updated_at: the_embedding_query.updated_at,
         });
 
         let relations = graph_search_results.iter()

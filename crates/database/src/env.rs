@@ -27,6 +27,7 @@ impl EnvVars for MongoDbEnv {
 #[cfg(feature = "postgres")]
 pub struct PostgresDbEnv {
     pub postgres_uri: String,
+    pub pgvector_uri: String,
 }
 
 #[cfg(feature = "postgres")]
@@ -34,12 +35,14 @@ impl EnvVars for PostgresDbEnv {
     fn load() -> Self {
         Self {
             postgres_uri: env::var("DATABASE_URL").unwrap(),
+            pgvector_uri: env::var("PGVECTOR_URI").unwrap(),
         }
     }
 
     fn get_env_var(&self, key: &str) -> String {
         match key {
-            "POSTGRES_URI" => self.postgres_uri.clone(),
+            "DATABASE_URL" => self.postgres_uri.clone(),
+            "PGVECTOR_URI" => self.pgvector_uri.clone(),
             _ => panic!("Invalid environment variable: {}", key),
         }
     }

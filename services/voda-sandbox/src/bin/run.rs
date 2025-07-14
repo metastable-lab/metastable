@@ -13,7 +13,7 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use voda_database::{init_db_pool, QueryCriteria, SqlxCrud, SqlxFilterQuery};
+use voda_database::{init_databases, QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use voda_runtime::User;
 
 use voda_sandbox::{
@@ -22,17 +22,26 @@ use voda_sandbox::{
     graphql::{CharacterSummary, GraphQlClient, Session, SystemConfig},
 };
 
-init_db_pool!(
-    voda_runtime::User,
-    voda_runtime::UserUsage,
-    voda_runtime::UserUrl,
-    voda_runtime::UserReferral,
-    voda_runtime::UserBadge,
-    voda_runtime::SystemConfig,
-    voda_runtime_roleplay::Character,
-    voda_runtime_roleplay::RoleplaySession,
-    voda_runtime_roleplay::RoleplayMessage,
-    voda_runtime_roleplay::AuditLog
+init_databases!(
+    default: [
+        voda_runtime::User,
+        voda_runtime::UserUsage,
+        voda_runtime::UserUrl,
+        voda_runtime::UserReferral,
+        voda_runtime::UserBadge,
+        voda_runtime::UserFollow,
+        voda_runtime::SystemConfig,
+
+        voda_runtime_roleplay::Character,
+        voda_runtime_roleplay::RoleplaySession,
+        voda_runtime_roleplay::RoleplayMessage,
+        voda_runtime_roleplay::AuditLog,
+
+        voda_runtime_character_creation::CharacterCreationMessage
+    ],
+    pgvector: [
+        voda_runtime_mem0::EmbeddingMessage
+    ]
 );
 
 const BASE_URL: &str = "http://localhost:3033";
@@ -450,34 +459,26 @@ impl App {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // tracing_subscriber::fmt()
-    //     .with_max_level(tracing::Level::INFO)
-    //     .with_target(true)
-    //     .with_line_number(true)
-    //     .init();
-
+    // initialize tracing
+    let subscriber = tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(tracing::Level::DEBUG)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("setting default subscriber failed");
+    
     info!("{}", "Sandbox CLI initializing...".bold());
     let pool = connect(false, false).await;
+    let _pgvector_pool = connect_pgvector(false, false).await;
     info!("Database pool initialized.");
 
     match App::new(pool).await {
         Ok(mut app) => {
             if let Err(e) = app.run().await {
-                error!(
-                    "{} {:#}",
-                    "Application exited with a critical error:".red().bold(),
-                    e
-                );
-                std::process::exit(1);
+                error!("App exited with error: {:#}", e);
             }
         }
         Err(e) => {
-            error!(
-                "{} {:#}",
-                "Failed to initialize application:".red().bold(),
-                e
-            );
-            std::process::exit(1);
+            error!("Failed to initialize app: {:#}", e);
         }
     }
 
