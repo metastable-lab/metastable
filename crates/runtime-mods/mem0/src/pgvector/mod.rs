@@ -59,8 +59,8 @@ impl EmbeddingMessage {
         let mut all_results = Vec::new();
         for embedding in embeddings {
             let criteria = QueryCriteria::new()
-                .find_similarity(embedding.embedding.clone(), "similarity")
-                .with_similarity_threshold(DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD)
+                .find_similarity(embedding.embedding.clone(), "similarity")?
+                .with_similarity_threshold(DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD)?
                 .add_filter("user_id", "=", Some(filter.user_id))?
                 .add_filter("character_id", "=", filter.character_id)?
                 .add_filter("session_id", "=", filter.session_id)?

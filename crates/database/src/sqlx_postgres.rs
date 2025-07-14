@@ -103,6 +103,17 @@ pub struct QueryCriteria {
 
 impl QueryCriteria {
 
+    /// Creates a new `QueryCriteria` builder.
+    /// 
+    /// **IMPORTANT**: When building a query, methods that add arguments must be called in the
+    /// same order that the final SQL query expects its placeholders (`$1`, `$2`, etc.).
+    /// The conventional order is:
+    /// 1. `find_similarity()`
+    /// 2. `with_similarity_threshold()`
+    /// 3. `add_filter()` / `add_valued_filter()`
+    /// 4. `order_by()` (does not add arguments)
+    /// 5. `limit()`
+    /// 6. `offset()`
     pub fn new() -> Self {
         Self {
             conditions: Vec::new(),
@@ -158,14 +169,18 @@ impl QueryCriteria {
         Ok(self)
     }
 
-    pub fn find_similarity(mut self, vector: pgvector::Vector, as_field: &'static str) -> Self {
+    pub fn find_similarity(mut self, vector: pgvector::Vector, as_field: &'static str) -> Result<Self, SqlxError> {
+        use ::sqlx::Arguments;
+        self.arguments.add(vector.clone()).map_err(SqlxError::Encode)?;
         self.find_similarity = Some((vector, as_field));
-        self
+        Ok(self)
     }
 
-    pub fn with_similarity_threshold(mut self, threshold: f32) -> Self {
+    pub fn with_similarity_threshold(mut self, threshold: f32) -> Result<Self, SqlxError> {
+        use ::sqlx::Arguments;
+        self.arguments.add(threshold).map_err(SqlxError::Encode)?;
         self.similarity_threshold = Some(threshold);
-        self
+        Ok(self)
     }
 }
 

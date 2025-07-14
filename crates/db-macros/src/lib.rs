@@ -781,10 +781,8 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 let similarity_threshold = criteria.similarity_threshold.take();
                 let mut embedding_placeholder_idx: usize = 0;
 
-                if let Some((embedding, as_field)) = &similarity_search_info {
-                    use ::sqlx::Arguments;
+                if let Some((_embedding, as_field)) = &similarity_search_info {
                     embedding_placeholder_idx = placeholder_idx;
-                    criteria.arguments.add(embedding.clone()).map_err(::sqlx::Error::Encode)?;
                     placeholder_idx += 1;
                     select_columns = format!("*, 1 - (embedding <=> ${}) as {}", embedding_placeholder_idx, as_field);
                 }
@@ -796,7 +794,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     <Self as ::voda_database::SqlxSchema>::TABLE_NAME
                 ));
 
-                if !criteria.conditions.is_empty() {
+                if !criteria.conditions.is_empty() {  
                     sql_query_parts.push("WHERE".to_string());
                     let mut first_condition = true;
                     for condition in &criteria.conditions { // Iterate by reference
@@ -831,8 +829,6 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                         }
                         let condition_sql = format!("1 - (embedding <=> ${}) >= ${}", embedding_placeholder_idx, placeholder_idx);
                         sql_query_parts.push(condition_sql);
-                        use ::sqlx::Arguments;
-                        criteria.arguments.add(threshold).map_err(::sqlx::Error::Encode)?;
                         placeholder_idx += 1;
                     }
                 }
