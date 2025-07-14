@@ -766,7 +766,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         #[::async_trait::async_trait]
         impl ::voda_database::SqlxFilterQuery for #struct_name {
             async fn find_by_criteria<'exe, E>(
-                mut criteria: ::voda_database::QueryCriteria,
+                criteria: ::voda_database::QueryCriteria,
                 executor: E,
             ) -> Result<Vec<Self>, ::sqlx::Error>
             where
@@ -774,70 +774,66 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 Self: Send,
             {
                 let mut sql_query_parts: Vec<String> = Vec::new();
+                let mut arguments = ::sqlx::postgres::PgArguments::default();
                 let mut placeholder_idx = 1;
                 let mut select_columns = (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", ");
 
-                let similarity_search_info = criteria.find_similarity.take();
-                let similarity_threshold = criteria.similarity_threshold.take();
-                let mut embedding_placeholder_idx: usize = 0;
-
-                if let Some((_embedding, as_field)) = &similarity_search_info {
-                    embedding_placeholder_idx = placeholder_idx;
+                if let Some((vector, as_field)) = &criteria.find_similarity {
+                    use ::sqlx::Arguments;
+                    arguments.add(vector.clone()).map_err(::sqlx::Error::Encode)?;
+                    select_columns = format!("*, 1 - (embedding <=> ${}) as {}", placeholder_idx, as_field);
                     placeholder_idx += 1;
-                    select_columns = format!("*, 1 - (embedding <=> ${}) as {}", embedding_placeholder_idx, as_field);
                 }
 
-                // Use fully qualified path for schema items
+                if let Some(threshold) = criteria.similarity_threshold {
+                    if criteria.find_similarity.is_some() {
+                        // This argument depends on the vector from find_similarity being placeholder $1
+                        use ::sqlx::Arguments;
+                        arguments.add(threshold).map_err(::sqlx::Error::Encode)?;
+                        // Placeholder index will be incremented later when the WHERE clause is built
+                    }
+                }
+
                 sql_query_parts.push(format!(
                     "SELECT {} FROM \"{}\"", 
                     select_columns, 
                     <Self as ::voda_database::SqlxSchema>::TABLE_NAME
                 ));
 
-                if !criteria.conditions.is_empty() {  
-                    sql_query_parts.push("WHERE".to_string());
-                    let mut first_condition = true;
-                    for condition in &criteria.conditions { // Iterate by reference
-                        if !first_condition {
-                            sql_query_parts.push("AND".to_string());
-                        }
-                        first_condition = false;
-                        
-                        let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
-                        if condition.uses_placeholder {
-                            if !condition.operator.contains('$') { // If operator is simple (e.g., "=")
-                                current_condition_sql.push_str(&format!(" ${}", placeholder_idx));
-                            }
-                            // If operator contains '$' (e.g., "= ANY($1)"), we assume it's correctly formatted.
-                            // The placeholder_idx still needs to be incremented to account for the argument.
-                            placeholder_idx += 1;
-                        }
-                        sql_query_parts.push(current_condition_sql);
-                    }
-                }
+                let mut where_clauses: Vec<String> = Vec::new();
 
-                if let Some(threshold) = similarity_threshold {
-                    if criteria.conditions.is_empty() && similarity_search_info.is_none() {
-                        // This case is ambiguous. What if they only provide a threshold?
-                        // For now, let's assume it only works with a similarity search.
-                    }
-                    if let Some(_) = &similarity_search_info {
-                        if criteria.conditions.is_empty() {
-                            sql_query_parts.push("WHERE".to_string());
-                        } else {
-                            sql_query_parts.push("AND".to_string());
+                for condition in &criteria.conditions {
+                    let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
+                    if let Some(value) = &condition.value {
+                        value.add_to_args(&mut arguments)?;
+                        if !condition.operator.contains('$') {
+                            current_condition_sql.push_str(&format!(" ${}", placeholder_idx));
                         }
-                        let condition_sql = format!("1 - (embedding <=> ${}) >= ${}", embedding_placeholder_idx, placeholder_idx);
-                        sql_query_parts.push(condition_sql);
                         placeholder_idx += 1;
                     }
+                    where_clauses.push(current_condition_sql);
                 }
+
+                if let Some(_threshold) = criteria.similarity_threshold {
+                     if criteria.find_similarity.is_some() {
+                        // The vector is always $1, the threshold is now $2 if it exists
+                        let vector_placeholder = 1;
+                        let threshold_placeholder = if criteria.find_similarity.is_some() { 2 } else { 1 };
+                        where_clauses.push(format!("1 - (embedding <=> ${}) >= ${}", vector_placeholder, threshold_placeholder));
+                        // Placeholder index for filters will start after vector and threshold
+                        placeholder_idx = 3; 
+                    }
+                }
+                
+                if !where_clauses.is_empty() {
+                    sql_query_parts.push(format!("WHERE {}", where_clauses.join(" AND ")));
+                }
+
 
                 if !criteria.order_by.is_empty() {
                     sql_query_parts.push("ORDER BY".to_string());
                     let order_clauses: Vec<String> = criteria.order_by.iter().map(|&(col, dir)| {
-                        // Allow ordering by aliased similarity field, which isn't a real column
-                        if col == similarity_search_info.as_ref().map_or("", |ssi| ssi.1) {
+                        if criteria.find_similarity.as_ref().map_or(false, |ssi| ssi.1 == col) {
                             format!("{} {}", col, dir.as_sql())
                         } else {
                             format!("\"{}\" {}", col, dir.as_sql())
@@ -846,20 +842,22 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     sql_query_parts.push(order_clauses.join(", "));
                 }
 
-                if criteria.has_limit {
+                if let Some(limit_val) = criteria.limit {
+                    use ::sqlx::Arguments;
+                    arguments.add(limit_val).map_err(::sqlx::Error::Encode)?;
                     sql_query_parts.push(format!("LIMIT ${}", placeholder_idx));
                     placeholder_idx += 1;
                 }
 
-                if criteria.has_offset {
+                if let Some(offset_val) = criteria.offset {
+                    use ::sqlx::Arguments;
+                    arguments.add(offset_val).map_err(::sqlx::Error::Encode)?;
                     sql_query_parts.push(format!("OFFSET ${}", placeholder_idx));
-                    // placeholder_idx += 1; // Not strictly needed for the last placeholder
                 }
 
                 let final_sql = sql_query_parts.join(" ");
                 
-                // criteria.arguments already has all necessary values in order (filters, then limit, then offset)
-                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, criteria.arguments)
+                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, arguments)
                     .fetch_all(executor)
                     .await
                     .map(|rows| rows.into_iter().map(<Self as ::voda_database::SqlxSchema>::from_row).collect())
@@ -874,30 +872,26 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 Self: Send,
             {
                 let mut sql_query_parts: Vec<String> = Vec::new();
+                let mut arguments = ::sqlx::postgres::PgArguments::default();
                 let mut placeholder_idx = 1;
                 
                 sql_query_parts.push(format!("DELETE FROM \"{}\"", <Self as ::voda_database::SqlxSchema>::TABLE_NAME));
 
                 if !criteria.conditions.is_empty() {
                     sql_query_parts.push("WHERE".to_string());
-                    let mut first_condition = true;
+                    let mut where_clauses = Vec::new();
                     for condition in &criteria.conditions { 
-                        if !first_condition {
-                            sql_query_parts.push("AND".to_string());
-                        }
-                        first_condition = false;
-                        
                         let mut current_condition_sql = format!("\"{}\" {}", condition.column, condition.operator);
-                        if condition.uses_placeholder {
-                            if !condition.operator.contains('$') { // If operator is simple (e.g., "=")
+                        if let Some(value) = &condition.value {
+                            value.add_to_args(&mut arguments)?;
+                            if !condition.operator.contains('$') {
                                 current_condition_sql.push_str(&format!(" ${}", placeholder_idx));
                             }
-                            // If operator contains '$' (e.g., "= ANY($1)"), we assume it's correctly formatted.
-                            // The placeholder_idx still needs to be incremented to account for the argument.
                             placeholder_idx += 1;
                         }
-                        sql_query_parts.push(current_condition_sql);
+                        where_clauses.push(current_condition_sql);
                     }
+                    sql_query_parts.push(where_clauses.join(" AND "));
                 } else {
                     // Deleting without a WHERE clause is dangerous.
                     // Consider returning an error or requiring at least one condition.
@@ -911,7 +905,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
                 let final_sql = sql_query_parts.join(" ");
                 
-                ::sqlx::query_with(&final_sql, criteria.arguments)
+                ::sqlx::query_with(&final_sql, arguments)
                     .execute(executor)
                     .await
                     .map(|done| done.rows_affected())

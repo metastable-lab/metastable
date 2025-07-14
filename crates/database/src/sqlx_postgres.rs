@@ -65,8 +65,6 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
         Self: Send;
 } 
 
-// --- Filtering Structures and Trait ---
-
 /// Specifies the direction for ordering query results.
 #[derive(Debug, Clone, Copy)]
 pub enum OrderDirection {
@@ -83,102 +81,107 @@ impl OrderDirection {
     }
 }
 
+// --- Filtering Structures and Trait ---
+
+/// A trait to allow for boxing of different types that can be encoded as sqlx arguments.
+/// This is a helper for the `QueryCriteria` struct to store argument values of different types.
+pub trait AsSqlxArg: Send + Sync {
+    fn add_to_args<'q>(&self, args: &mut PgArguments) -> Result<(), SqlxError>;
+}
+
+/// A blanket implementation of AsSqlxArg for any type that meets the bounds.
+/// This allows us to store any value that can be encoded for Postgres.
+impl<T> AsSqlxArg for T
+where
+    T: for<'a> sqlx::Encode<'a, Postgres> + sqlx::Type<Postgres> + Send + Sync + Clone + 'static,
+{
+    fn add_to_args<'q>(&self, args: &mut PgArguments) -> Result<(), SqlxError> {
+        use sqlx::Arguments;
+        args.add(self.clone()).map_err(SqlxError::Encode)
+    }
+}
+
 /// Represents a single filter condition for a database query.
 pub struct FilterCondition {
     pub column: &'static str,
     pub operator: &'static str,
-    pub uses_placeholder: bool,
+    /// Holds the value for the condition's placeholder, if any.
+    pub value: Option<Box<dyn AsSqlxArg>>,
 }
 
 /// Represents the complete criteria for a filtered database query.
+/// This struct holds all the components needed to build a dynamic SQL query.
+/// The `SqlxObject` derive macro is responsible for interpreting these components
+/// and constructing the final SQL and arguments list.
 pub struct QueryCriteria {
     pub conditions: Vec<FilterCondition>,
-    pub arguments: ::sqlx::postgres::PgArguments,
-    pub has_limit: bool,
-    pub has_offset: bool,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
     pub order_by: Vec<(&'static str, OrderDirection)>,
     pub find_similarity: Option<(pgvector::Vector, &'static str)>,
     pub similarity_threshold: Option<f32>,
 }
 
 impl QueryCriteria {
-
-    /// Creates a new `QueryCriteria` builder.
-    /// 
-    /// **IMPORTANT**: When building a query, methods that add arguments must be called in the
-    /// same order that the final SQL query expects its placeholders (`$1`, `$2`, etc.).
-    /// The conventional order is:
-    /// 1. `find_similarity()`
-    /// 2. `with_similarity_threshold()`
-    /// 3. `add_filter()` / `add_valued_filter()`
-    /// 4. `order_by()` (does not add arguments)
-    /// 5. `limit()`
-    /// 6. `offset()`
+    /// Creates a new, empty `QueryCriteria` builder.
     pub fn new() -> Self {
         Self {
             conditions: Vec::new(),
-            arguments: ::sqlx::postgres::PgArguments::default(),
-            has_limit: false,
-            has_offset: false,
+            limit: None,
+            offset: None,
             order_by: Vec::new(),
             find_similarity: None,
             similarity_threshold: None,
         }
     }
 
+    /// Adds a filter condition that may or may not have a value.
     pub fn add_filter<V>(mut self, column: &'static str, operator: &'static str, value: Option<V>) -> Result<Self, SqlxError>
     where
-        V: for<'a> ::sqlx::Encode<'a, Postgres> + ::sqlx::Type<Postgres> + Send + Sync + 'static,
+        V: for<'a> ::sqlx::Encode<'a, Postgres> + ::sqlx::Type<Postgres> + Send + Sync + Clone + 'static,
     {
-        use ::sqlx::Arguments;
-        let uses_ph = value.is_some();
-        if let Some(val) = value {
-            self.arguments.add(val).map_err(SqlxError::Encode)?;
-        }
         self.conditions.push(FilterCondition {
             column,
             operator,
-            uses_placeholder: uses_ph,
+            value: value.map(|v| Box::new(v) as Box<dyn AsSqlxArg>),
         });
         Ok(self)
     }
 
+    /// A convenience method for `add_filter` that requires a value.
     pub fn add_valued_filter<V>(self, column: &'static str, operator: &'static str, value: V) -> Result<Self, SqlxError>
     where
-        V: for<'a> ::sqlx::Encode<'a, Postgres> + ::sqlx::Type<Postgres> + Send + Sync + 'static,
+        V: for<'a> ::sqlx::Encode<'a, Postgres> + ::sqlx::Type<Postgres> + Send + Sync + Clone + 'static,
     {
         self.add_filter(column, operator, Some(value))
     }
     
+    /// Sets the LIMIT for the query.
     pub fn limit(mut self, limit_val: i64) -> Result<Self, SqlxError> {
-        use ::sqlx::Arguments;
-        self.arguments.add(limit_val).map_err(SqlxError::Encode)?;
-        self.has_limit = true;
+        self.limit = Some(limit_val);
         Ok(self)
     }
 
+    /// Sets the OFFSET for the query.
     pub fn offset(mut self, offset_val: i64) -> Result<Self, SqlxError> {
-        use ::sqlx::Arguments;
-        self.arguments.add(offset_val).map_err(SqlxError::Encode)?;
-        self.has_offset = true;
+        self.offset = Some(offset_val);
         Ok(self)
     }
 
+    /// Adds an ORDER BY clause.
     pub fn order_by(mut self, column: &'static str, direction: OrderDirection) -> Result<Self, SqlxError> {
         self.order_by.push((column, direction));
         Ok(self)
     }
 
+    /// Configures a vector similarity search.
     pub fn find_similarity(mut self, vector: pgvector::Vector, as_field: &'static str) -> Result<Self, SqlxError> {
-        use ::sqlx::Arguments;
-        self.arguments.add(vector.clone()).map_err(SqlxError::Encode)?;
         self.find_similarity = Some((vector, as_field));
         Ok(self)
     }
 
+    /// Sets the similarity threshold for a vector search.
     pub fn with_similarity_threshold(mut self, threshold: f32) -> Result<Self, SqlxError> {
-        use ::sqlx::Arguments;
-        self.arguments.add(threshold).map_err(SqlxError::Encode)?;
         self.similarity_threshold = Some(threshold);
         Ok(self)
     }
@@ -201,7 +204,7 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
     /// If multiple records match, this default implementation takes the first one returned by find_by_criteria.
     /// For more control, ensure criteria include ordering and LIMIT 1, or implement this method directly.
     async fn find_one_by_criteria<'e, E>(
-        mut criteria: QueryCriteria, // Take ownership to potentially add LIMIT 1
+        criteria: QueryCriteria, // Take ownership to potentially add LIMIT 1
         executor: E,
     ) -> Result<Option<Self>, SqlxError>
     where
@@ -209,10 +212,12 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
         Self: Send
     {
         // Default implementation: ensure LIMIT 1 and use find_by_criteria.
-        if !criteria.has_limit {
-            criteria = criteria.limit(1)?; // Add LIMIT 1 if not present
-        }
-        let mut results = Self::find_by_criteria(criteria, executor).await?;
+        let criteria_with_limit = if criteria.limit.is_none() {
+            criteria.limit(1)?
+        } else {
+            criteria
+        };
+        let mut results = Self::find_by_criteria(criteria_with_limit, executor).await?;
         Ok(results.pop()) // Returns None if empty, or the single element.
     }
 
