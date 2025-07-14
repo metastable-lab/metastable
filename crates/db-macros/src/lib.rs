@@ -68,12 +68,13 @@ fn is_simple_type(ty: &Type) -> bool {
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" |
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" |
         "NaiveDate" | "::chrono::NaiveDate" | "chrono::NaiveDate" |
-        "NaiveTime" | "::chrono::NaiveTime" | "chrono::NaiveTime"
+        "NaiveTime" | "::chrono::NaiveTime" | "chrono::NaiveTime" |
+        "Vector" | "::pgvector::Vector" | "pgvector::Vector"
     ) || type_str.starts_with("Json<") || type_str.starts_with("::sqlx::types::Json<") || type_str.starts_with("sqlx::types::Json<")
 }
 
 // Helper to map Rust types to SQL types for PostgreSQL
-fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -> String {
+fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool, vector_dimension: Option<usize>) -> String {
     let type_str = get_fully_qualified_type_string(ty);
 
     if type_str == "Vec<u8>" {
@@ -88,7 +89,7 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
 
     if !processing_array_inner {
         if let Some(inner_ty) = get_vec_inner_type(ty) {
-            let inner_type_sql = map_rust_type_to_sql(&inner_ty, false, true);
+            let inner_type_sql = map_rust_type_to_sql(&inner_ty, false, true, None);
             if inner_type_sql.ends_with("[]") && !(get_fully_qualified_type_string(&inner_ty).contains("Uuid")) {
                 panic!("Multi-dimensional arrays (Vec<Vec<T>>) are not currently supported for SQL mapping beyond Vec<Uuid>.");
             }
@@ -109,6 +110,13 @@ fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: bool) -
         "f64" => "DOUBLE PRECISION".to_string(),
         "bool" => "BOOLEAN".to_string(),
         "Uuid" | "::sqlx::types::Uuid" | "sqlx::types::Uuid" => "UUID".to_string(),
+        "Vector" | "::pgvector::Vector" | "pgvector::Vector" => {
+            if let Some(dim) = vector_dimension {
+                format!("VECTOR({})", dim)
+            } else {
+                panic!("Internal error in SqlxObject derive: `map_rust_type_to_sql` was called for a Vector type without a dimension. This should have been caught earlier.");
+            }
+        },
         s if s.starts_with("Json<") || s.starts_with("::sqlx::types::Json<") || s.starts_with("sqlx::types::Json<") => "JSONB".to_string(),
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" => "TIMESTAMPTZ".to_string(),
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" => "TIMESTAMP".to_string(),
@@ -203,15 +211,32 @@ fn parse_foreign_key_many_attr(field: &Field) -> Option<ForeignKeyManyInfo> {
     None
 }
 
+fn parse_vector_dimension_attr(field: &Field) -> Option<usize> {
+    for attr in field.attrs.iter() {
+        if attr.path.is_ident("vector_dimension") {
+            if let Ok(syn::Meta::List(meta_list)) = attr.parse_meta() {
+                if let Some(syn::NestedMeta::Lit(syn::Lit::Int(lit_int))) = meta_list.nested.first() {
+                    return lit_int.base10_parse::<usize>().ok();
+                }
+            }
+        }
+    }
+    None
+}
+
 fn has_unique_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path.is_ident("unique"))
+}
+
+fn has_indexed_attr(field: &Field) -> bool {
+    field.attrs.iter().any(|attr| attr.path.is_ident("indexed"))
 }
 
 fn has_sqlx_skip_column_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path.is_ident("sqlx_skip_column"))
 }
 
-#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column, unique))]
+#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column, unique, vector_dimension, indexed))]
 pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
     let struct_name = &input_ast.ident;
@@ -356,6 +381,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let mut update_bindings_streams: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut update_placeholder_idx = 1;
     let mut fetch_helper_methods: Vec<proc_macro2::TokenStream> = Vec::new(); 
+    let mut create_index_sqls: Vec<LitStr> = Vec::new();
 
     // Helper function to generate the .bind() token stream for a field.
     // This avoids duplicating the complex binding logic for insert and update.
@@ -389,6 +415,15 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         let type_for_analysis = get_option_inner_type(field_ty).unwrap_or_else(|| field_ty.clone()); 
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
         let fq_field_type_str = get_fully_qualified_type_string(field_ty); 
+
+        let vector_dimension = parse_vector_dimension_attr(field);
+        let is_vector_type = fq_type_str_for_analysis == "Vector" ||
+                             fq_type_str_for_analysis == "::pgvector::Vector" ||
+                             fq_type_str_for_analysis == "pgvector::Vector";
+
+        if is_vector_type && vector_dimension.is_none() {
+             return syn::Error::new_spanned(field.ident.as_ref().unwrap(), "#[derive(SqlxObject)] requires fields of type `pgvector::Vector` to have a `#[vector_dimension(...)]` attribute.").to_compile_error().into();
+        }
 
         // --- Refined Type Classification for Text-Mappability ---
         let is_type_path_for_analysis = matches!(&type_for_analysis, syn::Type::Path(_));
@@ -447,7 +482,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         }
         
         let actual_type_for_sql_map = if field_is_option { type_for_analysis.clone() } else { field_ty.clone() };
-        let sql_type_str = map_rust_type_to_sql(&actual_type_for_sql_map, sql_column_name == "id", false);
+        let sql_type_str = map_rust_type_to_sql(&actual_type_for_sql_map, sql_column_name == "id", false, vector_dimension);
         
         let mut col_def_parts = vec![format!("\"{}\"", sql_column_name), sql_type_str.clone()];
         let is_pk = sql_column_name == "id";
@@ -465,6 +500,15 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
         if has_unique_attr(field) {
             col_def_parts.push("UNIQUE".to_string());
+        }
+
+        if has_indexed_attr(field) {
+            let index_name = format!("idx_{}_{}", table_name_str, sql_column_name);
+            let index_sql = format!(
+                "CREATE INDEX IF NOT EXISTS \"{}\" ON \"{}\"(\"{}\")",
+                index_name, table_name_str, sql_column_name
+            );
+            create_index_sqls.push(LitStr::new(&index_sql, field.ident.as_ref().unwrap().span()));
         }
 
         create_table_column_defs.push(col_def_parts.join(" "));
@@ -638,6 +682,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             const TABLE_NAME: &'static str = #table_name_str;
             const ID_COLUMN_NAME: &'static str = "id";
             const COLUMNS: &'static [&'static str] = &[#( #all_sql_column_names_str_lits ),*];
+            const INDEXES_SQL: &'static [&'static str] = &[#( #create_index_sqls ),*];
 
             fn get_id_value(&self) -> Self::Id { self.id }
 
@@ -721,7 +766,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         #[::async_trait::async_trait]
         impl ::voda_database::SqlxFilterQuery for #struct_name {
             async fn find_by_criteria<'exe, E>(
-                criteria: ::voda_database::QueryCriteria,
+                mut criteria: ::voda_database::QueryCriteria,
                 executor: E,
             ) -> Result<Vec<Self>, ::sqlx::Error>
             where
@@ -730,11 +775,24 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             {
                 let mut sql_query_parts: Vec<String> = Vec::new();
                 let mut placeholder_idx = 1;
+                let mut select_columns = (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", ");
+
+                let similarity_search_info = criteria.find_similarity.take();
+                let similarity_threshold = criteria.similarity_threshold.take();
+                let mut embedding_placeholder_idx: usize = 0;
+
+                if let Some((embedding, as_field)) = &similarity_search_info {
+                    use ::sqlx::Arguments;
+                    embedding_placeholder_idx = placeholder_idx;
+                    criteria.arguments.add(embedding.clone()).map_err(::sqlx::Error::Encode)?;
+                    placeholder_idx += 1;
+                    select_columns = format!("*, 1 - (embedding <=> ${}) as {}", embedding_placeholder_idx, as_field);
+                }
 
                 // Use fully qualified path for schema items
                 sql_query_parts.push(format!(
                     "SELECT {} FROM \"{}\"", 
-                    (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", "), 
+                    select_columns, 
                     <Self as ::voda_database::SqlxSchema>::TABLE_NAME
                 ));
 
@@ -760,10 +818,34 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     }
                 }
 
+                if let Some(threshold) = similarity_threshold {
+                    if criteria.conditions.is_empty() && similarity_search_info.is_none() {
+                        // This case is ambiguous. What if they only provide a threshold?
+                        // For now, let's assume it only works with a similarity search.
+                    }
+                    if let Some(_) = &similarity_search_info {
+                        if criteria.conditions.is_empty() {
+                            sql_query_parts.push("WHERE".to_string());
+                        } else {
+                            sql_query_parts.push("AND".to_string());
+                        }
+                        let condition_sql = format!("1 - (embedding <=> ${}) >= ${}", embedding_placeholder_idx, placeholder_idx);
+                        sql_query_parts.push(condition_sql);
+                        use ::sqlx::Arguments;
+                        criteria.arguments.add(threshold).map_err(::sqlx::Error::Encode)?;
+                        placeholder_idx += 1;
+                    }
+                }
+
                 if !criteria.order_by.is_empty() {
                     sql_query_parts.push("ORDER BY".to_string());
-                    let order_clauses: Vec<String> = criteria.order_by.iter().map(|(col, dir)| {
-                        format!("\"{}\" {}", col, dir.as_sql())
+                    let order_clauses: Vec<String> = criteria.order_by.iter().map(|&(col, dir)| {
+                        // Allow ordering by aliased similarity field, which isn't a real column
+                        if col == similarity_search_info.as_ref().map_or("", |ssi| ssi.1) {
+                            format!("{} {}", col, dir.as_sql())
+                        } else {
+                            format!("\"{}\" {}", col, dir.as_sql())
+                        }
                     }).collect();
                     sql_query_parts.push(order_clauses.join(", "));
                 }
@@ -840,6 +922,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             }
         }
     };
-
+    
+    // println!("Generated code for {}: {}", stringify!(#struct_name), expanded.to_string());
     TokenStream::from(expanded)
 }

@@ -19,11 +19,12 @@ async-openai.workspace = true
 
 mongodb = { workspace = true, optional = true}
 sqlx = { workspace = true, optional = true }
+pgvector = { version = "0.4", features = ["sqlx", "serde"], optional = true }
 
 [dev-dependencies]
 dotenv.workspace = true
 
 [features]
 default = ["postgres"]
-postgres = ["dep:sqlx"]
+postgres = ["dep:sqlx", "dep:pgvector"]
 mongodb = ["dep:mongodb"]

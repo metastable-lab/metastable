@@ -2,8 +2,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use voda_common::get_current_timestamp;
+use voda_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
 
-use crate::raw_message::{EmbeddingMessage, Mem0Filter};
+use crate::pgvector::{EmbeddingMessage};
+use crate::Mem0Filter;
 use crate::Mem0Engine;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +33,6 @@ pub struct BatchUpdateSummary {
 }
 
 impl Mem0Engine {
-
     pub async fn vector_db_batch_update(&self, updates: Vec<MemoryUpdateEntry>) -> Result<BatchUpdateSummary> {
         if updates.is_empty() {
             return Ok(BatchUpdateSummary { added: 0, updated: 0, deleted: 0 });
@@ -72,7 +73,11 @@ impl Mem0Engine {
             .filter_map(|(update, embedding)| {
                 Some(EmbeddingMessage {
                     id: Uuid::new_v4(),
-                    filter: update.filter,
+
+                    user_id: update.filter.user_id,
+                    character_id: update.filter.character_id,
+                    session_id: update.filter.session_id,
+
                     embedding: embedding.clone().into(),
                     content: update.content,
                     created_at: now,
@@ -88,7 +93,11 @@ impl Mem0Engine {
                 let id = update.id;
                 Some(EmbeddingMessage {
                     id,
-                    filter: update.filter,
+
+                    user_id: update.filter.user_id,
+                    character_id: update.filter.character_id,
+                    session_id: update.filter.session_id,
+
                     embedding: embedding.clone().into(),
                     content: update.content,
                     created_at: now,
@@ -100,44 +109,18 @@ impl Mem0Engine {
         let mut tx = self.get_vector_db().begin().await?;
 
         for embedding in add_messages {
-            sqlx::query(
-                r#"
-                INSERT INTO embeddings (id, user_id, character_id, session_id, embedding, content, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-            "#,
-            )
-            .bind(embedding.id)
-            .bind(embedding.filter.user_id)
-            .bind(embedding.filter.character_id)
-            .bind(embedding.filter.session_id)
-            .bind(embedding.embedding)
-            .bind(embedding.content)
-            .bind(embedding.created_at)
-            .bind(embedding.updated_at)
-            .execute(&mut *tx).await?;
+            embedding.create(&mut *tx).await?;
         }
 
         for update in update_messages {
-            sqlx::query(
-                r#"
-                UPDATE embeddings SET embedding = $2, content = $3, updated_at = $4 WHERE id = $1
-            "#,
-            )
-            .bind(update.id)
-            .bind(update.embedding)
-            .bind(update.content)
-            .bind(update.updated_at)
-            .execute(&mut *tx).await?;
+            update.update(&mut *tx).await?;
         }
 
         if !to_delete_ids.is_empty() {
-            sqlx::query(
-                r#"
-                DELETE FROM embeddings WHERE id = ANY($1)
-            "#,
+            EmbeddingMessage::delete_by_criteria(
+                QueryCriteria::new().add_filter("id", "in", Some(to_delete_ids))?,
+                &mut *tx,
             )
-            .bind(&to_delete_ids)
-            .execute(&mut *tx)
             .await?;
         }
         

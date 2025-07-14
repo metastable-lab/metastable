@@ -12,4 +12,4 @@ pub use runtime_client::{LLMRunResponse, RuntimeClient};
 pub use user::{UserRole, User, UserUsage, UserUrl, UserReferral, UserBadge, UserFollow};
 pub use system_config::SystemConfig;
 pub use env::RuntimeEnv;
-pub use memory::{MessageRole, MessageType, Message, Memory}; 
+pub use memory::{MessageRole, MessageType, Message, Memory};

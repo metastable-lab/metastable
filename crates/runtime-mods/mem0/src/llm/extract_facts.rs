@@ -2,10 +2,9 @@ use anyhow::Result;
 use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::types::Uuid;
 use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use voda_common::{get_current_timestamp, get_time_in_utc8};
+use voda_common::get_time_in_utc8;
 use crate::llm::{LlmTool, ToolInput};
 use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
@@ -127,22 +126,10 @@ impl ExecutableFunctionCall for FactsToolcall {
         execution_context.add_usage_report(llm_response).await?;
         let input = self.tool_input()
             .ok_or(anyhow::anyhow!("[FactsToolcall::execute] No input found"))?;
-
-        let facts = self.facts.clone();
-        if facts.is_empty() { return Ok(vec![]); }
-        tracing::info!("[FactsToolcall::execute] Extracted {} facts", facts.len());
-
-        let embeddings = execution_context.embed(facts.clone()).await?;
-        let embedding_messages = embeddings.iter().zip(facts.clone())
-            .map(|(embedding, fact)| EmbeddingMessage {
-                id: Uuid::new_v4(),
-                filter: input.filter.clone(),
-                embedding: embedding.clone().into(),
-                content: fact.clone(),
-                created_at: get_current_timestamp(),
-                updated_at: get_current_timestamp(),
-            }).collect::<Vec<_>>();
-
-        Ok(embedding_messages)
+        let embeddings = EmbeddingMessage::batch_create(
+            execution_context, 
+            &self.facts, &input.filter
+        ).await?;
+        Ok(embeddings)
     }
 }
