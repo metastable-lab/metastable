@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
-use metastable_database::{OrderDirection, QueryCriteria, SqlxFilterQuery, SqlxObject, Vector};
+use metastable_database::{OrderDirection, SqlxObject, Vector};
 
 pub use batch::{BatchUpdateSummary, MemoryUpdateEntry, MemoryEvent};
 

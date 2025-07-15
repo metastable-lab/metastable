@@ -10,8 +10,8 @@ init_databases!(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let db = Arc::new(connect(false, false).await.clone());
-    let pgvector_db = Arc::new(connect_pgvector(false, false).await.clone());
+    let db = Arc::new(connect(false, false, false).await.clone());
+    let pgvector_db = Arc::new(connect_pgvector(false, false, false).await.clone());
     // Remove all tables, listed or not listed
     // This will drop all tables in the current schema (Postgres)
     sqlx::query(

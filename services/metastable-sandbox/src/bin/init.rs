@@ -2,17 +2,28 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use metastable_database::init_databases;
-use metastable_runtime::{RuntimeClient, SystemConfig, User, UserBadge, UserFollow, UserReferral, UserUrl, UserUsage};
-use metastable_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
-use metastable_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
+use metastable_runtime::RuntimeClient;
+use metastable_runtime_roleplay::RoleplayRuntimeClient;
+use metastable_runtime_character_creation::CharacterCreationRuntimeClient;
 
 // use metastable_sandbox::config::{ get_admin_user, get_normal_user };
 
 init_databases!(
     default: [
-        User, UserUsage, UserUrl, UserReferral, UserBadge, UserFollow, SystemConfig,
-        Character, RoleplaySession, RoleplayMessage, AuditLog,
-        CharacterCreationMessage
+        metastable_runtime::User,
+        metastable_runtime::UserUsage,
+        metastable_runtime::UserUrl,
+        metastable_runtime::UserReferral,
+        metastable_runtime::UserBadge,
+        metastable_runtime::UserFollow,
+        metastable_runtime::SystemConfig,
+
+        metastable_runtime_roleplay::Character,
+        metastable_runtime_roleplay::RoleplaySession,
+        metastable_runtime_roleplay::RoleplayMessage,
+        metastable_runtime_roleplay::AuditLog,
+
+        metastable_runtime_character_creation::CharacterCreationMessage
     ],
     pgvector: [
         metastable_runtime_mem0::EmbeddingMessage
@@ -25,9 +36,10 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::DEBUG)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-
-    let db = Arc::new(connect(false, false).await.clone());
-    let _pgvector_db = Arc::new(connect_pgvector(true, true).await.clone());
+    
+    let run_migrations = true;
+    let db = Arc::new(connect(false, false, run_migrations).await.clone());
+    let _pgvector_db = Arc::new(connect_pgvector(true, false, run_migrations).await.clone());
     // let mut tx = db.begin().await?;
     // // start dumping shit into the db
     // let admin = get_admin_user();

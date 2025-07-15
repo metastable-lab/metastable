@@ -467,8 +467,8 @@ async fn main() -> Result<()> {
         .expect("setting default subscriber failed");
     
     info!("{}", "Sandbox CLI initializing...".bold());
-    let pool = connect(false, false).await;
-    let _pgvector_pool = connect_pgvector(false, false).await;
+    let pool = connect(false, false, false).await;
+    let _pgvector_pool = connect_pgvector(false, false, false).await;
     info!("Database pool initialized.");
 
     match App::new(pool).await {
