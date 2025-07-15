@@ -236,3 +236,9 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
         E: Executor<'e, Database = Postgres> + Send,
         Self: Send;
 }
+
+#[async_trait::async_trait]
+pub trait SchemaMigrator {
+    /// Compares the struct's schema with the database and applies necessary changes.
+    async fn migrate(pool: &sqlx::PgPool) -> anyhow::Result<()>;
+}

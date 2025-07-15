@@ -44,8 +44,8 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::very_permissive();
     let trace = TraceLayer::new_for_http();
 
-    let db_pool = Arc::new(connect(false, false).await.clone());
-    let pgvector_db = Arc::new(connect_pgvector(false, false).await.clone());
+    let db_pool = Arc::new(connect(false, false, false).await.clone());
+    let pgvector_db = Arc::new(connect_pgvector(false, false, false).await.clone());
 
     let (roleplay_client, mut mem0_messages_rx) = RoleplayRuntimeClient::new(db_pool.clone(), pgvector_db.clone()).await?;
     let character_creation_client = CharacterCreationRuntimeClient::new(db_pool.clone(), "character_creation_v0".to_string()).await?;

@@ -35,12 +35,12 @@ macro_rules! init_databases {
         default: [$($default_type:ty),* $(,)?],
         pgvector: [$($pgvector_type:ty),* $(,)?]
     ) => {
-        use $crate::SqlxSchema;
+        use $crate::{SqlxSchema, SchemaMigrator};
 
         // --- Default Pool Setup ---
         static POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
-        async fn connect(drop_tables: bool, create_tables: bool) -> &'static sqlx::PgPool {
+        async fn connect(drop_tables: bool, create_tables: bool, run_migrations: bool) -> &'static sqlx::PgPool {
             POOL.get_or_init(|| async {
                 let database_url = std::env::var("DATABASE_URL")
                     .expect("DATABASE_URL environment variable not set");
@@ -96,6 +96,15 @@ macro_rules! init_databases {
                         }
                     )*
                 }
+
+                if run_migrations {
+                    $(
+                        if let Err(e) = <$default_type as SchemaMigrator>::migrate(&pool).await {
+                            eprintln!("[MIGRATE][ERROR] Failed to migrate '{}'. Error: {:?}", stringify!($default_type), e);
+                        }
+                    )*
+                }
+
                 pool
             }).await
         }
@@ -103,7 +112,7 @@ macro_rules! init_databases {
         // --- Pgvector Pool Setup ---
         static PGVECTOR_POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
 
-        async fn connect_pgvector(drop_tables: bool, create_tables: bool) -> &'static sqlx::PgPool {
+        async fn connect_pgvector(drop_tables: bool, create_tables: bool, run_migrations: bool) -> &'static sqlx::PgPool {
             PGVECTOR_POOL.get_or_init(|| async {
                 let database_url = std::env::var("PGVECTOR_URI")
                     .expect("PGVECTOR_URI environment variable not set");
@@ -162,6 +171,15 @@ macro_rules! init_databases {
                         }
                     )*
                 }
+
+                if run_migrations {
+                    $(
+                        if let Err(e) = <$pgvector_type as SchemaMigrator>::migrate(&pool).await {
+                            eprintln!("[MIGRATE][ERROR] Failed to migrate '{}'. Error: {:?}", stringify!($pgvector_type), e);
+                        }
+                    )*
+                }
+
                 pool
             }).await
         }
