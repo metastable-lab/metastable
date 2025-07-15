@@ -2,9 +2,9 @@ use anyhow::Result;
 use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
+use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
-use voda_common::get_time_in_utc8;
+use metastable_common::get_time_in_utc8;
 use crate::llm::{LlmTool, ToolInput};
 use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 

@@ -1,6 +1,6 @@
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
-use voda_runtime::{User, UserRole};
+use metastable_common::get_current_timestamp;
+use metastable_runtime::{User, UserRole};
 
 pub fn get_admin_user() -> User {
     User {

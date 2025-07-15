@@ -1,9 +1,9 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
-use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
-use voda_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
+use metastable_common::get_current_timestamp;
+use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse};
+use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummarizeCharacterToolCall {

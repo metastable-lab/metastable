@@ -3,9 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
-use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
-use voda_runtime::{Memory, SystemConfig};
-use voda_runtime_roleplay::{RoleplayMessage, RoleplaySession};
+use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
+use metastable_runtime::{Memory, SystemConfig};
+use metastable_runtime_roleplay::{RoleplayMessage, RoleplaySession};
 
 use crate::CharacterCreationMessage;
 

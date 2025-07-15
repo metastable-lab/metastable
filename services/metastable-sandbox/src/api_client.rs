@@ -1,7 +1,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde_json::json;
-use voda_runtime::User;
+use metastable_runtime::User;
 
 pub struct ApiClient {
     client: Client,

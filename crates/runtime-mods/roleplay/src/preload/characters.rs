@@ -1,5 +1,5 @@
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
+use metastable_common::get_current_timestamp;
 use crate::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
 
 pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {

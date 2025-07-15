@@ -21,8 +21,8 @@ members = [
     "crates/runtime-mods/mem0",
     "crates/runtime-mods/character-creation",
 
-    "services/voda-sandbox",
-    "services/voda-service",
+    "services/metastable-sandbox",
+    "services/metastable-service",
 ]
 resolver = "2"
 

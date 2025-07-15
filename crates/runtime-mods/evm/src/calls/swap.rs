@@ -3,7 +3,7 @@ use alloy_core::sol;
 use alloy_core::sol_types::SolCall;
 use anyhow::Result;
 
-use voda_common::get_current_timestamp;
+use metastable_common::get_current_timestamp;
 
 use crate::eth_call;
 

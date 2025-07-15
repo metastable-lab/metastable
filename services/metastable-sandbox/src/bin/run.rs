@@ -13,10 +13,10 @@ use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use voda_database::{init_databases, QueryCriteria, SqlxCrud, SqlxFilterQuery};
-use voda_runtime::User;
+use metastable_database::{init_databases, QueryCriteria, SqlxCrud, SqlxFilterQuery};
+use metastable_runtime::User;
 
-use voda_sandbox::{
+use metastable_sandbox::{
     api_client::ApiClient,
     config::get_normal_user,
     graphql::{CharacterSummary, GraphQlClient, Session, SystemConfig},
@@ -24,23 +24,23 @@ use voda_sandbox::{
 
 init_databases!(
     default: [
-        voda_runtime::User,
-        voda_runtime::UserUsage,
-        voda_runtime::UserUrl,
-        voda_runtime::UserReferral,
-        voda_runtime::UserBadge,
-        voda_runtime::UserFollow,
-        voda_runtime::SystemConfig,
+        metastable_runtime::User,
+        metastable_runtime::UserUsage,
+        metastable_runtime::UserUrl,
+        metastable_runtime::UserReferral,
+        metastable_runtime::UserBadge,
+        metastable_runtime::UserFollow,
+        metastable_runtime::SystemConfig,
 
-        voda_runtime_roleplay::Character,
-        voda_runtime_roleplay::RoleplaySession,
-        voda_runtime_roleplay::RoleplayMessage,
-        voda_runtime_roleplay::AuditLog,
+        metastable_runtime_roleplay::Character,
+        metastable_runtime_roleplay::RoleplaySession,
+        metastable_runtime_roleplay::RoleplayMessage,
+        metastable_runtime_roleplay::AuditLog,
 
-        voda_runtime_character_creation::CharacterCreationMessage
+        metastable_runtime_character_creation::CharacterCreationMessage
     ],
     pgvector: [
-        voda_runtime_mem0::EmbeddingMessage
+        metastable_runtime_mem0::EmbeddingMessage
     ]
 );
 

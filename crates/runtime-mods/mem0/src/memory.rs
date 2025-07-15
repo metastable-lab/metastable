@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
-use voda_runtime::{ExecutableFunctionCall, Memory, Message, MessageRole, MessageType, SystemConfig};
+use metastable_common::get_current_timestamp;
+use metastable_runtime::{ExecutableFunctionCall, Memory, Message, MessageRole, MessageType, SystemConfig};
 
 use crate::{EmbeddingMessage, Mem0Filter};
 use crate::{message::Mem0Messages, Mem0Engine};

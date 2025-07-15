@@ -1,8 +1,8 @@
 use async_openai::types::FunctionObject;
 use serde_json::json;
 use sqlx::types::{Json, Uuid};
-use voda_common::get_current_timestamp;
-use voda_runtime::SystemConfig;
+use metastable_common::get_current_timestamp;
+use metastable_runtime::SystemConfig;
 
 pub fn get_system_configs_for_char_creation() -> SystemConfig {
     let functions = vec![

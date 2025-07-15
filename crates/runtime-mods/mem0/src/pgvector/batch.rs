@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
-use voda_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
+use metastable_common::get_current_timestamp;
+use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
 
 use crate::pgvector::{EmbeddingMessage};
 use crate::Mem0Filter;

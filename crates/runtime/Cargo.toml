@@ -1,11 +1,11 @@
 [package]
-name = "voda-runtime"
+name = "metastable-runtime"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-common = { path = "../common" }
-voda-database = { path = "../database" }
+metastable-common = { path = "../common" }
+metastable-database = { path = "../database" }
 
 async-openai.workspace = true
 serde.workspace = true

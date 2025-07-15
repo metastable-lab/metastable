@@ -1,12 +1,12 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use voda_database::SqlxObject;
+use metastable_database::SqlxObject;
 use strum_macros::{Display, EnumString};
 use sqlx::types::Uuid;
 use std::fmt;
 use std::str::FromStr;
 
-use voda_runtime::User;
+use metastable_runtime::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Display, EnumString, Default)]
 pub enum CharacterStatus {

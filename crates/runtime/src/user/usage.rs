@@ -3,8 +3,8 @@ use async_openai::types::CompletionUsage;
 use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
-use voda_common::get_current_timestamp;
-use voda_database::SqlxObject;
+use metastable_common::get_current_timestamp;
+use metastable_database::SqlxObject;
 
 use crate::{user::User, LLMRunResponse};
 

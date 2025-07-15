@@ -47,7 +47,7 @@ macro_rules! toolcalls {
         }
 
         #[async_trait::async_trait]
-        impl ::voda_runtime::ExecutableFunctionCall for RuntimeToolcall {
+        impl ::metastable_runtime::ExecutableFunctionCall for RuntimeToolcall {
             type CTX = $ctx;
             type RETURN = RuntimeToolcallReturn;
 
@@ -68,7 +68,7 @@ macro_rules! toolcalls {
             }
 
             async fn execute(&self, 
-                llm_response: &::voda_runtime::LLMRunResponse, 
+                llm_response: &::metastable_runtime::LLMRunResponse, 
                 execution_context: &Self::CTX
             ) -> anyhow::Result<Self::RETURN> {
                 match self {

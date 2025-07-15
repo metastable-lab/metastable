@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use voda_database::init_databases;
+use metastable_database::init_databases;
 
 init_databases!(
     default: [],

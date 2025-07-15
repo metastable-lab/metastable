@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
+use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShowStoryOptionsToolCall {

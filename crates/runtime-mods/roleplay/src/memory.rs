@@ -4,11 +4,11 @@ use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
 
 use tokio::sync::mpsc;
-use voda_database::{
+use metastable_database::{
     SqlxCrud, QueryCriteria, SqlxFilterQuery
 };
-use voda_runtime::{Memory, SystemConfig};
-use voda_runtime_mem0::{Mem0Engine, Mem0Messages};
+use metastable_runtime::{Memory, SystemConfig};
+use metastable_runtime_mem0::{Mem0Engine, Mem0Messages};
 
 use crate::RoleplaySession;
 

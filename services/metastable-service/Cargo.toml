@@ -1,0 +1,34 @@
+[package]
+name = "metastable-service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metastable-common = { path = "../../crates/common" }
+metastable-database = { path = "../../crates/database" }
+metastable-runtime = { path = "../../crates/runtime" }
+metastable-service-api = { path = "../../crates/api" }
+
+metastable-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
+metastable-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
+metastable-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
+
+axum.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+futures.workspace = true
+tracing.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true 
+
+async-openai.workspace = true
+reqwest.workspace = true
+base64.workspace = true
+rand.workspace = true
+hex.workspace = true
+tracing-subscriber.workspace = true
+async-trait.workspace = true
+sqlx.workspace = true

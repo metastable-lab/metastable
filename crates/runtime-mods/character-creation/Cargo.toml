@@ -1,14 +1,15 @@
 [package]
-name = "voda-runtime-character-creation"
+name = "metastable-runtime-character-creation"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-runtime-roleplay = { path = "../roleplay" }
-voda-runtime = { path = "../../runtime" }
-voda-common = { path = "../../common" }
-voda-database = { path = "../../database" }
-voda-db-macros = { path = "../../db-macros" }
+metastable-runtime-roleplay = { path = "../roleplay" }
+metastable-runtime = { path = "../../runtime" }
+metastable-common = { path = "../../common" }
+metastable-database = { path = "../../database" }
+metastable-db-macros = { path = "../../db-macros" }
+
 serde.workspace = true
 serde_json.workspace = true
 

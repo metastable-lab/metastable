@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use anyhow::Result;
 use sqlx::{Postgres, types::Uuid};
 
-use voda_database::SqlxObject;
-use voda_runtime::{User, SystemConfig};
+use metastable_database::SqlxObject;
+use metastable_runtime::{User, SystemConfig};
 
 use crate::Character;
 use crate::message::RoleplayMessage;

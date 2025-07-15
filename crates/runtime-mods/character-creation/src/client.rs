@@ -5,10 +5,10 @@ use async_openai::{config::OpenAIConfig, Client};
 
 use sqlx::types::{Json, Uuid};
 use sqlx::PgPool;
-use voda_common::{get_current_timestamp, EnvVars};
-use voda_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
-use voda_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
-use voda_runtime_roleplay::Character;
+use metastable_common::{get_current_timestamp, EnvVars};
+use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
+use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
+use metastable_runtime_roleplay::Character;
 
 use crate::memory::CharacterCreationMemory;
 use crate::{CharacterCreationMessage, preload, SummarizeCharacterToolCall};

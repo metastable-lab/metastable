@@ -24,20 +24,18 @@ export EMBEDDING_BASE_URL := env("EMBEDDING_BASE_URL")
 export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 
 
-@docs:
-    cd docs && bunx mintlify dev
 
 @api:
-    cargo run --package voda-service --bin voda_service --release
+    cargo run --package metastable-service --bin metastable_service --release
 
 @sandbox-init:
-    cargo run --package voda-sandbox --bin init --release
+    cargo run --package metastable-sandbox --bin init --release
 
 @sandbox-run:
-    cargo run --package voda-sandbox --bin run --release
+    cargo run --package metastable-sandbox --bin run --release
 
 @sandbox-buy-referral:
-    cargo run --package voda-sandbox --bin buy_referral --release
+    cargo run --package metastable-sandbox --bin buy_referral --release
 
 # @sandbox-reset-db:
-#     cargo run --package voda-sandbox --bin reset_db --release
+#     cargo run --package metastable-sandbox --bin reset_db --release

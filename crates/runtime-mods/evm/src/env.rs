@@ -1,6 +1,6 @@
 use std::env;
 
-use voda_common::EnvVars;
+use metastable_common::EnvVars;
 
 pub struct EvmEnv {
     pub eth_rpc_url: String,

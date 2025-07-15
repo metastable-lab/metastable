@@ -3,9 +3,9 @@ use std::{env, str::FromStr};
 use alloy_core::primitives::Address;
 use anyhow::Result;
 use async_openai::types::FunctionCall;
-use voda_common::{blake3_hash, EnvVars};
+use metastable_common::{blake3_hash, EnvVars};
 use serde::{Deserialize, Serialize};
-use voda_runtime::ExecutableFunctionCall;
+use metastable_runtime::ExecutableFunctionCall;
 
 use crate::addresses::sei::GITCOIN_ADDRESS;
 use crate::{send_transaction, to_wei, LocalWallet};

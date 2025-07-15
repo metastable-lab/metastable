@@ -1,11 +1,11 @@
 [package]
-name = "voda-runtime-evm"
+name = "metastable-runtime-evm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-common = { path = "../../common" }
-voda-runtime = { path = "../../runtime" }
+metastable-common = { path = "../../common" }
+metastable-runtime = { path = "../../runtime" }
 
 anyhow.workspace = true 
 tokio.workspace = true

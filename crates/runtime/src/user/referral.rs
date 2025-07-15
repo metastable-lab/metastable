@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
-use voda_common::{blake3_hash, get_current_timestamp};
-use voda_database::SqlxObject;
+use metastable_common::{blake3_hash, get_current_timestamp};
+use metastable_database::SqlxObject;
 
 use crate::{user::User, UserRole};
 

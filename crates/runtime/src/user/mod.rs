@@ -10,8 +10,8 @@ use serde_json::Value;
 use strum_macros::{Display, EnumString};
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
-use voda_common::{encrypt, decrypt, get_current_timestamp};
-use voda_database::SqlxObject;
+use metastable_common::{encrypt, decrypt, get_current_timestamp};
+use metastable_database::SqlxObject;
 
 pub use usage::UserUsage;
 pub use url::UserUrl;
@@ -76,7 +76,7 @@ impl User {
     pub fn generate_auth_token(&self, salt: &str) -> String {
         let payload = json!({
             "user_id": self.user_id,
-            "timestamp": voda_common::get_current_timestamp(),
+            "timestamp": metastable_common::get_current_timestamp(),
             "origin": "runtime"
         });
         let payload_str = payload.to_string();

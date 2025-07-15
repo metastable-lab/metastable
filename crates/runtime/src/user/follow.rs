@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use voda_common::get_current_timestamp;
-use voda_database::SqlxObject;
+use metastable_common::get_current_timestamp;
+use metastable_database::SqlxObject;
 
 use crate::User;
 

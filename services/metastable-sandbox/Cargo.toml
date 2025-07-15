@@ -1,15 +1,15 @@
 [package]
-name = "voda-sandbox"
+name = "metastable-sandbox"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-runtime = { path = "../../crates/runtime" }
-voda-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
-voda-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
-voda-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
-voda-database = { path = "../../crates/database" }
-voda-common = { path = "../../crates/common" }
+metastable-runtime = { path = "../../crates/runtime" }
+metastable-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
+metastable-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
+metastable-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
+metastable-database = { path = "../../crates/database" }
+metastable-common = { path = "../../crates/common" }
 
 tokio = { workspace = true }
 anyhow = { workspace = true }

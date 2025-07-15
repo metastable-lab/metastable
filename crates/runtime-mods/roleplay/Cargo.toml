@@ -1,14 +1,15 @@
 [package]
-name = "voda-runtime-roleplay"
+name = "metastable-runtime-roleplay"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-runtime = { path = "../../runtime" }
-voda-common = { path = "../../common" }
-voda-database = { path = "../../database" }
-voda-db-macros = { path = "../../db-macros" }
-voda-runtime-mem0 = { path = "../mem0" }
+metastable-runtime = { path = "../../runtime" }
+metastable-common = { path = "../../common" }
+metastable-database = { path = "../../database" }
+metastable-db-macros = { path = "../../db-macros" }
+metastable-runtime-mem0 = { path = "../mem0" }
+
 serde.workspace = true
 serde_json.workspace = true
 

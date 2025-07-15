@@ -5,7 +5,7 @@ use axum::{
     response::IntoResponse,
     body::Body,
 };
-use voda_common::EnvVars;
+use metastable_common::EnvVars;
 
 use crate::env::ApiServerEnv;
 use crate::response::AppError;

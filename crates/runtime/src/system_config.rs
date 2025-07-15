@@ -3,7 +3,7 @@ use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
-use voda_database::SqlxObject;
+use metastable_database::SqlxObject;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "system_configs"]

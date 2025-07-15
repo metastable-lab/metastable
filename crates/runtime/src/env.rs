@@ -1,6 +1,6 @@
 use std::env;
 
-use voda_common::EnvVars;
+use metastable_common::EnvVars;
 
 pub struct RuntimeEnv {
     pub openai_api_key: String,

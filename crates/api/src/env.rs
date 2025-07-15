@@ -1,4 +1,4 @@
-use voda_common::EnvVars;
+use metastable_common::EnvVars;
 
 pub struct ApiServerEnv {
     pub secret_salt: String,

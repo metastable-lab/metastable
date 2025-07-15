@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use voda_database::SqlxObject;
+use metastable_database::SqlxObject;
 
 use crate::User;
 

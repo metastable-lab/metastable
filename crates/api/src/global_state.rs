@@ -1,6 +1,6 @@
 use reqwest::Client;
-use voda_runtime_character_creation::CharacterCreationRuntimeClient;
-use voda_runtime_roleplay::RoleplayRuntimeClient;
+use metastable_runtime_character_creation::CharacterCreationRuntimeClient;
+use metastable_runtime_roleplay::RoleplayRuntimeClient;
 
 #[derive(Clone)]
 pub struct GlobalState {

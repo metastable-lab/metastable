@@ -3,9 +3,9 @@ use async_openai::types::FunctionCall;
 use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
-use voda_database::SqlxObject;
-use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
-use voda_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
+use metastable_database::SqlxObject;
+use metastable_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
+use metastable_runtime_roleplay::{Character, RoleplayMessage, RoleplaySession};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "character_creation_messages"]

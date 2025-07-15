@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionToolArgs, ChatCompletionToolChoiceOption, CreateChatCompletionRequestArgs, FunctionObject
 };
-use voda_runtime::{ExecutableFunctionCall, LLMRunResponse, SystemConfig};
+use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse, SystemConfig};
 use crate::{Mem0Engine, Mem0Filter};
 
 pub use del_relationship::{DeleteGraphMemoryToolcall, DeleteGraphMemoryToolInput};

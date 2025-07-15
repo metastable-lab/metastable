@@ -1,5 +1,5 @@
 use sqlx::types::Uuid;
-use voda_runtime::{Message, MessageRole, MessageType};
+use metastable_runtime::{Message, MessageRole, MessageType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mem0Messages {

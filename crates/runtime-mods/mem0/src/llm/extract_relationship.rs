@@ -3,7 +3,7 @@ use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use voda_runtime::{ExecutableFunctionCall, LLMRunResponse};
+use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 use crate::llm::{LlmTool, ToolInput};
 use crate::{raw_message::Relationship, EntityTag, GraphEntities, Mem0Engine, Mem0Filter};

@@ -1,4 +1,4 @@
-use voda_common::{CryptoHash, EnvVars};
+use metastable_common::{CryptoHash, EnvVars};
 
 use alloy_core::primitives::{bytes, Address, U256};
 use alloy_provider::{Provider, ProviderBuilder};

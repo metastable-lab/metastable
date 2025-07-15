@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
-use voda_common::get_time_in_utc8;
-use voda_database::SqlxObject;
-use voda_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
-use voda_runtime_mem0::Mem0Messages;
+use metastable_common::get_time_in_utc8;
+use metastable_database::SqlxObject;
+use metastable_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
+use metastable_runtime_mem0::Mem0Messages;
 
 use super::{Character, RoleplaySession};
 

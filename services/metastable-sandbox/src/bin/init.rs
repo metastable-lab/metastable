@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use voda_database::init_databases;
-use voda_runtime::{RuntimeClient, SystemConfig, User, UserBadge, UserFollow, UserReferral, UserUrl, UserUsage};
-use voda_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
-use voda_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
+use metastable_database::init_databases;
+use metastable_runtime::{RuntimeClient, SystemConfig, User, UserBadge, UserFollow, UserReferral, UserUrl, UserUsage};
+use metastable_runtime_roleplay::{AuditLog, Character, RoleplayMessage, RoleplayRuntimeClient, RoleplaySession};
+use metastable_runtime_character_creation::{CharacterCreationMessage, CharacterCreationRuntimeClient};
 
-// use voda_sandbox::config::{ get_admin_user, get_normal_user };
+// use metastable_sandbox::config::{ get_admin_user, get_normal_user };
 
 init_databases!(
     default: [
@@ -15,7 +15,7 @@ init_databases!(
         CharacterCreationMessage
     ],
     pgvector: [
-        voda_runtime_mem0::EmbeddingMessage
+        metastable_runtime_mem0::EmbeddingMessage
     ]
 );
 

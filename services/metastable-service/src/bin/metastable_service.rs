@@ -5,35 +5,35 @@ use axum::Router;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
 use reqwest;
 
-use voda_service_api::{
+use metastable_service_api::{
     graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, GlobalState
 };
 
-use voda_runtime_mem0::Mem0Engine;
-use voda_database::init_databases;
-use voda_runtime_character_creation::CharacterCreationRuntimeClient;
-use voda_runtime_roleplay::RoleplayRuntimeClient;
-use voda_runtime::Memory;
+use metastable_runtime_mem0::Mem0Engine;
+use metastable_database::init_databases;
+use metastable_runtime_character_creation::CharacterCreationRuntimeClient;
+use metastable_runtime_roleplay::RoleplayRuntimeClient;
+use metastable_runtime::Memory;
 
 init_databases!(
     default: [
-        voda_runtime::User,
-        voda_runtime::UserUsage,
-        voda_runtime::UserUrl,
-        voda_runtime::UserReferral,
-        voda_runtime::UserBadge,
-        voda_runtime::UserFollow,
-        voda_runtime::SystemConfig,
+        metastable_runtime::User,
+        metastable_runtime::UserUsage,
+        metastable_runtime::UserUrl,
+        metastable_runtime::UserReferral,
+        metastable_runtime::UserBadge,
+        metastable_runtime::UserFollow,
+        metastable_runtime::SystemConfig,
 
-        voda_runtime_roleplay::Character,
-        voda_runtime_roleplay::RoleplaySession,
-        voda_runtime_roleplay::RoleplayMessage,
-        voda_runtime_roleplay::AuditLog,
+        metastable_runtime_roleplay::Character,
+        metastable_runtime_roleplay::RoleplaySession,
+        metastable_runtime_roleplay::RoleplayMessage,
+        metastable_runtime_roleplay::AuditLog,
 
-        voda_runtime_character_creation::CharacterCreationMessage
+        metastable_runtime_character_creation::CharacterCreationMessage
     ],
     pgvector: [
-        voda_runtime_mem0::EmbeddingMessage
+        metastable_runtime_mem0::EmbeddingMessage
     ]
 );
 

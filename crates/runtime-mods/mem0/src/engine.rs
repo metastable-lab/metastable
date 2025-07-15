@@ -7,8 +7,8 @@ use async_openai::{config::OpenAIConfig, Client};
 use neo4rs::{ConfigBuilder, Graph};
 use sqlx::PgPool;
 
-use voda_runtime::{toolcalls, LLMRunResponse, UserUsage};
-use voda_database::SqlxCrud;
+use metastable_runtime::{toolcalls, LLMRunResponse, UserUsage};
+use metastable_database::SqlxCrud;
 
 use crate::pgvector::BatchUpdateSummary;
 use crate::{Embedding, EntityTag, EmbeddingMessage};

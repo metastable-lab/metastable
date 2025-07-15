@@ -1,15 +1,14 @@
 [package]
-name = "voda-service-api"
+name = "metastable-service-api"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-common = { path = "../common" }
-voda-database = { path = "../database" }
-voda-runtime = { path = "../runtime" }
-voda-runtime-roleplay = { path = "../runtime-mods/roleplay" }
-voda-runtime-character-creation = { path = "../runtime-mods/character-creation" }
-# voda-runtime-evm = { path = "../runtime-mods/evm" }
+metastable-common = { path = "../common" }
+metastable-database = { path = "../database" }
+metastable-runtime = { path = "../runtime" }
+metastable-runtime-roleplay = { path = "../runtime-mods/roleplay" }
+metastable-runtime-character-creation = { path = "../runtime-mods/character-creation" }
 
 axum.workspace = true
 tokio.workspace = true

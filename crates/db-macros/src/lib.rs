@@ -522,7 +522,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
             let related_type = &fk_info.related_rust_type;
             let self_field_access = quote!{ self.#field_ident };
             
-            let id_column_name_of_related_type = quote!{ <#related_type as ::voda_database::SqlxSchema>::id_column_name() };
+            let id_column_name_of_related_type = quote!{ <#related_type as ::metastable_database::SqlxSchema>::id_column_name() };
 
             if field_is_option {
                 fetch_helper_methods.push(quote! {
@@ -532,12 +532,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     ) -> Result<Option<#related_type>, ::sqlx::Error>
                     where
                         E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
-                        #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
+                        #related_type: ::metastable_database::SqlxFilterQuery + ::metastable_database::SqlxSchema // Ensure related type implements these
                     {
                         if let Some(id_val_ref) = &#self_field_access {
-                            let criteria = ::voda_database::QueryCriteria::new()
+                            let criteria = ::metastable_database::QueryCriteria::new()
                                 .add_valued_filter(#id_column_name_of_related_type, "=", *id_val_ref);
-                            <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
+                            <#related_type as ::metastable_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                         } else {
                             Ok(None)
                         }
@@ -551,11 +551,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     ) -> Result<Option<#related_type>, ::sqlx::Error> // find_one_by_criteria always returns Option<Self>
                     where
                         E: ::sqlx::Executor<'exe, Database = ::sqlx::Postgres> + Send,
-                        #related_type: ::voda_database::SqlxFilterQuery + ::voda_database::SqlxSchema // Ensure related type implements these
+                        #related_type: ::metastable_database::SqlxFilterQuery + ::metastable_database::SqlxSchema // Ensure related type implements these
                     {
-                        let criteria = ::voda_database::QueryCriteria::new()
+                        let criteria = ::metastable_database::QueryCriteria::new()
                             .add_valued_filter(#id_column_name_of_related_type, "=", #self_field_access);
-                        <#related_type as ::voda_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
+                        <#related_type as ::metastable_database::SqlxFilterQuery>::find_one_by_criteria(criteria, executor).await
                     }
                 });
             }
@@ -582,12 +582,12 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                     let ids = &self.#field_ident;
                     let sql = format!("SELECT * FROM \"{}\" WHERE \"id\" = ANY($1)", #referenced_table_str);
                     
-                    let related_rows = sqlx::query_as::<_, <#related_type as ::voda_database::SqlxSchema>::Row>(&sql)
+                    let related_rows = sqlx::query_as::<_, <#related_type as ::metastable_database::SqlxSchema>::Row>(&sql)
                         .bind(ids)
                         .fetch_all(executor)
                         .await?;
                     
-                    Ok(related_rows.into_iter().map(<#related_type as ::voda_database::SqlxSchema>::from_row).collect())
+                    Ok(related_rows.into_iter().map(<#related_type as ::metastable_database::SqlxSchema>::from_row).collect())
                 }
             });
         }
@@ -673,7 +673,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         }
 
         #[automatically_derived]
-        impl ::voda_database::SqlxSchema for #struct_name {
+        impl ::metastable_database::SqlxSchema for #struct_name {
             type Id = #final_pk_id_trait_type;
             type Row = #row_struct_name;
 
@@ -698,18 +698,18 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
         #[automatically_derived]
         #[::async_trait::async_trait]
-        impl ::voda_database::SqlxCrud for #struct_name {
+        impl ::metastable_database::SqlxCrud for #struct_name {
             fn bind_insert<'q>(
                 &self, 
-                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
-            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
+                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::metastable_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
+            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::metastable_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
                 query #(#insert_bindings_streams)*
             }
 
             fn bind_update<'q>(
                 &self, 
-                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
-            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::voda_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
+                query: ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::metastable_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments>
+            ) -> ::sqlx::query::QueryAs<'q, ::sqlx::Postgres, <Self as ::metastable_database::SqlxSchema>::Row, ::sqlx::postgres::PgArguments> {
                 if #update_by_id_sql_query_is_select { 
                     query #pk_binding_for_update
                 } else {
@@ -722,11 +722,11 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
                 Self: Send
             {
-                let sql = <Self as ::voda_database::SqlxSchema>::insert_sql();
-                self.bind_insert(::sqlx::query_as::<_, <Self as ::voda_database::SqlxSchema>::Row>(&sql))
+                let sql = <Self as ::metastable_database::SqlxSchema>::insert_sql();
+                self.bind_insert(::sqlx::query_as::<_, <Self as ::metastable_database::SqlxSchema>::Row>(&sql))
                     .fetch_one(executor)
                     .await
-                    .map(<Self as ::voda_database::SqlxSchema>::from_row)
+                    .map(<Self as ::metastable_database::SqlxSchema>::from_row)
             }
 
             async fn update<'e, E>(self, executor: E) -> Result<Self, ::sqlx::Error>
@@ -735,10 +735,10 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 Self: Send
             {
                 let sql = #sql_for_update_instance_by_id;
-                self.bind_update(::sqlx::query_as::<_, <Self as ::voda_database::SqlxSchema>::Row>(&sql))
+                self.bind_update(::sqlx::query_as::<_, <Self as ::metastable_database::SqlxSchema>::Row>(&sql))
                     .fetch_one(executor)
                     .await
-                    .map(<Self as ::voda_database::SqlxSchema>::from_row)
+                    .map(<Self as ::metastable_database::SqlxSchema>::from_row)
             }
 
             async fn delete<'e, E>(self, executor: E) -> Result<u64, ::sqlx::Error>
@@ -762,9 +762,9 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
         
         #[automatically_derived]
         #[::async_trait::async_trait]
-        impl ::voda_database::SqlxFilterQuery for #struct_name {
+        impl ::metastable_database::SqlxFilterQuery for #struct_name {
             async fn find_by_criteria<'exe, E>(
-                criteria: ::voda_database::QueryCriteria,
+                criteria: ::metastable_database::QueryCriteria,
                 executor: E,
             ) -> Result<Vec<Self>, ::sqlx::Error>
             where
@@ -774,7 +774,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 let mut sql_query_parts: Vec<String> = Vec::new();
                 let mut arguments = ::sqlx::postgres::PgArguments::default();
                 let mut placeholder_idx = 1;
-                let mut select_columns = (<Self as ::voda_database::SqlxSchema>::COLUMNS).join(", ");
+                let mut select_columns = (<Self as ::metastable_database::SqlxSchema>::COLUMNS).join(", ");
                 let mut where_clauses: Vec<String> = Vec::new();
 
                 if let Some(ss) = &criteria.similarity_search {
@@ -795,7 +795,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 sql_query_parts.push(format!(
                     "SELECT {} FROM \"{}\"", 
                     select_columns, 
-                    <Self as ::voda_database::SqlxSchema>::TABLE_NAME
+                    <Self as ::metastable_database::SqlxSchema>::TABLE_NAME
                 ));
 
                 for condition in &criteria.conditions {
@@ -842,14 +842,14 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
 
                 let final_sql = sql_query_parts.join(" ");
                 
-                ::sqlx::query_as_with::<_, <Self as ::voda_database::SqlxSchema>::Row, _>(&final_sql, arguments)
+                ::sqlx::query_as_with::<_, <Self as ::metastable_database::SqlxSchema>::Row, _>(&final_sql, arguments)
                     .fetch_all(executor)
                     .await
-                    .map(|rows| rows.into_iter().map(<Self as ::voda_database::SqlxSchema>::from_row).collect())
+                    .map(|rows| rows.into_iter().map(<Self as ::metastable_database::SqlxSchema>::from_row).collect())
             }
 
             async fn delete_by_criteria<'exe, E>(
-                criteria: ::voda_database::QueryCriteria,
+                criteria: ::metastable_database::QueryCriteria,
                 executor: E,
             ) -> Result<u64, ::sqlx::Error>
             where
@@ -860,7 +860,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
                 let mut arguments = ::sqlx::postgres::PgArguments::default();
                 let mut placeholder_idx = 1;
                 
-                sql_query_parts.push(format!("DELETE FROM \"{}\"", <Self as ::voda_database::SqlxSchema>::TABLE_NAME));
+                sql_query_parts.push(format!("DELETE FROM \"{}\"", <Self as ::metastable_database::SqlxSchema>::TABLE_NAME));
 
                 if !criteria.conditions.is_empty() {
                     sql_query_parts.push("WHERE".to_string());

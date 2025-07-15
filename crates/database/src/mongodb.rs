@@ -9,7 +9,7 @@ use futures::StreamExt;
 use serde::{de::DeserializeOwned, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
-use voda_common::CryptoHash;
+use metastable_common::CryptoHash;
 
 pub async fn get_db(uri: &str, db_name: &str) -> Database {
     let client = Client::with_uri_str(uri).await.unwrap();

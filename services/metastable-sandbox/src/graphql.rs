@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::types::Uuid;
 use tracing::{debug, error};
-use voda_runtime::User;
-pub use voda_runtime::SystemConfig;
-pub use voda_runtime_roleplay::Character;
+use metastable_runtime::User;
+pub use metastable_runtime::SystemConfig;
+pub use metastable_runtime_roleplay::Character;
 
 pub mod flexible_date_deserializer {
     use chrono::{DateTime, TimeZone, Utc};

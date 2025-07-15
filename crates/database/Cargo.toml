@@ -1,11 +1,11 @@
 [package]
-name = "voda-database"
+name = "metastable-database"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-voda-common = { path = "../common" }
-voda-db-macros = { path = "../db-macros"}
+metastable-common = { path = "../common" }
+metastable-db-macros = { path = "../db-macros"}
 
 tokio.workspace = true
 futures.workspace = true
