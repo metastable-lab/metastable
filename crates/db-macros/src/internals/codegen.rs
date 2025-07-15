@@ -562,15 +562,74 @@ fn generate_bind_streams(fields_data: &[FieldData]) -> (Vec<TokenStream>, Vec<To
     (insert_bindings_streams, update_bindings_streams)
 }
 
+fn get_sql_default_value(field: &FieldData) -> String {
+    let sql_type_upper = field.sql_type.to_uppercase();
+
+    if sql_type_upper.ends_with("[]") {
+        "DEFAULT '{}'".to_string()
+    } else if sql_type_upper.starts_with("TEXT") || sql_type_upper.starts_with("VARCHAR") {
+        "DEFAULT ''".to_string()
+    } else if sql_type_upper.starts_with("INT") || sql_type_upper.starts_with("BIGINT") || sql_type_upper.starts_with("REAL") || sql_type_upper.starts_with("DOUBLE") {
+        "DEFAULT 0".to_string()
+    } else if sql_type_upper.starts_with("BOOL") {
+        "DEFAULT false".to_string()
+    } else if sql_type_upper.starts_with("JSON") {
+        "DEFAULT '{}'".to_string()
+    } else if sql_type_upper.starts_with("UUID") {
+        "DEFAULT '00000000-0000-0000-0000-000000000000'".to_string()
+    } else if sql_type_upper.starts_with("VECTOR") {
+        let dim = field.vector_dimension.unwrap_or(0);
+        let zeros = vec!["0"; dim].join(",");
+        format!("DEFAULT '[{}]'", zeros)
+    } else if sql_type_upper.contains("TIMESTAMP") {
+        "DEFAULT to_timestamp(0)".to_string()
+    } else {
+        "".to_string()
+    }
+}
+
 pub fn generate_migrate_fn(
     struct_name: &syn::Ident,
     table_name: &str,
     fields_data: &[FieldData],
     allow_column_dropping: bool,
 ) -> TokenStream {
-    let struct_column_definitions: Vec<_> = fields_data
+    let active_fields: Vec<_> = fields_data.iter().filter(|f| !f.is_skipped).collect();
+
+    let add_column_logics = active_fields
         .iter()
-        .filter(|f| !f.is_skipped)
+        .map(|field| {
+            let col_name = &field.name;
+            let sql_type = &field.sql_type;
+            let is_nullable = field.is_option;
+
+            let mut add_sql_parts = vec![
+                format!("ALTER TABLE \"{}\"", table_name),
+                "ADD COLUMN".to_string(),
+                format!("\"{}\"", col_name),
+                sql_type.clone(),
+            ];
+
+            if !is_nullable {
+                add_sql_parts.push("NOT NULL".to_string());
+                let default_clause = get_sql_default_value(field);
+                if !default_clause.is_empty() {
+                    add_sql_parts.push(default_clause);
+                }
+            }
+
+            let add_sql = add_sql_parts.join(" ");
+
+            quote! {
+                if !db_columns.contains_key(#col_name) {
+                    println!("[MIGRATE][ACTION] Table '{}': Adding column '{}'.", #table_name, #col_name);
+                    alter_statements.push(#add_sql.to_string());
+                }
+            }
+        });
+
+    let struct_column_definitions: Vec<_> = active_fields
+        .iter()
         .map(|f| {
             let column_name = &f.name;
             let sql_type = &f.sql_type;
@@ -580,6 +639,9 @@ pub fn generate_migrate_fn(
             }
         })
         .collect();
+    
+    let has_updated_at = active_fields.iter().any(|f| f.name == "updated_at");
+    let trigger_name = format!("set_updated_at_{}", table_name);
 
     quote! {
         #[async_trait::async_trait]
@@ -682,17 +744,7 @@ pub fn generate_migrate_fn(
 
                 let mut alter_statements = Vec::new();
 
-                for (col_name, (sql_type, is_nullable)) in &struct_columns {
-                    if !db_columns.contains_key(col_name) {
-                        let null_def = if *is_nullable { "NULL" } else { "NOT NULL" };
-                        let add_sql = format!(
-                            "ALTER TABLE \"{}\" ADD COLUMN \"{}\" {} {}",
-                            #table_name, col_name, sql_type, null_def
-                        );
-                        println!("[MIGRATE][ACTION] Table '{}': Adding column '{}'.", #table_name, col_name);
-                        alter_statements.push(add_sql);
-                    }
-                }
+                #(#add_column_logics)*
                 
                 for (col_name, _) in &db_columns {
                     if !struct_columns.contains_key(col_name) {
@@ -722,9 +774,21 @@ pub fn generate_migrate_fn(
 
                 if !alter_statements.is_empty() {
                     let mut tx = pool.begin().await?;
+
+                    if #has_updated_at {
+                        let disable_trigger_sql = format!("ALTER TABLE \"{}\" DISABLE TRIGGER \"{}\"", #table_name, #trigger_name);
+                        sqlx::query(&disable_trigger_sql).execute(&mut *tx).await.ok();
+                    }
+
                     for stmt in alter_statements {
                         sqlx::query(&stmt).execute(&mut *tx).await?;
                     }
+
+                    if #has_updated_at {
+                        let enable_trigger_sql = format!("ALTER TABLE \"{}\" ENABLE TRIGGER \"{}\"", #table_name, #trigger_name);
+                        sqlx::query(&enable_trigger_sql).execute(&mut *tx).await.ok();
+                    }
+
                     tx.commit().await?;
                     println!("[MIGRATE][SUCCESS] Table '{}' migrated successfully.", #table_name);
                 } else {
