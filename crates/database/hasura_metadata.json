@@ -1,5 +1,5 @@
 {
-  "resource_version": 21,
+  "resource_version": 24,
   "metadata": {
     "version": 3,
     "sources": [
@@ -1082,6 +1082,27 @@
           "connection_info": {
             "database_url": {
               "from_env": "HASURA_GRAPHQL_DB_URL"
+            },
+            "isolation_level": "read-committed",
+            "use_prepared_statements": false
+          }
+        }
+      },
+      {
+        "name": "pgvector",
+        "kind": "postgres",
+        "tables": [
+          {
+            "table": {
+              "name": "embeddings",
+              "schema": "public"
+            }
+          }
+        ],
+        "configuration": {
+          "connection_info": {
+            "database_url": {
+              "from_env": "HASURA_GRAPHQL_PGVECTOR_URL"
             },
             "isolation_level": "read-committed",
             "use_prepared_statements": false

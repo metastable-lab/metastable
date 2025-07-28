@@ -5,6 +5,7 @@ use metastable_database::init_databases;
 use metastable_runtime::RuntimeClient;
 use metastable_runtime_roleplay::RoleplayRuntimeClient;
 use metastable_runtime_character_creation::CharacterCreationRuntimeClient;
+// use metastable_sandbox::config::get_admin_users;
 
 // use metastable_sandbox::config::{ get_admin_user, get_normal_user };
 
@@ -38,12 +39,19 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     
     let run_migrations = true;
-    let db = Arc::new(connect(false, false, run_migrations).await.clone());
-    let _pgvector_db = Arc::new(connect_pgvector(true, false, run_migrations).await.clone());
+    let db = Arc::new(connect(true, true, run_migrations).await.clone());
+    let _pgvector_db = Arc::new(connect_pgvector(true, true, run_migrations).await.clone());
+
     // let mut tx = db.begin().await?;
-    // // start dumping shit into the db
-    // let admin = get_admin_user();
-    // admin.create(&mut *tx).await?;
+    // // // start dumping shit into the db
+    // // let admin = get_admin_user();
+    // // admin.create(&mut *tx).await?;
+
+    // let users = get_admin_users();
+    // for user in users {
+    //     user.create(&mut *tx).await?;
+    // }
+    // tx.commit().await?;
 
     // let normal_user = get_normal_user();
     // normal_user.create(&mut *tx).await?;

@@ -70,6 +70,10 @@ async fn proxy_to_hasura(
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );
 
+    tracing::info!("hasura_url: {:?}", hasura_url);
+    tracing::info!("headers: {:?}", headers);
+    tracing::info!("body_bytes: {:?}", body_bytes);
+
     let hasura_response = state.http_client
         .request(parts.method, &hasura_url)
         .headers(headers)
@@ -78,10 +82,12 @@ async fn proxy_to_hasura(
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?;
 
+    tracing::info!("hasura_response: {:?}", hasura_response);
     let mut response_builder = Response::builder().status(hasura_response.status());
 
     if let Some(res_headers) = response_builder.headers_mut() {
         for (key, value) in hasura_response.headers() {
+            tracing::info!("key: {:?}, value: {:?}", key, value);
             if key != header::CONNECTION
                 && key != header::TRANSFER_ENCODING
                 && key != header::CONTENT_LENGTH
@@ -101,7 +107,8 @@ async fn proxy_to_hasura(
         .bytes()
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?;
-    
+    tracing::info!("response_body: {:?}", response_body);
+        
     response_builder
         .body(Body::from(response_body))
         .map_err(|e: axum::http::Error| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))
