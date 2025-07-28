@@ -26,8 +26,10 @@ async fn proxy_to_hasura(
     let env = ApiServerEnv::load();
     let hasura_url = env.get_env_var("HASURA_GRAPHQL_URL");
 
+    tracing::info!("user_id_str: {:?}", user_id_str);
     let maybe_user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
 
+    tracing::info!("maybe_user: {:?}", maybe_user);
     let (parts, body) = req.into_parts();
     let body_bytes = to_bytes(body, usize::MAX)
         .await
@@ -36,6 +38,7 @@ async fn proxy_to_hasura(
     let mut headers = parts.headers.clone();
     headers.remove(header::AUTHORIZATION);
     headers.remove(header::HOST);
+    tracing::info!("headers {:?}", headers);
 
     let (user_id, user_role) = match maybe_user {
         None => {

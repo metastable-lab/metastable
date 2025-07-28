@@ -18,6 +18,7 @@ pub async fn authenticate(
     let env = ApiServerEnv::load();
     let maybe_bearer_token = extract_bearer_token(&req);
 
+    tracing::info!("maybe_bearer_token: {:?}", maybe_bearer_token);
     let user_id = maybe_bearer_token.and_then(|token| {
         match User::verify_auth_token(&token, &env.get_env_var("SECRET_SALT")) {
             Ok(uid) => {
@@ -28,6 +29,8 @@ pub async fn authenticate(
             }
         }
     }).unwrap_or_default();
+
+    tracing::info!("user_id: {:?}", user_id);
 
     req.extensions_mut().insert(user_id.clone());
 
@@ -40,15 +43,18 @@ pub async fn ensure_account<S: RuntimeClient>(
 ) -> Result<Option<User>, AppError> {
 
     if user_id_str.is_empty() {
+        tracing::info!("Empty User");
         return Ok(None);
     }
 
     let mut tx = state.get_db().begin().await?;
+    tracing::info!("tx: {:?}", tx);
     match User::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone()),
         &mut *tx
     ).await? {
         Some(mut user) => {
+            tracing::info!("user: {:?}", user);
             if price > 0 {
                 let _ = user.try_claim_free_balance(100);
                 let paid = user.pay(price);
@@ -61,6 +67,7 @@ pub async fn ensure_account<S: RuntimeClient>(
             Ok(Some(user))
         }
         None => {
+            tracing::info!("None User");
             tx.rollback().await?;
             Ok(None)
         },
