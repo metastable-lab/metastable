@@ -167,7 +167,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] New message start");
         let time = Instant::now();
         let (messages, system_config) = self.memory
-            .search(&message, 100).await?;
+            .search(&message, 10).await?;
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory search took {:?}", time.elapsed());
 
         let time = Instant::now();

@@ -38,9 +38,9 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     
-    let run_migrations = true;
-    let db = Arc::new(connect(true, true, run_migrations).await.clone());
-    let _pgvector_db = Arc::new(connect_pgvector(true, true, run_migrations).await.clone());
+    let run_migrations = false;
+    let db = Arc::new(connect(false, false, run_migrations).await.clone());
+    let _pgvector_db = Arc::new(connect_pgvector(false, false, run_migrations).await.clone());
 
     // let mut tx = db.begin().await?;
     // // // start dumping shit into the db

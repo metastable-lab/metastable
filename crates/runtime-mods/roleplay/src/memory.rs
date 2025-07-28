@@ -90,7 +90,7 @@ impl Memory for RoleplayRawMemory {
         Ok(())
     }
 
-    async fn search(&self, message: &RoleplayMessage, _limit: u64) -> Result<
+    async fn search(&self, message: &RoleplayMessage, limit: u64) -> Result<
         (Vec<RoleplayMessage>, SystemConfig)
     > {
         let mut tx = self.db.begin().await?;
@@ -125,7 +125,7 @@ impl Memory for RoleplayRawMemory {
             updated_at: message.updated_at,
         };
 
-        let (mem0_messages, _) = self.mem0.search(&mem0_query, 100).await?;
+        let (mem0_messages, _) = self.mem0.search(&mem0_query, limit).await?;
         // NOTE: mem0 search ALWAYS returns 2 messages
         // the first is the memory
         // the second is the relationship
@@ -133,10 +133,10 @@ impl Memory for RoleplayRawMemory {
             &message.session_id, &mem0_messages[0], &mem0_messages[1]
         ));
 
-        if history.len() <= 10 {
+        if history.len() <= 6 {
             messages.extend(history.iter().cloned());
         } else {
-            messages.extend(history[history.len() - 10..].iter().cloned());
+            messages.extend(history[history.len() - 6..].iter().cloned());
         }
         messages.push(message.clone());
 
