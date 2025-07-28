@@ -52,7 +52,7 @@ pub async fn ensure_account<S: RuntimeClient>(
     tracing::info!("db: {:?}", db);
     let mut tx = db.begin().await?;
     tracing::info!("tx: {:?}", tx);
-    let maybe_user = match User::find_one_by_criteria(
+    match User::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone()),
         &mut *tx
     ).await? {
@@ -62,19 +62,17 @@ pub async fn ensure_account<S: RuntimeClient>(
                 let _ = user.try_claim_free_balance(100);
                 let paid = user.pay(price);
                 if !paid {
+                    tx.commit().await?;
                     return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Insufficient balance")));
                 }
                 user.clone().update(&mut *tx).await?;
             }
+            tx.commit().await?;
             Ok(Some(user))
         }
         None => {
-            tracing::info!("None User");
+            tx.commit().await?;
             Ok(None)
         },
-    };
-
-    tx.commit().await?;
-
-    maybe_user
+    }
 }

@@ -9,7 +9,6 @@ use metastable_service_api::{
     graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, GlobalState
 };
 
-use metastable_runtime_mem0::Mem0Engine;
 use metastable_database::init_databases;
 use metastable_runtime_character_creation::CharacterCreationRuntimeClient;
 use metastable_runtime_roleplay::RoleplayRuntimeClient;
@@ -49,6 +48,7 @@ async fn main() -> Result<()> {
 
     let (roleplay_client, mut mem0_messages_rx) = RoleplayRuntimeClient::new(db_pool.clone(), pgvector_db.clone()).await?;
     let character_creation_client = CharacterCreationRuntimeClient::new(db_pool.clone(), "character_creation_v0".to_string()).await?;
+    let mem0_engine = roleplay_client.get_mem0_engine_clone();
 
     let global_state = GlobalState {
         roleplay_client: roleplay_client,
@@ -57,10 +57,8 @@ async fn main() -> Result<()> {
     };
 
     tokio::spawn(async move {
-        let mem0 = Mem0Engine::new(db_pool.clone(), pgvector_db.clone()).await
-            .expect("[Mem0Engine::new] Failed to create mem0 engine");
         while let Some(mem0_messages) = mem0_messages_rx.recv().await {
-            let adding_result = mem0.add_messages(&mem0_messages).await;
+            let adding_result = mem0_engine.add_messages(&mem0_messages).await;
             if let Err(e) = adding_result {
                 tracing::warn!("[Mem0Engine::add_messages] Failed to add messages: {:?}", e);
             }

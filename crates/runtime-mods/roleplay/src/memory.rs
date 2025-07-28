@@ -31,6 +31,10 @@ impl RoleplayRawMemory {
         mem0.initialize().await?;
         Ok(Self { db, mem0: Arc::new(mem0), mem0_messages_tx })
     }
+
+    pub fn get_mem0_engine_clone(&self) -> Arc<Mem0Engine> {
+        self.mem0.clone()
+    }
 }
 
 #[async_trait::async_trait]

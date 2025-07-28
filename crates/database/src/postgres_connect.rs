@@ -36,6 +36,10 @@ macro_rules! init_databases {
         pgvector: [$($pgvector_type:ty),* $(,)?]
     ) => {
         use $crate::{SqlxSchema, SchemaMigrator};
+        use sqlx::postgres::PgPoolOptions;
+
+        const MIN_POOL_CONN: u32 = 50;
+        const MAX_POOL_CONN: u32 = 500;
 
         // --- Default Pool Setup ---
         static POOL: tokio::sync::OnceCell<sqlx::PgPool> = tokio::sync::OnceCell::const_new();
@@ -45,7 +49,10 @@ macro_rules! init_databases {
                 let database_url = std::env::var("DATABASE_URL")
                     .expect("DATABASE_URL environment variable not set");
                 
-                let pool = sqlx::PgPool::connect(&database_url).await
+                let pool = PgPoolOptions::new()
+                    .max_connections(MAX_POOL_CONN)
+                    .min_connections(MIN_POOL_CONN)
+                    .connect(&database_url).await
                     .expect("Failed to connect to default database");
 
                 if drop_tables {
@@ -117,7 +124,10 @@ macro_rules! init_databases {
                 let database_url = std::env::var("PGVECTOR_URI")
                     .expect("PGVECTOR_URI environment variable not set");
                 
-                let pool = sqlx::PgPool::connect(&database_url).await
+                let pool = PgPoolOptions::new()
+                    .max_connections(MAX_POOL_CONN)
+                    .min_connections(MIN_POOL_CONN)
+                    .connect(&database_url).await
                     .expect("Failed to connect to pgvector database");
 
                 sqlx::query("CREATE EXTENSION IF NOT EXISTS vector").execute(&pool).await

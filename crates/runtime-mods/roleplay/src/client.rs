@@ -10,7 +10,7 @@ use tokio::time::Instant;
 use metastable_common::{get_current_timestamp, EnvVars};
 use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, User, UserRole, UserUsage};
 use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
-use metastable_runtime_mem0::Mem0Messages;
+use metastable_runtime_mem0::{Mem0Engine, Mem0Messages};
 
 use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
 use crate::preload::ShowStoryOptionsToolCall;
@@ -48,6 +48,10 @@ impl RoleplayRuntimeClient {
         let (mem0_messages_tx, mem0_messages_rx) = mpsc::channel(100);
         let memory = RoleplayRawMemory::new(db.clone(), pgvector_db.clone(), mem0_messages_tx).await?;
         Ok((Self { client, db, memory: Arc::new(memory) }, mem0_messages_rx))
+    }
+
+    pub fn get_mem0_engine_clone(&self) -> Arc<Mem0Engine> {
+        self.memory.get_mem0_engine_clone()
     }
 }
 
