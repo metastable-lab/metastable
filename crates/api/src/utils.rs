@@ -42,7 +42,8 @@ pub fn extract_bearer_token(req: &Request) -> Result<String, AppError> {
 
 pub fn setup_tracing() {
     let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("debug,sqlx=warn,hyper_util=warn"));
+        // .unwrap_or_else(|_| EnvFilter::new("debug,sqlx=warn,hyper_util=warn"));
+        .unwrap_or_else(|_| EnvFilter::new("debug,hyper_util=warn"));
 
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(filter)

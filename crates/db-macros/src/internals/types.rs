@@ -100,7 +100,7 @@ pub fn get_fully_qualified_type_string(ty: &Type) -> String {
 pub fn is_simple_type(ty: &Type) -> bool {
     let type_str = get_fully_qualified_type_string(ty);
     matches!(type_str.as_str(),
-        "String" | "i32" | "u32" | "i64" | "u64" | "isize" | "usize" |
+        "i32" | "u32" | "i64" | "u64" | "isize" | "usize" |
         "f32" | "f64" | "bool" | "Vec<u8>" |
         "Uuid" | "::sqlx::types::Uuid" | "sqlx::types::Uuid" |
         "DateTime<Utc>" | "::chrono::DateTime<::chrono::Utc>" | "chrono::DateTime<chrono::Utc>" |

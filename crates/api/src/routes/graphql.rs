@@ -25,11 +25,7 @@ async fn proxy_to_hasura(
 ) -> Result<Response, AppError> {
     let env = ApiServerEnv::load();
     let hasura_url = env.get_env_var("HASURA_GRAPHQL_URL");
-
-    tracing::info!("user_id_str: {:?}", user_id_str);
     let maybe_user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-
-    tracing::info!("maybe_user: {:?}", maybe_user);
     let (parts, body) = req.into_parts();
     let body_bytes = to_bytes(body, usize::MAX)
         .await
@@ -38,8 +34,6 @@ async fn proxy_to_hasura(
     let mut headers = parts.headers.clone();
     headers.remove(header::AUTHORIZATION);
     headers.remove(header::HOST);
-    tracing::info!("headers {:?}", headers);
-
     let (user_id, user_role) = match maybe_user {
         None => {
             (Uuid::nil(), "anyone")
@@ -73,10 +67,6 @@ async fn proxy_to_hasura(
             .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?,
     );
 
-    tracing::info!("hasura_url: {:?}", hasura_url);
-    tracing::info!("headers: {:?}", headers);
-    tracing::info!("body_bytes: {:?}", body_bytes);
-
     let hasura_response = state.http_client
         .request(parts.method, &hasura_url)
         .headers(headers)
@@ -85,12 +75,10 @@ async fn proxy_to_hasura(
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?;
 
-    tracing::info!("hasura_response: {:?}", hasura_response);
     let mut response_builder = Response::builder().status(hasura_response.status());
 
     if let Some(res_headers) = response_builder.headers_mut() {
         for (key, value) in hasura_response.headers() {
-            tracing::info!("key: {:?}, value: {:?}", key, value);
             if key != header::CONNECTION
                 && key != header::TRANSFER_ENCODING
                 && key != header::CONTENT_LENGTH
@@ -110,7 +98,6 @@ async fn proxy_to_hasura(
         .bytes()
         .await
         .map_err(|e| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!(e)))?;
-    tracing::info!("response_body: {:?}", response_body);
         
     response_builder
         .body(Body::from(response_body))
