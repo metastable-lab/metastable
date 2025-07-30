@@ -25,7 +25,7 @@ async fn proxy_to_hasura(
 ) -> Result<Response, AppError> {
     let env = ApiServerEnv::load();
     let hasura_url = env.get_env_var("HASURA_GRAPHQL_URL");
-    let maybe_user = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
+    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
     let (parts, body) = req.into_parts();
     let body_bytes = to_bytes(body, usize::MAX)
         .await

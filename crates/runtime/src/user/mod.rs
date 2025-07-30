@@ -13,7 +13,7 @@ use serde_json::json;
 use metastable_common::{encrypt, decrypt, get_current_timestamp};
 use metastable_database::SqlxObject;
 
-pub use usage::UserUsage;
+pub use usage::{UserUsage, UserUsagePoints};
 pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
@@ -41,6 +41,9 @@ pub struct User {
 
     pub generated_referral_count: i64,
 
+    // access to the llm system
+    pub llm_access_level: i64,
+
     // points related
     pub running_claimed_balance: i64,
     pub running_purchased_balance: i64,
@@ -59,7 +62,7 @@ pub struct User {
     pub avatar: Option<String>,
     pub bio: Option<String>,
     
-    pub extra: Option<Json<Value>>,
+    pub extra: Option<Json<Value>>, // array of user profiles to be injected into prompts
 
     pub created_at: i64,
     pub updated_at: i64,
@@ -135,10 +138,14 @@ impl User {
     }
 
     /* BALANCE SUBTRACTION */
-    pub fn pay(&mut self, amount: i64) -> bool {
+    pub fn pay(&mut self, amount: i64) -> Result<UserUsagePoints> {
         let mut remaining = amount;
         let self_clone = self.clone();
         let current_timestamp = get_current_timestamp();
+
+        let mut paid_claimed_balance = 0;
+        let mut paid_misc_balance = 0;
+        let mut paid_purchased_balance = 0;
 
         // Try free_claimed_balance first
         if self.running_claimed_balance > 0 {
@@ -146,6 +153,7 @@ impl User {
             self.running_claimed_balance -= deduct;
             self.last_balance_deduction_at = current_timestamp;
             remaining -= deduct;
+            paid_claimed_balance += deduct;
         }
 
         // Try misc_balance next
@@ -153,6 +161,7 @@ impl User {
             let deduct = remaining.min(self.running_misc_balance);
             self.running_misc_balance -= deduct;
             remaining -= deduct;
+            paid_misc_balance += deduct;
         }
 
         // Finally try paid_avaliable_balance
@@ -161,16 +170,21 @@ impl User {
                 self.running_purchased_balance -= remaining;
                 self.last_balance_deduction_at = current_timestamp;
                 remaining = 0;
+                paid_purchased_balance += remaining;
             }
         }
 
         // If we couldn't pay the full amount, revert all changes
         if remaining > 0 {
             *self = self_clone;
-            false
+            Err(anyhow!("[User::pay] failed to pay balance"))
         } else {
             self.balance_usage += amount;
-            true
+            Ok(UserUsagePoints {
+                points_consumed_claimed: paid_claimed_balance,
+                points_consumed_misc: paid_misc_balance,
+                points_consumed_purchased: paid_purchased_balance,
+            })
         }
     }
 

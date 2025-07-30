@@ -32,8 +32,8 @@ async fn tts(
     Path(character_id): Path<Uuid>,
     Json(value): Json<Value>,
 ) -> Result<impl IntoResponse, AppError> {
-    ensure_account(&state.roleplay_client, &user_id_str, 5).await?
-        .ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
+    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 5).await?;
+    let _ = maybe_user.ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
 
     let message = value["message"].as_str().ok_or(anyhow!("[/tts] message is required"))?.to_string();
     let character = Character::find_one_by_criteria(

@@ -6,7 +6,7 @@ use async_openai::{config::OpenAIConfig, Client};
 use sqlx::types::{Json, Uuid};
 use sqlx::PgPool;
 use metastable_common::{get_current_timestamp, EnvVars};
-use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, UserUsage};
+use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig};
 use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use metastable_runtime_roleplay::Character;
 
@@ -140,8 +140,6 @@ impl RuntimeClient for CharacterCreationRuntimeClient {
             updated_at: get_current_timestamp(),
         };
         character_creation_message.create(&mut *tx).await?;
-        let user_usage = UserUsage::from_llm_response(&response);
-        user_usage.create(&mut *tx).await?;
         tx.commit().await?;
 
         response.misc_value = Some(serde_json::json!({ "character_id": character.id }));

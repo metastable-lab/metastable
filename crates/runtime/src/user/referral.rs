@@ -1,13 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
 use metastable_common::{blake3_hash, get_current_timestamp};
 use metastable_database::SqlxObject;
 
-use crate::{user::User, UserRole};
-
-pub const REFERRAL_CODE_PRICE: i64 = 10;
+use crate::user::User;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "user_referrals"]
@@ -30,14 +28,6 @@ pub struct UserReferral {
 
 impl User {
     pub fn buy_referral_code(&mut self, count: i64) -> Result<Vec<UserReferral>> {
-        if self.role != UserRole::Admin {
-            if self.get_available_balance() < REFERRAL_CODE_PRICE * count {
-                return Err(anyhow!("[User::buy_referral_code] Insufficient balance"));
-            }
-    
-            self.pay(REFERRAL_CODE_PRICE * count);
-        }
-
         self.generated_referral_count += count;
         let mut referrals = Vec::new();
         for _ in 0..count {
