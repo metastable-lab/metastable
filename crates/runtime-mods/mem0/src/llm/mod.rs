@@ -33,7 +33,7 @@ pub trait LlmTool: ExecutableFunctionCall {
     fn tool_input(&self) -> Option<Self::ToolInput>;
     fn set_tool_input(&mut self, tool_input: Self::ToolInput);
     
-    fn model() -> &'static str { "x-ai/grok-3-mini" }
+    fn model() -> &'static str { "google/gemini-2.5-flash-lite" }
     fn temperature() -> f32 { 0.7 }
     fn max_tokens() -> i32 { 10000 }
 
