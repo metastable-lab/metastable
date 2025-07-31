@@ -4,6 +4,7 @@ use anyhow::Result;
 use async_openai::types::CreateEmbeddingRequestArgs;
 use async_openai::{config::OpenAIConfig, Client};
 
+use metastable_runtime::user::UserUsagePoints;
 use neo4rs::{ConfigBuilder, Graph};
 use sqlx::PgPool;
 
@@ -107,7 +108,7 @@ impl Mem0Engine {
 
     pub async fn add_usage_report(&self, response: &LLMRunResponse) -> Result<()> {
         let mut tx = self.data_db.begin().await?;
-        let usage = UserUsage::from_llm_response(response);
+        let usage = UserUsage::from_llm_response(response, UserUsagePoints::default());
         usage.create(&mut *tx).await?;
         tx.commit().await?;
         Ok(())

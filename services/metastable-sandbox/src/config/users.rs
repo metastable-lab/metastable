@@ -23,7 +23,7 @@ pub fn get_admin_user() -> User {
         avatar: None,
         bio: None,
         extra: None,
-    
+        llm_access_level: 0,
         created_at: get_current_timestamp(),
         updated_at: get_current_timestamp(),
     }
@@ -50,6 +50,7 @@ pub fn get_normal_user() -> User {
         avatar: None,
         bio: None,
         extra: None,
+        llm_access_level: 0,
         created_at: get_current_timestamp(),
         updated_at: get_current_timestamp(),
     }

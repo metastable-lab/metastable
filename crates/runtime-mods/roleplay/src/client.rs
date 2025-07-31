@@ -8,7 +8,7 @@ use sqlx::types::Uuid;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use metastable_common::{get_current_timestamp, EnvVars};
-use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, User, UserRole, UserUsage};
+use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memory, MessageRole, MessageType, RuntimeClient, RuntimeEnv, SystemConfig, User, UserRole};
 use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use metastable_runtime_mem0::{Mem0Engine, Mem0Messages};
 
@@ -184,7 +184,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
             }
         }
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Options: {:?}", final_options);
-        let user_usage = UserUsage::from_llm_response(&response);
         let assistant_message = RoleplayMessage {
             id: Uuid::default(),
             owner: message.owner.clone(),
@@ -204,9 +203,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
             assistant_message.clone(),
         ]).await?;
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory add took {:?}", time.elapsed());
-
-        user_usage.create(&*self.db).await?;
-
         Ok(response)
     }
 
@@ -219,10 +215,6 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let response = self.send_llm_request(&system_config, &messages).await?;
         last_assistant_message.content = response.content.clone();
         self.memory.update(&[last_assistant_message]).await?;
-
-        let user_usage = UserUsage::from_llm_response(&response);
-        user_usage.create(&*self.db).await?;
-
         Ok(response)
     }  
 }
