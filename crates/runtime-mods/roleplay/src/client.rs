@@ -12,13 +12,15 @@ use metastable_runtime::{toolcalls, ExecutableFunctionCall, LLMRunResponse, Memo
 use metastable_database::{SqlxCrud, QueryCriteria, SqlxFilterQuery};
 use metastable_runtime_mem0::{Mem0Engine, Mem0Messages};
 
-use crate::{RoleplayMessage, RoleplayRawMemory, preload, Character};
+use crate::{RoleplayMessage, RoleplayRawMemory, preload, preload_v1, Character};
 use crate::preload::ShowStoryOptionsToolCall;
+use crate::preload_v1::tools::{ComposedMessage, SendMessageToolCall};
 
 toolcalls!(
     ctx: (),
     tools: [
         (ShowStoryOptionsToolCall, "show_story_options", Vec<String>),
+        (SendMessageToolCall, "send_message", ComposedMessage),
     ]
 );
 
@@ -73,6 +75,8 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let preload_configs = vec![
             preload::get_system_configs_for_char_creation(),
             preload::get_system_configs_for_roleplay(),
+            preload_v1::get_system_configs_for_char_creation(),
+            preload_v1::get_system_configs_for_roleplay(),
         ];
         
         for preload_config in preload_configs {
@@ -126,6 +130,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         // 3. upsert characters
         let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
+
         for preload_char in preload_chars {
             let existing_char = Character::find_one_by_criteria(
                 QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone())),
@@ -174,12 +179,21 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let response = self.send_llm_request(&system_config, &messages).await?;
 
         let mut final_options = vec![];
+        let mut final_content_v1 = vec![];
         if let Some(function_call) = response.maybe_function_call.first() {
             let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
             if let Ok(toolcall) = maybe_toolcall {
                 let toolcall_result = toolcall.execute(&response, &()).await;
-                if let Ok(RuntimeToolcallReturn::ShowStoryOptionsToolCall(options)) = toolcall_result {
-                    final_options = options.clone();
+                if let Ok(toolcall_result) = toolcall_result {
+                    match toolcall_result {
+                        RuntimeToolcallReturn::ShowStoryOptionsToolCall(options) => {
+                            final_options = options.clone();
+                        }
+                        RuntimeToolcallReturn::SendMessageToolCall(composed_message) => {
+                            final_options = composed_message.options.clone();
+                            final_content_v1 = composed_message.content_v1.clone();
+                        }
+                    }
                 }
             }
         }
@@ -190,9 +204,10 @@ impl RuntimeClient for RoleplayRuntimeClient {
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
             content: response.content.clone(),
+            content_v1: final_content_v1,
             session_id: message.session_id.clone(),
             options: final_options,
-
+            is_saved_in_memory: false,
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         };
@@ -202,7 +217,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
             message.clone(),
             assistant_message.clone(),
         ]).await?;
-        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Memory add took {:?}", time.elapsed());
+        tracing::debug!("[Role_playRuntimeClient::on_new_message] Memory add took {:?}", time.elapsed());
         Ok(response)
     }
 

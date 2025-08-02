@@ -28,6 +28,9 @@ pub struct RoleplaySession {
     #[foreign_key_many(referenced_table = "roleplay_messages", related_rust_type = "RoleplayMessage")]
     pub history: Vec<Uuid>,
 
+    pub use_character_memory: bool,
+    pub hidden: bool,
+
     pub updated_at: i64,
     pub created_at: i64,
 }

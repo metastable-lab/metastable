@@ -6,7 +6,7 @@ use metastable_database::SqlxObject;
 use metastable_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
 use metastable_runtime_mem0::Mem0Messages;
 
-use super::{Character, RoleplaySession};
+use super::{Character, RoleplayMessageType, RoleplaySession};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "roleplay_messages"]
@@ -21,9 +21,12 @@ pub struct RoleplayMessage {
 
     pub role: MessageRole,
     pub content_type: MessageType,
-    pub options: Vec<String>,
 
     pub content: String,
+    pub content_v1: Vec<RoleplayMessageType>,
+    pub options: Vec<String>,
+    pub is_saved_in_memory: bool,
+
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -35,7 +38,13 @@ impl Message for RoleplayMessage {
     fn owner(&self) -> &Uuid { &self.owner }
     
     fn content_type(&self) -> &MessageType { &self.content_type }
-    fn text_content(&self) -> Option<String> { Some(self.content.clone()) }
+    fn text_content(&self) -> Option<String> {
+        if self.content.is_empty() {
+            Some(RoleplayMessageType::batch_to_text(&self.content_v1))
+        } else {
+            Some(self.content.clone())
+        }
+    }
     fn binary_content(&self) -> Option<Vec<u8>> { None }
     fn url_content(&self) -> Option<String> { None }
 
@@ -97,8 +106,12 @@ impl RoleplayMessage {
             owner: user.id.clone(),
             role: MessageRole::System,
             content_type: MessageType::Text,
-            options: vec![],
+            
             content: system_prompt,
+            content_v1: vec![],
+            options: vec![],
+            is_saved_in_memory: false,
+
             session_id: session.id.clone(),
 
             created_at: 0,
@@ -120,8 +133,11 @@ impl RoleplayMessage {
             owner: user.id.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
-            options: vec![],
             content: first_message,
+            content_v1: vec![],
+            options: vec![],
+            is_saved_in_memory: false,
+
             session_id: session.id.clone(),
 
             created_at: 0,
@@ -137,8 +153,11 @@ impl RoleplayMessage {
             owner: user_id.clone(),
             role: MessageRole::User,
             content_type: MessageType::Text,
-            options: vec![],
+            
             content: message.to_string(),
+            content_v1: vec![],
+            options: vec![],
+            is_saved_in_memory: false,
             session_id: session_id.clone(),
 
             created_at: 0,
@@ -165,6 +184,8 @@ impl RoleplayMessage {
             content_type: MessageType::Text,
             options: vec![],
             content,
+            content_v1: vec![],
+            is_saved_in_memory: false,
             session_id: session_id.clone(),
             created_at: memory_message.created_at,
             updated_at: memory_message.updated_at,
