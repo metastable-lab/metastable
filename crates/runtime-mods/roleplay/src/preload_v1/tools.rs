@@ -1,26 +1,19 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use metastable_runtime::{ExecutableFunctionCall, LLMRunResponse};
 
 use crate::RoleplayMessageType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum MessagePartType {
-    Action,
-    Scenario,
-    InnerThoughts,
-    Chat,
-    Text,
-    Options,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessagePart {
-    pub r#type: MessagePartType,
-    pub content: Value,
+#[serde(tag = "type", content = "content", rename_all = "camelCase")]
+pub enum MessagePart {
+    Action(String),
+    Scenario(String),
+    InnerThoughts(String),
+    Chat(String),
+    Text(String),
+    Options(Vec<String>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,43 +45,28 @@ impl ExecutableFunctionCall for SendMessageToolCall {
         let mut options = vec![];
 
         for part in &self.messages {
-            match part.r#type {
-                MessagePartType::Action => {
-                    if let Some(s) = part.content.as_str() {
-                        content_v1.push(RoleplayMessageType::Action(s.to_string()));
-                    }
+            match part {
+                MessagePart::Action(s) => {
+                    content_v1.push(RoleplayMessageType::Action(s.clone()));
                 }
-                MessagePartType::Scenario => {
-                    if let Some(s) = part.content.as_str() {
-                        content_v1.push(RoleplayMessageType::Scenario(s.to_string()));
-                    }
+                MessagePart::Scenario(s) => {
+                    content_v1.push(RoleplayMessageType::Scenario(s.clone()));
                 }
-                MessagePartType::InnerThoughts => {
-                    if let Some(s) = part.content.as_str() {
-                        content_v1.push(RoleplayMessageType::InnerThoughts(s.to_string()));
-                    }
+                MessagePart::InnerThoughts(s) => {
+                    content_v1.push(RoleplayMessageType::InnerThoughts(s.clone()));
                 }
-                MessagePartType::Chat => {
-                    if let Some(s) = part.content.as_str() {
-                        content_v1.push(RoleplayMessageType::Chat(s.to_string()));
-                    }
+                MessagePart::Chat(s) => {
+                    content_v1.push(RoleplayMessageType::Chat(s.clone()));
                 }
-                MessagePartType::Text => {
-                    if let Some(s) = part.content.as_str() {
-                        content_v1.push(RoleplayMessageType::Text(s.to_string()));
-                    }
+                MessagePart::Text(s) => {
+                    content_v1.push(RoleplayMessageType::Text(s.clone()));
                 }
-                MessagePartType::Options => {
-                    if let Some(arr) = part.content.as_array() {
-                        for opt_val in arr {
-                            if let Some(opt_str) = opt_val.as_str() {
-                                options.push(opt_str.to_string());
-                            }
-                        }
-                    }
+                MessagePart::Options(opts) => {
+                    options.extend(opts.clone());
                 }
             }
         }
+
         Ok(ComposedMessage {
             content_v1,
             options,

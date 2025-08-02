@@ -131,7 +131,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
         // 3. upsert characters
         let preload_chars = preload::get_characters_for_char_creation(admin_user.id);
 
-        for preload_char in preload_chars {
+        for mut preload_char in preload_chars {
             let existing_char = Character::find_one_by_criteria(
                 QueryCriteria::new().add_filter("name", "=", Some(preload_char.name.clone())),
                 &mut *tx
@@ -140,24 +140,8 @@ impl RuntimeClient for RoleplayRuntimeClient {
             if existing_char.is_none() {
                 preload_char.create(&mut *tx).await?;
             } else {
-                let mut db_char = existing_char.unwrap();
-                let mut updated = false;
-                if db_char.description != preload_char.description {
-                    db_char.description = preload_char.description;
-                    updated = true;
-                }
-                if db_char.features != preload_char.features {
-                    db_char.features = preload_char.features.clone();
-                    updated = true;
-                }
-                if db_char.version != preload_char.version {
-                    db_char.version = preload_char.version;
-                    updated = true;
-                }
-
-                if updated {
-                    db_char.update(&mut *tx).await?;
-                }
+                preload_char.id = existing_char.unwrap().id;
+                preload_char.update(&mut *tx).await?;
             }
         }
 
@@ -178,12 +162,18 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let time = Instant::now();
         let response = self.send_llm_request(&system_config, &messages).await?;
 
+        tracing::info!("[RoleplayRuntimeClient::on_new_message] Response: {:?}", response);
+
         let mut final_options = vec![];
         let mut final_content_v1 = vec![];
+        let mut final_cotnent = response.content.clone();
         if let Some(function_call) = response.maybe_function_call.first() {
+            println!("function_call: {:?}", function_call);
             let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
             if let Ok(toolcall) = maybe_toolcall {
+                println!("toolcall: {:?}", toolcall);
                 let toolcall_result = toolcall.execute(&response, &()).await;
+                println!("toolcall_result: {:?}", toolcall_result);
                 if let Ok(toolcall_result) = toolcall_result {
                     match toolcall_result {
                         RuntimeToolcallReturn::ShowStoryOptionsToolCall(options) => {
@@ -192,18 +182,20 @@ impl RuntimeClient for RoleplayRuntimeClient {
                         RuntimeToolcallReturn::SendMessageToolCall(composed_message) => {
                             final_options = composed_message.options.clone();
                             final_content_v1 = composed_message.content_v1.clone();
+                            final_cotnent = "".to_string();
                         }
                     }
                 }
             }
         }
-        tracing::debug!("[RoleplayRuntimeClient::on_new_message] Options: {:?}", final_options);
+        tracing::info!("[RoleplayRuntimeClient::on_new_message] Options: {:?}", final_options);
+        tracing::info!("[RoleplayRuntimeClient::on_new_message] Content: {:?}", final_content_v1);
         let assistant_message = RoleplayMessage {
             id: Uuid::default(),
             owner: message.owner.clone(),
             role: MessageRole::Assistant,
             content_type: MessageType::Text,
-            content: response.content.clone(),
+            content: final_cotnent,
             content_v1: final_content_v1,
             session_id: message.session_id.clone(),
             options: final_options,
