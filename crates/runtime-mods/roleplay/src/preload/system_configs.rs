@@ -113,7 +113,7 @@ pub fn get_system_configs_for_roleplay() -> SystemConfig {
         openai_base_url: "https://openrouter.ai/api/v1".to_string(),
         openai_model: "google/gemini-2.5-flash".to_string(),
         openai_temperature: 0.7,
-        openai_max_tokens: 5000,
+        openai_max_tokens: 20000,
         functions: Json(vec![
             FunctionObject {
                 name: "show_story_options".to_string(),

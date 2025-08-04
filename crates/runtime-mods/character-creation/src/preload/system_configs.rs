@@ -85,7 +85,7 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
         openai_base_url: "https://openrouter.ai/api/v1".to_string(),
         openai_model: "x-ai/grok-3-mini".to_string(),
         openai_temperature: 0.7,
-        openai_max_tokens: 10000,
+        openai_max_tokens: 20000,
         functions: Json(functions),
         updated_at: get_current_timestamp(),
         created_at: get_current_timestamp(),
