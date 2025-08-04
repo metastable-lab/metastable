@@ -155,7 +155,7 @@ async fn roleplay_rollback(
     }
 
     tx.commit().await?;
-    Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(response)))
+    Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(())))
 }
 
 
