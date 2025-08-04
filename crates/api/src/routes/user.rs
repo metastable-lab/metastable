@@ -118,17 +118,25 @@ async fn register(
     if referral_code.used_by.is_some() {
         return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[/user/register] Referral code already used")));
     }
+    let mut referer = referral_code.fetch_user_id(&mut *tx).await?
+        .ok_or(anyhow!("[/user/register] Referral code not found not valid"))?;
 
     let mut user = User::default();
     user.user_id = payload.user_id.clone();
     user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
     let _ = user.try_claim_free_balance(100); // infallable
+
+    user.running_misc_balance += 20;
     let user = user.create(&mut *tx).await?;
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
+
+    referer.running_misc_balance += 20;
+    referer.update(&mut *tx).await?;
+
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "User registered successfully", json!(())))
