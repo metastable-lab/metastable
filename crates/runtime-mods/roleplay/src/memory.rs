@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::Ordering, sync::Arc};
 
 use anyhow::Result;
 use sqlx::{PgPool, types::Uuid};
@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use metastable_database::{
     SqlxCrud, QueryCriteria, SqlxFilterQuery
 };
-use metastable_runtime::{Memory, SystemConfig};
+use metastable_runtime::{Memory, MessageRole, SystemConfig};
 use metastable_runtime_mem0::{Mem0Engine, Mem0Messages};
 
 use crate::RoleplaySession;
@@ -37,6 +37,22 @@ impl RoleplayRawMemory {
     }
 }
 
+pub fn sort_history(history: &mut Vec<RoleplayMessage>) {
+    // sort by created_at, if two messages have the same created_at stamp, ALWAYS have the user message at first
+    // BEGINING of the history should always by the OLDEST history
+    history.sort_by(|a, b| {
+        if a.created_at == b.created_at {
+            if a.role == MessageRole::User {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        } else {
+            a.created_at.cmp(&b.created_at)
+        }
+    });
+}
+
 #[async_trait::async_trait]
 impl Memory for RoleplayRawMemory {
     type MessageType = RoleplayMessage;
@@ -60,17 +76,32 @@ impl Memory for RoleplayRawMemory {
 
         let user = session.fetch_owner(&mut *tx).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] User not found"))?;
+        let character = session.fetch_character(&mut *tx).await?
+            .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Character not found"))?;
 
         for message in messages {
             let m = message.clone();
             let created_m = m.create(&mut *tx).await?;
             session.append_message_to_history(&created_m.id, &mut *tx).await?;
         }
-        let character = session.fetch_character(&mut *tx).await?
-            .ok_or(anyhow::anyhow!("[RoleplayRawMemory::add_message] Character not found"))?;
-        tx.commit().await?;
 
-        let mem0_messages = messages.iter().map(|m| 
+        let mut all_history = session.fetch_history(&mut *tx).await?;
+        sort_history(&mut all_history);
+
+        let mut all_unsaved_history = all_history
+                .iter()
+                .filter(|h| !h.is_saved_in_memory && !h.is_removed)
+                .collect::<Vec<_>>();
+
+        if all_unsaved_history.len() >= 20 {
+            let unsaved_history_to_save = all_unsaved_history.iter_mut().take(10).collect::<Vec<_>>();
+            for h in unsaved_history_to_save {
+                let mut h = h.clone();
+                h.is_saved_in_memory = true;
+                h.update(&mut *tx).await?;
+            }
+
+            let mem0_messages = all_unsaved_history.iter().map(|m| 
                 Mem0Messages {
                     id: m.id,
                     user_id: m.owner,
@@ -85,8 +116,14 @@ impl Memory for RoleplayRawMemory {
                 }
             ).collect::<Vec<_>>();
 
-        self.mem0_messages_tx.send(mem0_messages).await
-            .expect("[RoleplayRawMemory::add_messages] Failed to send mem0 messages");
+            if mem0_messages.len() > 0 {
+                tracing::info!("[RoleplayRawMemory::add_messages] saving {} mem0 messages", mem0_messages.len());
+                self.mem0_messages_tx.send(mem0_messages).await
+                    .expect("[RoleplayRawMemory::add_messages] Failed to send mem0 messages");
+            }
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -107,16 +144,28 @@ impl Memory for RoleplayRawMemory {
         let system_config = session.fetch_system_config(&mut *tx).await?
             .ok_or(anyhow::anyhow!("[RoleplayRawMemory::search] System config not found"))?;
 
-        let history = session.fetch_history(&mut *tx).await?;
+        let mut history = session.fetch_history(&mut *tx).await?;
+        sort_history(&mut history);
+        let history = history.iter()
+            .filter(|h| !h.is_removed)
+            .map(|h| h.clone())
+            .collect::<Vec<_>>();
+
         let system_message = RoleplayMessage::system(&session, &system_config, &character, &user);
         let first_message = RoleplayMessage::first_message(&session, &character, &user);
         let mut messages = vec![system_message, first_message];
+
+        let maybe_filter_by_session_id = if session.use_character_memory {
+            None // ignore session on filter
+        } else {
+            Some(message.session_id.clone()) // use session id to filter
+        };
 
         let mem0_query = Mem0Messages {
             id: message.id,
             user_id: message.owner,
             character_id: Some(character.id.clone()),
-            session_id: Some(message.session_id.clone()),
+            session_id: maybe_filter_by_session_id,
             user_aka: user.user_aka.clone(),
             content_type: message.content_type.clone(),
             role: message.role.clone(),
@@ -133,10 +182,10 @@ impl Memory for RoleplayRawMemory {
             &message.session_id, &mem0_messages[0], &mem0_messages[1]
         ));
 
-        if history.len() <= 6 {
+        if history.len() <= 12 {
             messages.extend(history.iter().cloned());
         } else {
-            messages.extend(history[history.len() - 6..].iter().cloned());
+            messages.extend(history[history.len() - 12..].iter().cloned());
         }
         messages.push(message.clone());
 
@@ -157,10 +206,20 @@ impl Memory for RoleplayRawMemory {
     }
 
     async fn delete(&self, message_ids: &[Uuid]) -> Result<()> {
-        let criteria = QueryCriteria::new()
-            .add_filter("id", " = ANY($1)", Some(message_ids.to_vec().clone()));
+        let mut tx = self.db.begin().await?;
+        for message_id in message_ids {
+            let message = RoleplayMessage::find_one_by_criteria(
+                QueryCriteria::new().add_valued_filter("id", "=", message_id.clone()),
+                &mut *tx
+            ).await?;
 
-        RoleplayMessage::delete_by_criteria(criteria, &*self.db).await?;
+            if let Some(message) = message {
+                let mut message = message.clone();
+                message.is_removed = true;
+                message.update(&mut *tx).await?;
+            }
+        }
+        tx.commit().await?;
         Ok(())
     }
 

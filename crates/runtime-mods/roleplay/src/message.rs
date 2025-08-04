@@ -25,7 +25,9 @@ pub struct RoleplayMessage {
     pub content: String,
     pub content_v1: Vec<RoleplayMessageType>,
     pub options: Vec<String>,
+
     pub is_saved_in_memory: bool,
+    pub is_removed: bool,
 
     pub created_at: i64,
     pub updated_at: i64,
@@ -111,6 +113,7 @@ impl RoleplayMessage {
             content_v1: vec![],
             options: vec![],
             is_saved_in_memory: false,
+            is_removed: false,
 
             session_id: session.id.clone(),
 
@@ -137,6 +140,7 @@ impl RoleplayMessage {
             content_v1: vec![],
             options: vec![],
             is_saved_in_memory: false,
+            is_removed: false,
 
             session_id: session.id.clone(),
 
@@ -158,6 +162,7 @@ impl RoleplayMessage {
             content_v1: vec![],
             options: vec![],
             is_saved_in_memory: false,
+            is_removed: false,
             session_id: session_id.clone(),
 
             created_at: 0,
@@ -186,6 +191,7 @@ impl RoleplayMessage {
             content,
             content_v1: vec![],
             is_saved_in_memory: false,
+            is_removed: false,
             session_id: session_id.clone(),
             created_at: memory_message.created_at,
             updated_at: memory_message.updated_at,

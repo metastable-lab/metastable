@@ -20,6 +20,7 @@ init_databases!(
         metastable_runtime::SystemConfig,
 
         metastable_runtime_roleplay::Character,
+        metastable_runtime_roleplay::CharacterHistory,
         metastable_runtime_roleplay::RoleplaySession,
         metastable_runtime_roleplay::RoleplayMessage,
         metastable_runtime_roleplay::AuditLog,
@@ -38,8 +39,8 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     
-    let run_migrations = false;
-    let db = Arc::new(connect(false, false, run_migrations).await.clone());
+    let run_migrations = true;
+    let db = Arc::new(connect(false, true, run_migrations).await.clone());
     let _pgvector_db = Arc::new(connect_pgvector(false, false, run_migrations).await.clone());
 
     // let mut tx = db.begin().await?;

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use metastable_runtime_roleplay::{Character, CharacterHistory};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -37,6 +38,10 @@ pub fn user_routes() -> Router<GlobalState> {
         )
         .route("/user/follow",
             post(follow)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+        .route("/user/update_character",
+            post(update_character)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -197,4 +202,37 @@ async fn follow(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateCharacterRequest {
+    pub new_character: Character,
+}
+async fn update_character(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<UpdateCharacterRequest>,
+) -> Result<AppSuccess, AppError> {
+    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
+    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[update_character] User not found")))?;
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+
+    let old_character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", payload.new_character.id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[update_character] Character not found"))?;
+
+    if old_character.creator != user.id {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[update_character] Character not found")));
+    }
+
+    let character_history = CharacterHistory::new(old_character.clone());
+    character_history.create(&mut *tx).await?;
+    payload.new_character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
+    
 }
