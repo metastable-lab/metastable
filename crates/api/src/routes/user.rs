@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use metastable_runtime_roleplay::{Character, CharacterHistory};
+use axum::extract::Path;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -8,9 +8,11 @@ use axum::{
     routing::post, Json, Router
 };
 use sqlx::types::Uuid;
+
 use metastable_common::get_current_timestamp;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
+use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage};
 
 use crate::{
     ensure_account, 
@@ -40,7 +42,7 @@ pub fn user_routes() -> Router<GlobalState> {
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/user/update_character",
+        .route("/user/update_character/{character_id}",
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
         )
@@ -214,11 +216,30 @@ async fn follow(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateCharacterRequest {
-    pub new_character: Character,
+    pub avatar_url: Option<String>,
+    pub background_url: Option<String>,
+
+    pub name: Option<String>,
+    pub description: Option<String>,
+    
+    pub gender: Option<CharacterGender>,
+    pub language: Option<CharacterLanguage>,
+    
+    pub prompts_scenario: Option<String>,
+    pub prompts_personality: Option<String>,
+    pub prompts_example_dialogue: Option<String>,
+    pub prompts_first_message: Option<String>,
+    pub prompts_background_stories: Option<Vec<String>>,
+    pub prompts_behavior_traits: Option<Vec<String>>,
+
+    pub creator_notes: Option<String>,
+
+    pub tags: Option<Vec<String>>,
 }
 async fn update_character(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
     Json(payload): Json<UpdateCharacterRequest>,
 ) -> Result<AppSuccess, AppError> {
     let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
@@ -226,8 +247,8 @@ async fn update_character(
 
     let mut tx = state.roleplay_client.get_db().begin().await?;
 
-    let old_character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", payload.new_character.id),
+    let mut old_character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
         &mut *tx
     ).await?
         .ok_or(anyhow::anyhow!("[update_character] Character not found"))?;
@@ -238,7 +259,47 @@ async fn update_character(
 
     let character_history = CharacterHistory::new(old_character.clone());
     character_history.create(&mut *tx).await?;
-    payload.new_character.update(&mut *tx).await?;
+
+    old_character.name = payload.name.unwrap_or(old_character.name);
+    old_character.description = payload.description.unwrap_or(old_character.description);
+    old_character.gender = payload.gender.unwrap_or(old_character.gender);
+    old_character.language = payload.language.unwrap_or(old_character.language);
+    old_character.prompts_scenario = payload.prompts_scenario.unwrap_or(old_character.prompts_scenario);
+    old_character.prompts_personality = payload.prompts_personality.unwrap_or(old_character.prompts_personality);
+    old_character.prompts_example_dialogue = payload.prompts_example_dialogue.unwrap_or(old_character.prompts_example_dialogue);
+    old_character.prompts_first_message = payload.prompts_first_message.unwrap_or(old_character.prompts_first_message);
+    old_character.prompts_background_stories = payload.prompts_background_stories.unwrap_or(old_character.prompts_background_stories);
+    old_character.prompts_behavior_traits = payload.prompts_behavior_traits.unwrap_or(old_character.prompts_behavior_traits);
+    old_character.creator_notes = payload.creator_notes;
+    old_character.tags = payload.tags.unwrap_or(old_character.tags);
+
+    if let Some(avatar_url) = payload.avatar_url {
+        let mut found = false;
+        for feature in &mut old_character.features {
+            if let CharacterFeature::AvatarImage(ref mut url) = feature {
+                *url = avatar_url.clone();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            old_character.features.push(CharacterFeature::AvatarImage(avatar_url));
+        }
+    }
+    if let Some(background_url) = payload.background_url {
+        let mut found = false;
+        for feature in &mut old_character.features {
+            if let CharacterFeature::BackgroundImage(ref mut url) = feature {
+                *url = background_url.clone();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            old_character.features.push(CharacterFeature::BackgroundImage(background_url));
+        }
+    }
+    old_character.update(&mut *tx).await?;
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
