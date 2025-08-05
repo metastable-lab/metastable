@@ -304,6 +304,7 @@ async fn update_character(
         old_character.status = CharacterStatus::Reviewing;
     }
 
+    old_character.version += 1;
     old_character.update(&mut *tx).await?;
     tx.commit().await?;
 
