@@ -12,7 +12,7 @@ use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
-use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage};
+use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterStatus};
 
 use crate::{
     ensure_account, 
@@ -299,6 +299,11 @@ async fn update_character(
             old_character.features.push(CharacterFeature::BackgroundImage(background_url));
         }
     }
+
+    if old_character.status != CharacterStatus::Draft {
+        old_character.status = CharacterStatus::Reviewing;
+    }
+
     old_character.update(&mut *tx).await?;
     tx.commit().await?;
 
