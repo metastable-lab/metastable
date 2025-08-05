@@ -83,12 +83,18 @@ async fn send_otp(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LoginRequest { pub email: String, pub otp: String }
+pub struct LoginRequest { pub raw_id: String, pub otp: String, pub provider: String }
 async fn login(
     Json(payload): Json<LoginRequest>,
 ) -> Result<AppSuccess, AppError> {
     let env = ApiServerEnv::load();
-    let user_id = format!("email_{}", payload.email);
+
+    let user_id = match payload.provider.as_str() {
+        "email" => format!("email_{}", payload.raw_id),
+        "phone" => format!("phone_86_{}", payload.raw_id),
+        _ => return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[login] Invalid provider: {}", payload.provider))),
+    };
+
     if verify_otp(
         &user_id, &payload.otp,
         &env.get_env_var("OTP_SECRET_KEY")
