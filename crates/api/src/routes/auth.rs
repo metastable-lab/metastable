@@ -10,7 +10,7 @@ use axum::{
 
 use metastable_common::{encrypt, EnvVars};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::{RuntimeClient, User};
+use metastable_runtime::{RuntimeClient, User, UserRole};
 
 use crate::{
     middleware::authenticate, response::{AppError, AppSuccess}, utils::{generate_otp, generate_timebased_counter, verify_otp}, ApiServerEnv, GlobalState
@@ -126,17 +126,19 @@ async fn session(
         &mut *tx
     ).await?;
 
-    let is_registered = if let Some(mut user) = user {
+    let (is_registered, is_admin) = if let Some(mut user) = user {
         let _ = user.try_claim_free_balance(100); // whatever, we don't care about the error
+        let is_admin = user.role == UserRole::Admin;
         user.update(&mut *tx).await?;
-        true
+        (true, is_admin)
     } else {
-        false
+        (false, false)
     };
 
     tx.commit().await?;
     Ok(AppSuccess::new(StatusCode::OK, "Session data", json!({
         "user_id": user_id,
+        "is_admin": is_admin,
         "is_registered": is_registered,
     })))
 }
