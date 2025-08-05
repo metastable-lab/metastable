@@ -90,7 +90,7 @@ impl User {
     pub fn verify_auth_token(token: &str, salt: &str) -> Result<String> {
         let decrypted = decrypt(token, salt)?;
         let authenticated_request: AuthenticatedRequest = serde_json::from_str(&decrypted)?;
-        if authenticated_request.timestamp < get_current_timestamp() - 60 {
+        if authenticated_request.timestamp < get_current_timestamp() - 60 * 60 * 24 * 30 {
             return Err(anyhow::anyhow!("[User::verify_auth_token] authenticate expired"));
         }
         Ok(authenticated_request.user_id)

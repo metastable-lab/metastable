@@ -57,9 +57,7 @@ async fn try_login(
     State(state): State<GlobalState>,
     Json(payload): Json<TryLoginRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let db = state.roleplay_client.get_db();
-    tracing::info!("db: {:?}", db);
-    let mut tx = db.begin().await?;
+    let mut tx = state.roleplay_client.get_db().begin().await?;
 
     // 1. check if the user already exists
     let user = User::find_one_by_criteria(

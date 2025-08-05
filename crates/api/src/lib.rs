@@ -12,6 +12,7 @@ pub use routes::{
     voice_routes,
     runtime_routes,
     user_routes,
+    auth_routes,
 };
 
 pub use env::ApiServerEnv;
