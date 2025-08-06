@@ -38,6 +38,7 @@ pub struct User {
 
     pub role: UserRole,
     pub provider: String,
+    pub banned: bool,
 
     pub generated_referral_count: i64,
 
