@@ -54,6 +54,7 @@ pub fn setup_tracing() {
 
 pub fn generate_otp(user_id: &str, counter: u64, secret: &str) -> String {
     let data = format!("{}{}{}", user_id, secret, counter);
+    tracing::info!("[generate_otp] data: {}", data);
     let hash = blake3_hash(data.as_bytes());
 
     // We use the first 4 bytes of the hash to generate a number.
