@@ -7,7 +7,7 @@ mod follow;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use strum_macros::{Display, EnumString};
+use metastable_database::TextCodecEnum;
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
 use metastable_common::{encrypt, decrypt, get_current_timestamp};
@@ -21,7 +21,8 @@ pub use follow::UserFollow;
 
 pub const BALANCE_CAP: i64 = 500;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Display, EnumString, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
+#[text_codec(format = "paren", storage_lang = "en")]
 pub enum UserRole {
     Admin,
     #[default]

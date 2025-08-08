@@ -6,7 +6,10 @@ use metastable_database::SqlxObject;
 use metastable_runtime::{Message, MessageRole, MessageType, SystemConfig, User};
 use metastable_runtime_mem0::Mem0Messages;
 
-use super::{Character, RoleplayMessageType, RoleplaySession};
+use super::{
+    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests, Character, 
+    RoleplayMessageType, RoleplaySession
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "roleplay_messages"]
@@ -64,24 +67,63 @@ impl RoleplayMessage {
     fn replace_placeholders_system_prompt(
         character_name: &str, user_name: &str,
         system_prompt: &str,
-        character_personality: &str, character_example_dialogue: &str, character_scenario: &str,
-        character_background_stories: &Vec<String>, character_behavior_traits: &Vec<String>,
-        request_time: &str
+        character_personality: &str,
+        character_example_dialogue: &str,
+        character_additional_example_dialogue: &Vec<String>,
+        character_scenario: &str,
+        character_background_stories: &Vec<BackgroundStories>,
+        character_behavior_traits: &Vec<BehaviorTraits>,
+        character_relationships: &Vec<Relationships>,
+        character_skills_and_interests: &Vec<SkillsAndInterests>,
+        character_additional_info: &Vec<String>,
+        request_time: &str,
     ) -> String {
         let character_personality = Self::replace_placeholders(character_personality, character_name, user_name);
         let character_example_dialogue = Self::replace_placeholders(character_example_dialogue, character_name, user_name);
+        let character_additional_example_dialogue = character_additional_example_dialogue
+            .iter()
+            .map(|v| Self::replace_placeholders(v, character_name, user_name))
+            .collect::<Vec<_>>()
+            .join("\n- ");
         let character_scenario = Self::replace_placeholders(character_scenario, character_name, user_name);
-        let character_background_stories = character_background_stories.join("\n- ");
-        let character_behavior_traits = character_behavior_traits.join("\n- ");
+        let character_background_stories = character_background_stories
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join("\n- ");
+        let character_behavior_traits = character_behavior_traits
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join("\n- ");
+        let character_relationships = character_relationships
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join("\n- ");
+        let character_skills_and_interests = character_skills_and_interests
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join("\n- ");
+        let character_additional_info = character_additional_info
+            .iter()
+            .map(|v| Self::replace_placeholders(v, character_name, user_name))
+            .collect::<Vec<_>>()
+            .join("\n- ");
     
         let system_prompt = system_prompt
             .replace("{{char}}", character_name)
             .replace("{{user}}", user_name)
             .replace("{{char_personality}}", &character_personality)
             .replace("{{char_example_dialogue}}", &character_example_dialogue)
+            .replace("{{char_additional_example_dialogue}}", &character_additional_example_dialogue)
             .replace("{{char_scenario}}", &character_scenario)
             .replace("{{char_background_stories}}", &character_background_stories)
             .replace("{{char_behavior_traits}}", &character_behavior_traits)
+            .replace("{{char_relationships}}", &character_relationships)
+            .replace("{{char_skills_and_interests}}", &character_skills_and_interests)
+            .replace("{{char_additional_info}}", &character_additional_info)
             .replace("{{request_time}}", request_time);
     
         system_prompt
@@ -92,15 +134,19 @@ impl RoleplayMessage {
     ) -> Self {
         let request_time = get_time_in_utc8();
         let system_prompt = Self::replace_placeholders_system_prompt(
-            &character.name, 
+            &character.name,
             &user.user_aka,
-            &system_config.system_prompt, 
+            &system_config.system_prompt,
             &character.prompts_personality,
             &character.prompts_example_dialogue,
+            &character.prompts_additional_example_dialogue,
             &character.prompts_scenario,
             &character.prompts_background_stories,
             &character.prompts_behavior_traits,
-            &request_time
+            &character.prompts_relationships,
+            &character.prompts_skills_and_interests,
+            &character.prompts_additional_info,
+            &request_time,
         );
 
         Self {

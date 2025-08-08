@@ -5,12 +5,13 @@ use async_openai::types::{
     ChatCompletionRequestUserMessageArgs
 };
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumString};
+use metastable_database::TextCodecEnum;
 
 use sqlx::types::Uuid;
 use crate::SystemConfig;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
+#[text_codec(format = "paren", storage_lang = "en")]
 pub enum MessageRole {
     System,
 
@@ -21,7 +22,8 @@ pub enum MessageRole {
     ToolCall,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, Display, EnumString, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
+#[text_codec(format = "paren", storage_lang = "en")]
 pub enum MessageType {
     #[default]
     Text,

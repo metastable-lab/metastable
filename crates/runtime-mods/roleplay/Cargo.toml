@@ -21,5 +21,3 @@ async-trait.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
 
-strum = "0.26"
-strum_macros = "0.26"

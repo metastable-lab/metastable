@@ -1,5 +1,6 @@
 mod client;
 mod message;
+mod character_detail;
 mod character;
 mod character_history;
 mod memory;
@@ -11,7 +12,8 @@ mod preload_v1;
 mod message_type;
 
 pub use client::RoleplayRuntimeClient;
-pub use character::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
+pub use character_detail::*;
+pub use character::Character;
 pub use character_history::CharacterHistory;
 pub use message::RoleplayMessage;
 pub use message_type::RoleplayMessageType;

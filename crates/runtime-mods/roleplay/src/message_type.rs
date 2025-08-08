@@ -1,33 +1,24 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::str::FromStr;
+use metastable_database::{TextCodecEnum, TextPromptCodec};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextCodecEnum)]
+#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
 pub enum RoleplayMessageType {
+    #[prefix(lang = "zh", content = "动作")]
     Action(String),
+    #[prefix(lang = "zh", content = "场景")]
     Scenario(String),
+    #[prefix(lang = "zh", content = "内心独白")]
     InnerThoughts(String),
+    #[prefix(lang = "zh", content = "对话")]
     Chat(String),
+
+    #[catch_all(no_prefix = true)]
     Text(String),
 }
 
-impl Default for RoleplayMessageType {
-    fn default() -> Self {
-        RoleplayMessageType::Text("".to_string())
-    }
-}
-
 impl RoleplayMessageType {
-    pub fn to_text(&self) -> String {
-        match self {
-            RoleplayMessageType::Action(s) => format!("动作：{}", s),
-            RoleplayMessageType::Scenario(s) => format!("场景：{}", s),
-            RoleplayMessageType::InnerThoughts(s) => format!("内心独白：{}", s),
-            RoleplayMessageType::Chat(s) => format!("对话：{}", s),
-            RoleplayMessageType::Text(s) => s.clone(),
-        }
-    }
+    pub fn to_text(&self) -> String { self.to_lang("zh") }
 
     pub fn batch_to_text(msg: &[Self]) -> String {
         let mut text = String::new();
@@ -38,34 +29,10 @@ impl RoleplayMessageType {
         text
     }
 
-    pub fn from_text_batch(text: &str) -> Result<Vec<Self>> {
+    pub fn from_text_batch(text: &str) -> anyhow::Result<Vec<Self>> {
         text.lines()
             .filter(|line| !line.trim().is_empty())
             .map(|line| line.parse())
             .collect()
-    }
-}
-
-impl fmt::Display for RoleplayMessageType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_text())
-    }
-}
-
-impl FromStr for RoleplayMessageType {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some(inner) = s.strip_prefix("动作：") {
-            Ok(RoleplayMessageType::Action(inner.trim().to_string()))
-        } else if let Some(inner) = s.strip_prefix("场景：") {
-            Ok(RoleplayMessageType::Scenario(inner.trim().to_string()))
-        } else if let Some(inner) = s.strip_prefix("对话：") {
-            Ok(RoleplayMessageType::Chat(inner.trim().to_string()))
-        } else if let Some(inner) = s.strip_prefix("内心独白：") {
-            Ok(RoleplayMessageType::InnerThoughts(inner.trim().to_string()))
-        }else {
-            Ok(RoleplayMessageType::Text(s.to_string()))
-        }   
     }
 }
