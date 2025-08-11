@@ -1,0 +1,25 @@
+[package]
+name = "metastable-runtime-multiplayer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+metastable-runtime = { path = "../../runtime" }
+metastable-common = { path = "../../common" }
+metastable-database = { path = "../../database" }
+metastable-db-macros = { path = "../../db-macros" }
+metastable-runtime-mem0 = { path = "../mem0" }
+
+serde.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true 
+async-openai.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+
+strum = "0.26"
+strum_macros = "0.26"
