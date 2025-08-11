@@ -12,7 +12,7 @@ use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
-use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterStatus};
+use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterStatus, CharacterSub};
 
 use crate::{
     ensure_account, 
@@ -44,6 +44,11 @@ pub fn user_routes() -> Router<GlobalState> {
         )
         .route("/user/update_character/{character_id}",
             post(update_character)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/character/sub/{character_id}",
+            post(create_character_sub)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -308,4 +313,22 @@ async fn update_character(
 
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
     
+}
+
+
+async fn create_character_sub(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
+    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+
+    let character_sub = CharacterSub::new(user.id, character_id, vec![]);
+    character_sub.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character sub created successfully", json!(())))
 }

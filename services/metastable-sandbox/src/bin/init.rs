@@ -21,6 +21,7 @@ init_databases!(
 
         metastable_runtime_roleplay::Character,
         metastable_runtime_roleplay::CharacterHistory,
+        metastable_runtime_roleplay::CharacterSub,
         metastable_runtime_roleplay::RoleplaySession,
         metastable_runtime_roleplay::RoleplayMessage,
         metastable_runtime_roleplay::AuditLog,
