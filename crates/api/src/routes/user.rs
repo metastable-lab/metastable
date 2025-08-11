@@ -130,16 +130,16 @@ async fn register(
     user.user_id = payload.user_id.clone();
     user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
-    let _ = user.try_claim_free_balance(100); // infallable
+    let _ = user.try_claim_free_balance(50); // infallable
 
-    user.running_misc_balance += 20;
+    user.running_misc_balance += 50;
     let user = user.create(&mut *tx).await?;
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
 
-    referer.running_misc_balance += 20;
+    referer.running_misc_balance += 100;
     referer.update(&mut *tx).await?;
 
     tx.commit().await?;

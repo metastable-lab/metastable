@@ -51,7 +51,7 @@ pub async fn ensure_account<S: RuntimeClient>(
     ).await? {
         Some(mut user) => {
             if price > 0 {
-                let _ = user.try_claim_free_balance(100);
+                let _ = user.try_claim_free_balance(50);
                 let paid = user.pay(price);
                 if paid.is_err() {
                     tx.commit().await?;

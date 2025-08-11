@@ -88,7 +88,7 @@ async fn roleplay_chat(
     Path(session_id): Path<Uuid>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 2).await?;
+    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 3).await?;
     let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] User not found")))?;
 
     let message = RoleplayMessage::user_message(
@@ -126,7 +126,7 @@ async fn roleplay_rollback(
     Extension(user_id_str): Extension<String>,
     Path(session_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
-    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 2).await?;
+    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 3).await?;
     let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_rollback] User not found")))?;
 
     let message = RoleplayMessage::user_message(
