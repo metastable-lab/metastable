@@ -38,7 +38,7 @@ macro_rules! init_databases {
         use $crate::{SqlxSchema, SchemaMigrator};
         use sqlx::postgres::PgPoolOptions;
 
-        const MIN_POOL_CONN: u32 = 50;
+        const MIN_POOL_CONN: u32 = 5;
         const MAX_POOL_CONN: u32 = 500;
 
         // --- Default Pool Setup ---
