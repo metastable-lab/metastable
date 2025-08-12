@@ -12,7 +12,7 @@ mod mongodb;
 pub use env::*;
 
 #[cfg(feature = "postgres")]
-pub use metastable_db_macros::SqlxObject;
+pub use metastable_db_macros::{SqlxObject, TextCodecEnum};
 
 #[cfg(feature = "mongodb")]
 pub use mongodb::*;

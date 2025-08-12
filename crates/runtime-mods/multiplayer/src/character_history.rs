@@ -5,7 +5,7 @@ use sqlx::types::Uuid;
 
 use metastable_runtime::User;
 
-use crate::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, Relationships, SkillsAndInterests};
+use crate::{CharacterStatus, CharacterGender, CharacterLanguage, CharacterFeature, Character};
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_characters_history"]
@@ -30,18 +30,10 @@ pub struct CharacterHistory {
 
     pub prompts_scenario: String,
     pub prompts_personality: String,
-    pub prompts_first_message: String,
-    
-    // v0
     pub prompts_example_dialogue: String,
-    pub prompts_background_stories: Vec<BackgroundStories>,
-    pub prompts_behavior_traits: Vec<BehaviorTraits>,
-
-    // v1
-    pub prompts_additional_example_dialogue: Vec<String>,
-    pub prompts_relationships: Vec<Relationships>,
-    pub prompts_skills_and_interests: Vec<SkillsAndInterests>,
-    pub prompts_additional_info: Vec<String>,
+    pub prompts_first_message: String,
+    pub prompts_background_stories: Vec<String>,
+    pub prompts_behavior_traits: Vec<String>,
 
     pub creator_notes: Option<String>,
 
@@ -66,16 +58,10 @@ impl CharacterHistory {
             features: character.features,
             prompts_scenario: character.prompts_scenario,
             prompts_personality: character.prompts_personality,
-            prompts_first_message: character.prompts_first_message,
-
             prompts_example_dialogue: character.prompts_example_dialogue,
+            prompts_first_message: character.prompts_first_message,
             prompts_background_stories: character.prompts_background_stories,
             prompts_behavior_traits: character.prompts_behavior_traits,
-
-            prompts_additional_example_dialogue: character.prompts_additional_example_dialogue,
-            prompts_relationships: character.prompts_relationships,
-            prompts_skills_and_interests: character.prompts_skills_and_interests,
-            prompts_additional_info: character.prompts_additional_info,
             creator_notes: character.creator_notes,
             tags: character.tags,
             created_at: 0,

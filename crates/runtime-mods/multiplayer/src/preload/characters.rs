@@ -1,6 +1,6 @@
 use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
-use crate::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus};
+use crate::{Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus};
 
 pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
     vec![
@@ -13,7 +13,6 @@ pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
             status: CharacterStatus::Published,
             gender: CharacterGender::Male,
             language: CharacterLanguage::Chinese,
-            orientation: CharacterOrientation::Full,
             features: vec![
                 CharacterFeature::CharacterCreation, 
                 CharacterFeature::BackgroundImage("https://static.shinobu.ink/npc.jpg".to_string()),
@@ -44,10 +43,6 @@ pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
 "#.to_string(),
             prompts_background_stories: vec![],
             prompts_behavior_traits: vec![],
-            prompts_additional_example_dialogue: vec![],
-            prompts_relationships: vec![],
-            prompts_skills_and_interests: vec![],
-            prompts_additional_info: vec![],
             creator_notes: None,
             tags: vec!["创造".to_string(), "引导".to_string(), "脑洞".to_string(), "角色设计".to_string()],
             created_at: get_current_timestamp(),

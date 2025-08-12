@@ -1,5 +1,5 @@
 [package]
-name = "metastable-runtime-roleplay"
+name = "metastable-runtime-multiplayer"
 version = "0.1.0"
 edition = "2021"
 
@@ -21,3 +21,5 @@ async-trait.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
 
+strum = "0.26"
+strum_macros = "0.26"

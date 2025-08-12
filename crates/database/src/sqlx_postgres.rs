@@ -237,6 +237,16 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
         Self: Send;
 }
 
+/// Trait for enums that can be rendered/parsing into localized text forms for prompts and storage.
+/// Implementations typically come from a derive macro.
+pub trait TextPromptCodec: Sized {
+    /// Render to the specified language (does not affect DB storage).
+    fn to_lang(&self, lang: &str) -> String;
+
+    /// Parse from any supported language representation.
+    fn parse_any_lang(s: &str) -> anyhow::Result<Self>;
+}
+
 #[async_trait::async_trait]
 pub trait SchemaMigrator {
     /// Compares the struct's schema with the database and applies necessary changes.

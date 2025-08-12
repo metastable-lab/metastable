@@ -12,7 +12,7 @@ use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
-use metastable_runtime_roleplay::{Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterStatus, CharacterSub};
+use metastable_runtime_roleplay::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus, CharacterSub};
 
 use crate::{
     ensure_account, 
@@ -232,8 +232,11 @@ pub struct UpdateCharacterRequest {
     pub prompts_personality: Option<String>,
     pub prompts_example_dialogue: Option<String>,
     pub prompts_first_message: Option<String>,
-    pub prompts_background_stories: Option<Vec<String>>,
-    pub prompts_behavior_traits: Option<Vec<String>>,
+    pub prompts_background_stories: Option<Vec<BackgroundStories>>,
+    pub prompts_behavior_traits: Option<Vec<BehaviorTraits>>,
+    pub prompts_relationships: Option<Vec<Relationships>>,
+    pub prompts_skills_and_interests: Option<Vec<SkillsAndInterests>>,
+    pub prompts_additional_info: Option<Vec<String>>,
 
     pub creator_notes: Option<String>,
 
@@ -273,6 +276,9 @@ async fn update_character(
     old_character.prompts_first_message = payload.prompts_first_message.unwrap_or(old_character.prompts_first_message);
     old_character.prompts_background_stories = payload.prompts_background_stories.unwrap_or(old_character.prompts_background_stories);
     old_character.prompts_behavior_traits = payload.prompts_behavior_traits.unwrap_or(old_character.prompts_behavior_traits);
+    old_character.prompts_relationships = payload.prompts_relationships.unwrap_or(old_character.prompts_relationships);
+    old_character.prompts_skills_and_interests = payload.prompts_skills_and_interests.unwrap_or(old_character.prompts_skills_and_interests);
+    old_character.prompts_additional_info = payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info);
     old_character.creator_notes = payload.creator_notes;
     old_character.tags = payload.tags.unwrap_or(old_character.tags);
 
