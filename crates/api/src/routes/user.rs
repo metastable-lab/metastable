@@ -12,7 +12,7 @@ use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
-use metastable_runtime_roleplay::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus};
+use metastable_runtime_roleplay::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus, CharacterSub};
 
 use crate::{
     ensure_account, 
@@ -46,6 +46,11 @@ pub fn user_routes() -> Router<GlobalState> {
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
         )
+
+        .route("/user/character/sub/{character_id}",
+            post(create_character_sub)
+            .route_layer(middleware::from_fn(authenticate))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -57,9 +62,7 @@ async fn try_login(
     State(state): State<GlobalState>,
     Json(payload): Json<TryLoginRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let db = state.roleplay_client.get_db();
-    tracing::info!("db: {:?}", db);
-    let mut tx = db.begin().await?;
+    let mut tx = state.roleplay_client.get_db().begin().await?;
 
     // 1. check if the user already exists
     let user = User::find_one_by_criteria(
@@ -127,16 +130,16 @@ async fn register(
     user.user_id = payload.user_id.clone();
     user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
-    let _ = user.try_claim_free_balance(100); // infallable
+    let _ = user.try_claim_free_balance(50); // infallable
 
-    user.running_misc_balance += 20;
+    user.running_misc_balance += 50;
     let user = user.create(&mut *tx).await?;
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
 
-    referer.running_misc_balance += 20;
+    referer.running_misc_balance += 100;
     referer.update(&mut *tx).await?;
 
     tx.commit().await?;
@@ -316,4 +319,22 @@ async fn update_character(
 
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
     
+}
+
+
+async fn create_character_sub(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
+    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+
+    let character_sub = CharacterSub::new(user.id, character_id, vec![]);
+    character_sub.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character sub created successfully", json!(())))
 }

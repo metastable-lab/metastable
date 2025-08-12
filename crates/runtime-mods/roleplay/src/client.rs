@@ -57,6 +57,44 @@ impl RoleplayRuntimeClient {
     }
 }
 
+async fn llm_response_to_message(input: &RoleplayMessage, response: &LLMRunResponse) -> RoleplayMessage {
+    let mut final_options = vec![];
+    let mut final_content_v1 = vec![];
+    let mut final_cotnent = response.content.clone();
+    if let Some(function_call) = response.maybe_function_call.first() {
+        let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
+        if let Ok(toolcall) = maybe_toolcall {
+            let toolcall_result = toolcall.execute(&response, &()).await;
+            if let Ok(toolcall_result) = toolcall_result {
+                match toolcall_result {
+                    RuntimeToolcallReturn::ShowStoryOptionsToolCall(options) => {
+                        final_options = options.clone();
+                    }
+                    RuntimeToolcallReturn::SendMessageToolCall(composed_message) => {
+                        final_options = composed_message.options.clone();
+                        final_content_v1 = composed_message.content_v1.clone();
+                        final_cotnent = "".to_string();
+                    }
+                }
+            }
+        }
+    }
+    RoleplayMessage {
+        id: Uuid::default(),
+        owner: input.owner.clone(),
+        role: MessageRole::Assistant,
+        content_type: MessageType::Text,
+        content: final_cotnent,
+        content_v1: final_content_v1,
+        session_id: input.session_id.clone(),
+        options: final_options,
+        is_saved_in_memory: false,
+        is_removed: false,
+        created_at: get_current_timestamp(),
+        updated_at: get_current_timestamp(),
+    }
+}
+
 #[async_trait::async_trait]
 impl RuntimeClient for RoleplayRuntimeClient {
     const NAME: &'static str = "rolplay";
@@ -162,43 +200,8 @@ impl RuntimeClient for RoleplayRuntimeClient {
         let time = Instant::now();
         let response = self.send_llm_request(&system_config, &messages).await?;
 
-        let mut final_options = vec![];
-        let mut final_content_v1 = vec![];
-        let mut final_cotnent = response.content.clone();
-        if let Some(function_call) = response.maybe_function_call.first() {
-            let maybe_toolcall = RuntimeToolcall::from_function_call(function_call.clone());
-            if let Ok(toolcall) = maybe_toolcall {
-                let toolcall_result = toolcall.execute(&response, &()).await;
-                if let Ok(toolcall_result) = toolcall_result {
-                    match toolcall_result {
-                        RuntimeToolcallReturn::ShowStoryOptionsToolCall(options) => {
-                            final_options = options.clone();
-                        }
-                        RuntimeToolcallReturn::SendMessageToolCall(composed_message) => {
-                            final_options = composed_message.options.clone();
-                            final_content_v1 = composed_message.content_v1.clone();
-                            final_cotnent = "".to_string();
-                        }
-                    }
-                }
-            }
-        }
-        let assistant_message = RoleplayMessage {
-            id: Uuid::default(),
-            owner: message.owner.clone(),
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            content: final_cotnent,
-            content_v1: final_content_v1,
-            session_id: message.session_id.clone(),
-            options: final_options,
-            is_saved_in_memory: false,
-            is_removed: false,
-            created_at: get_current_timestamp(),
-            updated_at: get_current_timestamp(),
-        };
+        let assistant_message = llm_response_to_message(&message, &response).await;
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Assistant message took {:?}", time.elapsed());
-
         self.memory.add_messages(&[
             message.clone(),
             assistant_message.clone(),
@@ -218,7 +221,12 @@ impl RuntimeClient for RoleplayRuntimeClient {
             .ok_or(anyhow::anyhow!("[RoleplayRuntimeClient::on_rollback] No last assistant message found. This is unexpected"))?;
 
         let response = self.send_llm_request(&system_config, &messages).await?;
+        let assistant_message = llm_response_to_message(&message, &response).await;
+        
         last_assistant_message.content = response.content.clone();
+        last_assistant_message.content_v1 = assistant_message.content_v1.clone();
+        last_assistant_message.options = assistant_message.options.clone();
+
         self.memory.update(&[last_assistant_message]).await?;
         Ok(response)
     }  

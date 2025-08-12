@@ -9,17 +9,16 @@ use metastable_runtime::user::UserUsagePoints;
 use metastable_runtime::{RuntimeClient, User};
 
 use crate::response::AppError;
-use crate::utils::extract_bearer_token;
+use crate::utils::extract_auth_token;
 use crate::env::ApiServerEnv;
 
 pub async fn authenticate(
     mut req: Request, next: Next
 ) -> Result<Response<Body>, AppError> {
-
     let env = ApiServerEnv::load();
-    let maybe_bearer_token = extract_bearer_token(&req);
+    let maybe_auth_token = extract_auth_token(&req);
 
-    let user_id = maybe_bearer_token.and_then(|token| {
+    let user_id = maybe_auth_token.and_then(|token| {
         match User::verify_auth_token(&token, &env.get_env_var("SECRET_SALT")) {
             Ok(uid) => {
                 Ok(uid)
@@ -52,7 +51,7 @@ pub async fn ensure_account<S: RuntimeClient>(
     ).await? {
         Some(mut user) => {
             if price > 0 {
-                let _ = user.try_claim_free_balance(100);
+                let _ = user.try_claim_free_balance(50);
                 let paid = user.pay(price);
                 if paid.is_err() {
                     tx.commit().await?;

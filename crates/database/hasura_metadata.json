@@ -1,5 +1,5 @@
 {
-  "resource_version": 24,
+  "resource_version": 18,
   "metadata": {
     "version": 3,
     "sources": [
@@ -148,6 +148,18 @@
                 }
               },
               {
+                "name": "roleplay_characters_histories",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character",
+                    "table": {
+                      "name": "roleplay_characters_history",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_sessions",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -289,6 +301,26 @@
           },
           {
             "table": {
+              "name": "roleplay_characters_history",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "roleplay_character",
+                "using": {
+                  "foreign_key_constraint_on": "character"
+                }
+              },
+              {
+                "name": "user",
+                "using": {
+                  "foreign_key_constraint_on": "creator"
+                }
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "roleplay_messages",
               "schema": "public"
             },
@@ -346,7 +378,9 @@
                 "role": "user",
                 "permission": {
                   "columns": [
-                    "content"
+                    "content",
+                    "content_v1",
+                    "is_removed"
                   ],
                   "filter": {
                     "owner": {
@@ -900,6 +934,18 @@
                 }
               },
               {
+                "name": "roleplay_characters_histories",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "creator",
+                    "table": {
+                      "name": "roleplay_characters_history",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "roleplay_messages",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -1088,27 +1134,27 @@
           }
         }
       },
-      {
-        "name": "pgvector",
-        "kind": "postgres",
-        "tables": [
-          {
-            "table": {
-              "name": "embeddings",
-              "schema": "public"
+        {
+          "name": "pgvector",
+          "kind": "postgres",
+          "tables": [
+            {
+              "table": {
+                "name": "embeddings",
+                "schema": "public"
+              }
+            }
+          ],
+          "configuration": {
+            "connection_info": {
+              "database_url": {
+                "from_env": "HASURA_GRAPHQL_PGVECTOR_URL"
+              },
+              "isolation_level": "read-committed",
+              "use_prepared_statements": false
             }
           }
-        ],
-        "configuration": {
-          "connection_info": {
-            "database_url": {
-              "from_env": "HASURA_GRAPHQL_PGVECTOR_URL"
-            },
-            "isolation_level": "read-committed",
-            "use_prepared_statements": false
-          }
         }
-      }
     ]
   }
 }
