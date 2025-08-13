@@ -41,7 +41,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 futures = "0.3"
 hex = { version = "0.4", features = ["serde"] }
-rand = "0.8"
+rand = { version = "0.9", features = ["thread_rng"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 xsalsa20poly1305 = "0.9"
 blake3 = "^1"

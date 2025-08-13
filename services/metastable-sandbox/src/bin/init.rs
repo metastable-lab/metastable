@@ -18,6 +18,9 @@ init_databases!(
         metastable_runtime::UserBadge,
         metastable_runtime::UserFollow,
         metastable_runtime::SystemConfig,
+        metastable_runtime::CardPool,
+        metastable_runtime::Card,
+        metastable_runtime::DrawHistory,
 
         metastable_runtime_roleplay::Character,
         metastable_runtime_roleplay::CharacterHistory,

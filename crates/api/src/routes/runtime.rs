@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use metastable_common::get_current_timestamp;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -7,10 +8,10 @@ use axum::{
     routing::post, Json, Router
 };
 use sqlx::types::Uuid;
-use metastable_runtime::{user::UserUsagePoints, RuntimeClient, UserUsage};
+use metastable_runtime::{user::UserUsagePoints, CardPool, DrawHistory, DrawType, RuntimeClient, UserUsage};
 use metastable_runtime_character_creation::CharacterCreationMessage;
 use metastable_runtime_roleplay::{Character, CharacterStatus, RoleplayMessage, RoleplaySession};
-use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
+use metastable_database::{OrderDirection, QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use metastable_runtime::SystemConfig;
 
 use crate::{
@@ -44,6 +45,11 @@ pub fn runtime_routes() -> Router<GlobalState> {
 
         .route("/runtime/character-creation/review/{character_id}",
             post(character_creation_review)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/runtime/cards/draw/{card_pool_id}",
+            post(draw_card)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -203,4 +209,77 @@ async fn character_creation_review(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character creation review completed successfully", json!(())))
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DrawCardRequest {  pub draw_type: DrawType }
+async fn draw_card(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(card_pool_id): Path<Uuid>,
+    Json(payload): Json<DrawCardRequest>,
+) -> Result<AppSuccess, AppError> {
+
+    let (user, _) = ensure_account(&state.roleplay_client, &user_id_str, 1).await?;
+    let mut user = user.ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] User not found")))?;
+
+    let mut tx = state.roleplay_client.get_db().begin().await?;
+    
+    let card_pool = CardPool::find_one_by_criteria(
+        QueryCriteria::new().add_filter("id", "=", Some(card_pool_id)),
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] Card pool not found")))?;
+
+    let cards = card_pool.fetch_card_ids(&mut *tx).await?;
+    let current_time = get_current_timestamp();
+    if current_time > card_pool.end_time { 
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[draw_card] Card pool is not active")));
+    }
+
+    let last_draw = if let Some(latest_draw) = DrawHistory::find_one_by_criteria(
+        QueryCriteria::new()
+            .add_filter("card_pool_id", "=", Some(card_pool_id))
+            .add_filter("user", "=", Some(user.id))
+            .order_by("created_at", OrderDirection::Desc)
+            .limit(1),
+        &mut *tx
+    ).await? {
+        latest_draw
+    } else {
+        let mut draw = DrawHistory::default();
+        draw.user = user.id;
+        draw.card_pool_id = card_pool_id;
+        draw
+    };
+
+    let draw_cost = match payload.draw_type {
+        DrawType::Single => 10,
+        DrawType::Ten => 100,
+    };
+
+    if let Ok(usage) = user.pay(draw_cost) {
+        let user_usage = UserUsage::from_points_consumed(user.id, usage);
+        user_usage.create(&mut *tx).await?;
+    } else {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[draw_card] Insufficient balance")));
+    }
+
+    // begin draw cards
+    let results = match payload.draw_type {
+        DrawType::Single => {
+            vec![DrawHistory::execute_single_draw(&last_draw, &card_pool, &cards)?]
+        },
+        DrawType::Ten => {
+            DrawHistory::draw_ten_cards(&last_draw, &card_pool, &cards)?
+        },
+    };
+
+    for result in results {
+        result.create(&mut *tx).await?;
+    }
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Draw card completed successfully", json!(())))
 }

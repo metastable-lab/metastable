@@ -1,5 +1,6 @@
 use std::hash::{Hash, Hasher};
 use anyhow::{anyhow, Result};
+use rand::fill;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -16,7 +17,7 @@ impl CryptoHash {
 
     pub fn random() -> Self {
         let mut arr = [0u8; 32];
-        rand::Rng::fill(&mut rand::thread_rng(), &mut arr[..]);
+        fill(&mut arr[..]);
         Self::new(arr)
     }
 

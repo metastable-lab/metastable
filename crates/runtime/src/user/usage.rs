@@ -36,6 +36,30 @@ pub struct UserUsage {
 }
 
 impl UserUsage {
+    pub fn from_points_consumed(
+        user_id: Uuid,
+        points_consumed: UserUsagePoints,
+    ) -> Self {
+        Self {
+            id: Uuid::default(),
+            user_id,
+            model_name: "".to_string(),
+            usage: Json(CompletionUsage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+                prompt_tokens_details: None,
+                completion_tokens_details: None,
+            }),
+            finish_reason: None,
+            points_consumed_claimed: points_consumed.points_consumed_claimed,
+            points_consumed_purchased: points_consumed.points_consumed_purchased,
+            points_consumed_misc: points_consumed.points_consumed_misc,
+            created_at: get_current_timestamp(),
+            updated_at: get_current_timestamp(),
+        }
+    }
+
     pub fn from_llm_response(
         llm_response: &LLMRunResponse, 
         points_consumed: UserUsagePoints,
