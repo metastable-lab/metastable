@@ -11,6 +11,7 @@ opt-level = 1
 [workspace]
 members = [
     "crates/api",
+    "crates/clients",
     "crates/common",
     "crates/database", 
     "crates/db-macros",

@@ -1,0 +1,32 @@
+[package]
+name = "metastable-clients"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# metastable-common = { path = "../common" }
+metastable-database = { path = "../database" }
+metastable-runtime = { path = "../runtime" }
+# metastable-service-api = { path = "../api" }
+
+# metastable-runtime-roleplay = { path = "../runtime-mods/roleplay" }
+# metastable-runtime-character-creation = { path = "../runtime-mods/character-creation" }
+# metastable-runtime-mem0 = { path = "../runtime-mods/mem0" }
+
+tokio.workspace = true
+tracing.workspace = true
+anyhow.workspace = true 
+serde.workspace = true
+reqwest.workspace = true
+async-trait.workspace = true
+sqlx.workspace = true
+
+async-openai = { workspace = true, optional = true}
+neo4rs = { version = "0.8.0", optional = true }
+
+[features]
+default = ["llm", "graph", "embeder", "postgres"]
+llm = ["dep:async-openai"]
+embeder = ["dep:async-openai"]
+graph = ["dep:neo4rs", "embeder"]
+postgres = ["embeder"]

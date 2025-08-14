@@ -6,6 +6,9 @@ pub mod user;
 mod cards;
 mod system_config;
 mod env;
+mod client;
+mod llm;
+mod engine;
 
 pub use toolcall::ExecutableFunctionCall;
 pub use output_client::OutputClient;
@@ -15,3 +18,6 @@ pub use system_config::SystemConfig;
 pub use env::RuntimeEnv;
 pub use memory::{MessageRole, MessageType, Message, Memory};
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
+pub use client::ModuleClient;
+pub use llm::{LlmInput, LlmOutput, LlmCall};
+pub use engine::Engine;
