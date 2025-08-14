@@ -15,6 +15,7 @@ members = [
     "crates/common",
     "crates/database", 
     "crates/db-macros",
+    "crates/llm-macros",
     "crates/runtime",
 
     # "crates/runtime-mods/evm",

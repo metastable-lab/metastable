@@ -65,12 +65,3 @@ macro_rules! define_module_client {
         }
     }
 }
-
-// define_module_client! {
-//     (struct PostgresClient, "postgres")
-//     client_type: sqlx::PgPool,
-//     env: ["POSTGRES_URL"],
-//     setup: async {
-//         sqlx::PgPool::connect(&std::env::var("POSTGRES_URL").unwrap()).await.unwrap()
-//     }
-// }
