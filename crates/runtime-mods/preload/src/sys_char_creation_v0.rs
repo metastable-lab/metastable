@@ -1,6 +1,6 @@
 use crate::tools::SummarizeCharacter;
 use metastable_common::get_current_timestamp;
-use metastable_runtime::SystemConfig;
+use metastable_runtime::{SystemConfig, ToolCall};
 use sqlx::types::{Json, Uuid};
 
 pub fn get_system_configs_for_char_creation() -> SystemConfig {

@@ -42,11 +42,7 @@ impl Message for CharacterCreationMessage {
     fn owner(&self) -> &Uuid { &self.owner }
     
     fn content_type(&self) -> &MessageType { &self.content_type }
-    fn text_content(&self) -> Option<String> { Some(self.content.clone()) }
-    fn binary_content(&self) -> Option<Vec<u8>> { None }
-    fn url_content(&self) -> Option<String> { None }
-
-    fn created_at(&self) -> i64 { self.created_at }
+    fn content(&self) -> Option<String> { Some(self.content.clone()) }
 }
 
 impl CharacterCreationMessage {
@@ -122,7 +118,7 @@ impl CharacterCreationMessage {
                 .iter()
                 .map(|m| format!("{}: {}", 
                     m.role(), 
-                    m.text_content().unwrap_or_default()
+                    m.content().unwrap_or_default()
                 )));
 
         let all_messages = message_pieces.join("\n\n");

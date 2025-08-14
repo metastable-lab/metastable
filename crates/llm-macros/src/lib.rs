@@ -70,7 +70,7 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                     .collect();
 
                 let struct_fields = quote! {
-                    pub fn schema() -> serde_json::Value {
+                    fn schema() -> serde_json::Value {
                         let mut properties = serde_json::Map::new();
                         #(#props)*
                         serde_json::json!({
@@ -128,14 +128,14 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                 });
 
                 let from_tool_call_impl = quote! {
-                    pub fn try_from_tool_call(
-                        tool_call: &async_openai::types::ChatCompletionMessageToolCall,
+                    fn try_from_tool_call(
+                        tool_call: &async_openai::types::FunctionCall,
                     ) -> Result<Self, serde_json::Error>
                     where
                         Self: Sized,
                     {
                         use serde::de::Error;
-                        let tool_call_args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)?;
+                        let tool_call_args: serde_json::Value = serde_json::from_str(&tool_call.arguments)?;
                         let tool_call_args = tool_call_args.as_object().ok_or_else(|| serde_json::Error::custom("Invalid tool call arguments"))?;
                         Ok(Self {
                             #(#field_parsers,)*
@@ -166,10 +166,10 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
     };
 
     let expanded = quote! {
-        impl #ident {
+        impl ::metastable_runtime::ToolCall for #ident {
             #struct_fields
 
-            pub fn to_function_object() -> async_openai::types::FunctionObject {
+            fn to_function_object() -> async_openai::types::FunctionObject {
                 async_openai::types::FunctionObject {
                     name: #tool_name.to_string(),
                     description: Some(#tool_description.to_string()),

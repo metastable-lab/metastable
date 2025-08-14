@@ -43,17 +43,13 @@ impl Message for RoleplayMessage {
     fn owner(&self) -> &Uuid { &self.owner }
     
     fn content_type(&self) -> &MessageType { &self.content_type }
-    fn text_content(&self) -> Option<String> {
+    fn content(&self) -> Option<String> {
         if self.content.is_empty() {
             Some(RoleplayMessageType::batch_to_text(&self.content_v1))
         } else {
             Some(self.content.clone())
         }
     }
-    fn binary_content(&self) -> Option<Vec<u8>> { None }
-    fn url_content(&self) -> Option<String> { None }
-
-    fn created_at(&self) -> i64 { self.created_at }
 }
 
 impl RoleplayMessage {

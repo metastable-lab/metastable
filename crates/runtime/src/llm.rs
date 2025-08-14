@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use async_openai::{config::OpenAIConfig, Client};
 use async_openai::types::{
     ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionToolArgs, 
-    CompletionUsage, CreateChatCompletionRequestArgs, FunctionCall, FinishReason
+    CompletionUsage, CreateChatCompletionRequestArgs, FunctionCall, FinishReason, FunctionObject
 };
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
@@ -16,26 +16,27 @@ pub struct LLMRunResponse {
     pub caller: Uuid,
     pub content: String,
     pub usage: CompletionUsage,
-    pub maybe_function_call: Vec<FunctionCall>,
     pub finish_reason: Option<FinishReason>,
     pub system_config: SystemConfig,
     pub misc_value: Option<serde_json::Value>,
+}
+
+// implemented inside the llm-macros crate
+pub trait ToolCall: std::fmt::Debug + Sized + Clone + Send + Sync + 'static {
+    fn schema() -> serde_json::Value;
+    fn try_from_tool_call(tool_call: &FunctionCall) -> Result<Self, serde_json::Error>;
+    fn to_function_object() -> FunctionObject;
 }
 
 pub trait LlmInput: std::fmt::Debug + Send + Sync {
     fn caller(&self) -> &Uuid;
     fn build(&self) -> Result<Vec<ChatCompletionRequestMessage>>;
 }
-pub trait LlmOutput: std::fmt::Debug + Send + Sync + Sized {
-    fn raw_response(&self) -> &LLMRunResponse;
-    fn build_from(raw_llm_response: &LLMRunResponse) -> Result<Self>;
-}
 
 #[async_trait::async_trait]
-pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized {
+pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized + ToolCall {
     const NAME: &'static str;
     type Input: LlmInput;
-    type Output: LlmOutput;
 
     fn system_prompt(system_config: &SystemConfig, input: &Self::Input) -> String;
 
@@ -43,7 +44,7 @@ pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized {
         client: &Arc<Client<OpenAIConfig>>,
         system_config: &SystemConfig,
         input: &Self::Input
-    ) -> Result<Self::Output> {
+    ) -> Result<(LLMRunResponse, Self)> {
         tracing::debug!("[LlmCall::call] Calling LLM: {}", Self::NAME);
 
         let system_prompt = Self::system_prompt(system_config, &input);
@@ -96,17 +97,23 @@ pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized {
             .map(|tool_call| tool_call.function)
             .collect::<Vec<_>>();
 
-        let llm_response = LLMRunResponse {
+        if maybe_function_call.len() == 0 {
+            return Err(anyhow!("[LlmCall::call] No function call in the response"));
+        }
+
+        if maybe_function_call.len() > 1 {
+            return Err(anyhow!("[LlmCall::call] Multiple function calls in the response"));
+        }
+
+        let output = Self::try_from_tool_call(&maybe_function_call[0])?;
+
+        Ok((LLMRunResponse {
             caller: input.caller().clone(),
             content,
             usage,
-            maybe_function_call: maybe_function_call.clone(),
             finish_reason,
             system_config: system_config.clone(),
             misc_value: None,
-        };
-
-        let output = Self::Output::build_from(&llm_response)?;
-        Ok(output)
+        }, output))
     }
 }

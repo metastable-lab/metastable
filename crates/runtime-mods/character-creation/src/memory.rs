@@ -36,7 +36,7 @@ impl Memory for CharacterCreationMemory {
         Ok(())
     }
 
-    async fn add_messages(&self, messages: &[CharacterCreationMessage]) -> Result<()> {
+    async fn add(&self, messages: &[CharacterCreationMessage]) -> Result<()> {
         if messages.len() == 0 {
             return Ok(());
         }

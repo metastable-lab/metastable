@@ -1,6 +1,6 @@
 mod toolcall;
+mod message;
 mod memory;
-mod output_client;
 mod runtime_client;
 pub mod user;
 mod cards;
@@ -11,15 +11,15 @@ mod llm;
 mod engine;
 
 pub use toolcall::ExecutableFunctionCall;
-pub use output_client::OutputClient;
 pub use runtime_client::{LLMRunResponse, RuntimeClient};
 pub use user::{UserRole, User, UserUsage, UserUrl, UserReferral, UserBadge, UserFollow};
 pub use system_config::SystemConfig;
 pub use env::RuntimeEnv;
-pub use memory::{MessageRole, MessageType, Message, Memory};
+pub use message::{MessageRole, MessageType, Message};
+pub use memory::Memory;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use client::ModuleClient;
-pub use llm::{LlmInput, LlmOutput, LlmCall};
+pub use llm::{LlmInput, LlmCall, ToolCall};
 pub use engine::Engine;
 
 pub use metastable_llm_macros::LlmTool;

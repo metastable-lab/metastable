@@ -59,9 +59,8 @@ pub struct SummarizeCharacter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_openai::types::{
-        ChatCompletionMessageToolCall, FunctionObject,
-    };
+    use metastable_runtime::ToolCall;
+    use async_openai::types::{FunctionCall, FunctionObject};
     use serde_json::json;
 
     #[tokio::test]
@@ -156,24 +155,17 @@ mod tests {
         let generated_function_json = serde_json::to_value(&generated_function).unwrap();
         let expected_function_json = serde_json::to_value(&expected_function).unwrap();
 
-        println!("generated_function_json: {}", generated_function_json.to_string());
-        println!("expected_function_json: {}", expected_function_json.to_string());
-
         assert_eq!(generated_function_json, expected_function_json);
     }
 
     #[tokio::test]
     async fn test_parse_tool_call() {
         let tool_call_json = json!({
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "summarize_character",
-                "arguments": "{\n  \"name\": \"艾拉\",\n  \"description\": \"一位充满活力的年轻探险家，总是渴望发现新奇事物。\",\n  \"gender\": \"Female\",\n  \"language\": \"Chinese\",\n  \"prompts_personality\": \"热情、好奇、勇敢\",\n  \"prompts_scenario\": \"在一个古老的森林里寻找传说中的遗迹。\",\n  \"prompts_example_dialogue\": \"哇，你看那边！那是什么？我们快去看看！\",\n  \"prompts_first_message\": \"你好，我是艾拉，你愿意和我一起去冒险吗？\",\n  \"background_stories\": [\n    { \"type\": \"职业\", \"content\": \"探险家\" },\n    { \"type\": \"成长环境\", \"content\": \"在一个充满冒险故事的家庭长大\" }\n  ],\n  \"behavior_traits\": [\n    { \"type\": \"行为举止\", \"content\": \"总是充满活力，喜欢跑跑跳跳\" }\n  ],\n  \"relationships\": [\n    { \"type\": \"朋友\", \"content\": \"与各种各样的生物都能成为朋友\" }\n  ],\n  \"skills_and_interests\": [\n    { \"type\": \"兴趣爱好\", \"content\": \"收集各种奇特的石头和植物\" }\n  ],\n  \"additional_example_dialogue\": [],\n  \"additional_info\": [],\n  \"tags\": [\"探险\", \"年轻\", \"女性\"] \n}"
-            }
+            "name": "summarize_character",
+            "arguments": "{\n  \"name\": \"艾拉\",\n  \"description\": \"一位充满活力的年轻探险家，总是渴望发现新奇事物。\",\n  \"gender\": \"Female\",\n  \"language\": \"Chinese\",\n  \"prompts_personality\": \"热情、好奇、勇敢\",\n  \"prompts_scenario\": \"在一个古老的森林里寻找传说中的遗迹。\",\n  \"prompts_example_dialogue\": \"哇，你看那边！那是什么？我们快去看看！\",\n  \"prompts_first_message\": \"你好，我是艾拉，你愿意和我一起去冒险吗？\",\n  \"background_stories\": [\n    { \"type\": \"职业\", \"content\": \"探险家\" },\n    { \"type\": \"成长环境\", \"content\": \"在一个充满冒险故事的家庭长大\" }\n  ],\n  \"behavior_traits\": [\n    { \"type\": \"行为举止\", \"content\": \"总是充满活力，喜欢跑跑跳跳\" }\n  ],\n  \"relationships\": [\n    { \"type\": \"朋友\", \"content\": \"与各种各样的生物都能成为朋友\" }\n  ],\n  \"skills_and_interests\": [\n    { \"type\": \"兴趣爱好\", \"content\": \"收集各种奇特的石头和植物\" }\n  ],\n  \"additional_example_dialogue\": [],\n  \"additional_info\": [],\n  \"tags\": [\"探险\", \"年轻\", \"女性\"] \n}"
         });
 
-        let tool_call: ChatCompletionMessageToolCall =
+        let tool_call: FunctionCall =
             serde_json::from_value(tool_call_json).unwrap();
 
         let summary = SummarizeCharacter::try_from_tool_call(&tool_call).unwrap();

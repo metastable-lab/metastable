@@ -27,9 +27,5 @@ impl Message for Mem0Messages {
     fn owner(&self) -> &Uuid { &self.user_id }
     
     fn content_type(&self) -> &MessageType { &self.content_type }
-    fn text_content(&self) -> Option<String> { Some(self.content.clone()) }
-    fn binary_content(&self) -> Option<Vec<u8>> { None }
-    fn url_content(&self) -> Option<String> { None }
-
-    fn created_at(&self) -> i64 { self.created_at }
+    fn content(&self) -> Option<String> { Some(self.content.clone()) }
 }

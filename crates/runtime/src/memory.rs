@@ -1,105 +1,7 @@
-use anyhow::{anyhow, Result};
-use async_openai::types::{
-    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, 
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, 
-    ChatCompletionRequestUserMessageArgs
-};
-use serde::{Deserialize, Serialize};
-use metastable_database::TextCodecEnum;
+use anyhow::Result;
 
 use sqlx::types::Uuid;
-use crate::SystemConfig;
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
-#[text_codec(format = "paren", storage_lang = "en")]
-pub enum MessageRole {
-    System,
-
-    #[default]
-    User,
-
-    Assistant,
-    ToolCall,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
-#[text_codec(format = "paren", storage_lang = "en")]
-pub enum MessageType {
-    #[default]
-    Text,
-
-    Image(String),
-    Audio(String),
-}
-
-pub trait Message: Clone + Send + Sync + 'static {
-    fn id(&self) -> &Uuid;
-
-    fn role(&self) -> &MessageRole;
-    fn owner(&self) -> &Uuid;
-
-    fn content_type(&self) -> &MessageType;
-    fn text_content(&self) -> Option<String>;
-    fn binary_content(&self) -> Option<Vec<u8>>;
-    fn url_content(&self) -> Option<String>;
-
-    fn created_at(&self) -> i64;
-
-    fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
-        message
-            .iter()
-            .map(|m| {
-                Ok(match m.role() {
-                    MessageRole::System => ChatCompletionRequestMessage::System(
-                        ChatCompletionRequestSystemMessageArgs::default()
-                            .content(m.text_content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::User => ChatCompletionRequestMessage::User(
-                        ChatCompletionRequestUserMessageArgs::default()
-                            .content(m.text_content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::Assistant => ChatCompletionRequestMessage::Assistant(
-                        ChatCompletionRequestAssistantMessageArgs::default()
-                            .content(m.text_content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::ToolCall => ChatCompletionRequestMessage::Tool(
-                        ChatCompletionRequestToolMessageArgs::default()
-                            .content(m.text_content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                })
-            })
-            .collect()
-    }
-
-    fn pack_flat_messages(messages: &[Self]) -> Result<String> {
-        let mut flat_messages = Vec::new();
-        for message in messages {
-            match message.role() {
-                MessageRole::System => {
-                    flat_messages.push(format!("system: {}", message.text_content().unwrap_or_default()));
-                }
-                MessageRole::User => {
-                    flat_messages.push(format!("user: {}", message.text_content().unwrap_or_default()));
-                }
-                MessageRole::Assistant => {
-                    flat_messages.push(format!("assistant: {}", message.text_content().unwrap_or_default()));
-                }
-                MessageRole::ToolCall => {
-                    flat_messages.push(format!("tool_call: {}", message.text_content().unwrap_or_default()));
-                }
-            }
-        }
-        Ok(flat_messages.join("\n"))
-    }
-}
+use crate::{Message, SystemConfig};
 
 #[async_trait::async_trait]
 pub trait Memory: Clone + Send + Sync + 'static {
@@ -107,7 +9,7 @@ pub trait Memory: Clone + Send + Sync + 'static {
 
     async fn initialize(&mut self) -> Result<()>;
 
-    async fn add_messages(&self, messages: &[Self::MessageType]) -> Result<()>;
+    async fn add(&self, messages: &[Self::MessageType]) -> Result<()>;
     async fn search(&self, message: &Self::MessageType, limit: u64) -> Result<
         (Vec<Self::MessageType>, SystemConfig)
     >;
@@ -115,4 +17,135 @@ pub trait Memory: Clone + Send + Sync + 'static {
     async fn update(&self, messages: &[Self::MessageType]) -> Result<()>;
     async fn delete(&self, message_ids: &[Uuid]) -> Result<()>;
     async fn reset(&self, user_id: &Uuid) -> Result<()>;
+}
+
+#[macro_export]
+macro_rules! define_composed_memory {
+    (
+        $struct_name:ident,
+        $message_enum_name:ident,
+        $($field_name:ident: ($mem_ty:ty, $msg_ty:ty)),+
+    ) => {
+        #[derive(Clone)]
+        pub struct $struct_name {
+            $(pub $field_name: $mem_ty),+
+        }
+
+        #[derive(Clone, Debug)]
+        pub enum $message_enum_name {
+            $($field_name($msg_ty)),+
+        }
+
+        $(
+            impl From<$msg_ty> for $message_enum_name {
+                fn from(m: $msg_ty) -> Self {
+                    $message_enum_name::$field_name(m)
+                }
+            }
+        )+
+
+        impl $crate::Message for $message_enum_name {
+            fn id(&self) -> &Uuid {
+                match self {
+                    $($message_enum_name::$field_name(m) => m.id()),+
+                }
+            }
+
+            fn role(&self) -> &$crate::message::MessageRole {
+                match self {
+                    $($message_enum_name::$field_name(m) => m.role()),+
+                }
+            }
+
+            fn owner(&self) -> &Uuid {
+                match self {
+                    $($message_enum_name::$field_name(m) => m.owner()),+
+                }
+            }
+
+            fn content_type(&self) -> &$crate::message::MessageType {
+                match self {
+                    $($message_enum_name::$field_name(m) => m.content_type()),+
+                }
+            }
+
+            fn content(&self) -> Option<String> {
+                match self {
+                    $($message_enum_name::$field_name(m) => m.content()),+
+                }
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl $crate::memory::Memory for $struct_name {
+            type MessageType = $message_enum_name;
+
+            async fn initialize(&mut self) -> anyhow::Result<()> {
+                $(self.$field_name.initialize().await?;)+
+                Ok(())
+            }
+
+            async fn add(&self, messages: &[Self::MessageType]) -> anyhow::Result<()> {
+                $(
+                    let mut mem_messages = Vec::new();
+                    for msg in messages {
+                        if let $message_enum_name::$field_name(m) = msg {
+                            mem_messages.push(m.clone());
+                        }
+                    }
+                    if !mem_messages.is_empty() {
+                        self.$field_name.add(&mem_messages).await?;
+                    }
+                )+
+                Ok(())
+            }
+
+            async fn search(
+                &self,
+                message: &Self::MessageType,
+                limit: u64
+            ) -> anyhow::Result<(Vec<Self::MessageType>, $crate::SystemConfig)> {
+                let mut all_results = Vec::new();
+                let mut final_config = $crate::SystemConfig::default();
+
+                $(
+                    let temp_message = <$msg_ty>::from_message(message);
+                    let (results, config) = self.$field_name.search(&temp_message, limit).await?;
+                    all_results.extend(results.into_iter().map($message_enum_name::from));
+                    final_config.merge(config);
+                )+
+
+                all_results.sort_by_key(|m| m.created_at());
+                all_results.dedup_by_key(|m| *m.id());
+                let limited_results = all_results.into_iter().take(limit as usize).collect();
+
+                Ok((limited_results, final_config))
+            }
+
+            async fn update(&self, messages: &[Self::MessageType]) -> anyhow::Result<()> {
+                $(
+                    let mut mem_messages = Vec::new();
+                    for msg in messages {
+                        if let $message_enum_name::$field_name(m) = msg {
+                            mem_messages.push(m.clone());
+                        }
+                    }
+                    if !mem_messages.is_empty() {
+                        self.$field_name.update(&mem_messages).await?;
+                    }
+                )+
+                Ok(())
+            }
+
+            async fn delete(&self, message_ids: &[Uuid]) -> anyhow::Result<()> {
+                $(self.$field_name.delete(message_ids).await?;)+
+                Ok(())
+            }
+
+            async fn reset(&self, user_id: &Uuid) -> anyhow::Result<()> {
+                $(self.$field_name.reset(user_id).await?;)+
+                Ok(())
+            }
+        }
+    };
 }

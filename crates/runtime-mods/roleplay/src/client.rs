@@ -202,7 +202,7 @@ impl RuntimeClient for RoleplayRuntimeClient {
 
         let assistant_message = llm_response_to_message(&message, &response).await;
         tracing::debug!("[RoleplayRuntimeClient::on_new_message] Assistant message took {:?}", time.elapsed());
-        self.memory.add_messages(&[
+        self.memory.add(&[
             message.clone(),
             assistant_message.clone(),
         ]).await?;

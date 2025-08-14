@@ -1,7 +1,7 @@
 use crate::tools::SendMessage;
 use sqlx::types::{Json, Uuid};
 use metastable_common::get_current_timestamp;
-use metastable_runtime::SystemConfig;
+use metastable_runtime::{SystemConfig, ToolCall};
 
 pub fn get_system_configs_for_roleplay() -> SystemConfig {
     SystemConfig {
