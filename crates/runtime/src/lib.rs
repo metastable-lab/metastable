@@ -6,9 +6,9 @@ pub mod user;
 mod cards;
 mod system_config;
 mod env;
-mod client;
 mod llm;
 mod engine;
+mod prompt;
 
 pub use toolcall::ExecutableFunctionCall;
 pub use runtime_client::{LLMRunResponse, RuntimeClient};
@@ -18,8 +18,7 @@ pub use env::RuntimeEnv;
 pub use message::{MessageRole, MessageType, Message};
 pub use memory::Memory;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
-pub use client::ModuleClient;
-pub use llm::{Agent, ToolCall};
+pub use llm::{Agent, ToolCall, LLMRunResponse as NewLLMRunResponse};
 pub use engine::Engine;
 
 pub use metastable_llm_macros::LlmTool;

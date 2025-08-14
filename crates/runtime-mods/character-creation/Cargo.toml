@@ -8,7 +8,7 @@ metastable-runtime-roleplay = { path = "../roleplay" }
 metastable-runtime = { path = "../../runtime" }
 metastable-common = { path = "../../common" }
 metastable-database = { path = "../../database" }
-metastable-db-macros = { path = "../../db-macros" }
+metastable-clients = { path = "../../clients" }
 
 serde.workspace = true
 serde_json.workspace = true

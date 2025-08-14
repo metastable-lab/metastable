@@ -1,6 +1,6 @@
 use std::env;
 
-use metastable_runtime::define_module_client;
+use metastable_common::define_module_client;
 
 use async_openai::{ config::OpenAIConfig, Client };
 

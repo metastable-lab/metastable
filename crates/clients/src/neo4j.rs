@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, HashSet}, env};
 
 use anyhow::Result;
-use metastable_runtime::{define_module_client, ModuleClient};
+use metastable_common::{define_module_client, ModuleClient};
 use neo4rs::{query, ConfigBuilder, Graph};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;

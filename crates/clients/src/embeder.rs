@@ -1,7 +1,7 @@
 use std::env;
 
 use anyhow::Result;
-use metastable_runtime::{define_module_client, ModuleClient};
+use metastable_common::{define_module_client, ModuleClient};
 
 use async_openai::{
     config::OpenAIConfig, 

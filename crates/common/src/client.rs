@@ -31,7 +31,7 @@ macro_rules! define_module_client {
         }
 
         #[async_trait::async_trait]
-        impl ::metastable_runtime::ModuleClient for $struct_name {
+        impl ::metastable_common::ModuleClient for $struct_name {
             const NAME: &'static str = $client_name;
             type Client = std::sync::Arc<$client_type>;
 
