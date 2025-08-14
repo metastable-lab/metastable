@@ -30,26 +30,22 @@ pub struct SummarizeCharacter {
     pub prompts_first_message: String,
     #[llm_tool(
         description = "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。",
-        enum_lang = "zh",
-        custom_parser = true
+        enum_lang = "zh"
     )]
     pub background_stories: Vec<BackgroundStories>,
     #[llm_tool(
         description = "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh",
-        custom_parser = true
+        enum_lang = "zh"
     )]
     pub behavior_traits: Vec<BehaviorTraits>,
     #[llm_tool(
         description = "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh",
-        custom_parser = true
+        enum_lang = "zh"
     )]
     pub relationships: Vec<Relationships>,
     #[llm_tool(
         description = "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh",
-        custom_parser = true
+        enum_lang = "zh"
     )]
     pub skills_and_interests: Vec<SkillsAndInterests>,
     #[llm_tool(description = "追加对话风格示例（多条）。")]

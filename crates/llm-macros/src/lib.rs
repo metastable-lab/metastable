@@ -4,7 +4,7 @@ use darling::{FromDeriveInput, FromField};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, GenericArgument, Meta, PathArguments, Type,
+    parse_macro_input, Data, DeriveInput, Fields, GenericArgument, PathArguments, Type,
 };
 
 #[derive(FromDeriveInput, Default)]
@@ -19,7 +19,6 @@ struct ToolOpts {
 struct FieldOpts {
     description: Option<String>,
     enum_lang: Option<String>,
-    custom_parser: bool,
 }
 
 #[proc_macro_derive(LlmTool, attributes(llm_tool))]
@@ -29,9 +28,7 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
     let ident = &input.ident;
 
     let tool_name = opts.name.unwrap_or_else(|| ident.to_string());
-    let tool_description = opts
-        .description
-        .unwrap_or_else(|| get_doc_comment(&input.attrs));
+    let tool_description = opts.description.unwrap_or_default();
 
     let (struct_fields, from_tool_call_impl) = match &input.data {
         Data::Struct(s) => {
@@ -40,12 +37,10 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                     let field_opts = FieldOpts::from_field(f).expect("Wrong field options");
                     let field_name = f.ident.as_ref().unwrap();
                     let field_name_str = field_name.to_string();
-                    let _field_ty = &f.ty;
-                    let description = field_opts
-                        .description
-                        .unwrap_or_else(|| get_doc_comment(&f.attrs));
+                    let field_ty = &f.ty;
+                    let description = field_opts.description.unwrap_or_default();
                     let schema_call =
-                        get_schema_for_type(_field_ty, field_opts.enum_lang.as_deref());
+                        get_schema_for_type(field_ty, field_opts.enum_lang.as_deref());
                     quote! {
                         let mut schema = #schema_call;
                         if let Some(obj) = schema.as_object_mut() {
@@ -90,9 +85,8 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                     let field_opts = FieldOpts::from_field(f).expect("Wrong field options");
                     let field_name = f.ident.as_ref().unwrap();
                     let field_name_str = field_name.to_string();
-                    let _field_ty = &f.ty;
 
-                    if field_opts.custom_parser {
+                    if field_opts.enum_lang.is_some() {
                         if let Type::Path(type_path) = &f.ty {
                             if let Some(segment) = type_path.path.segments.last() {
                                 if segment.ident == "Vec" {
@@ -186,46 +180,9 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
 
             #from_tool_call_impl
         }
-
-        impl ::metastable_database::TextPromptCodec for #ident {
-            fn to_lang(&self, _lang: &str) -> String {
-                String::new()
-            }
-            fn parse_any_lang(text: &str) -> anyhow::Result<Self>
-            where
-                Self: Sized,
-            {
-                serde_json::from_str(text).map_err(anyhow::Error::from)
-            }
-            fn parse_with_type_and_content(_type_str: &str, _content_str: &str) -> anyhow::Result<Self>
-            where
-                Self: Sized,
-            {
-                anyhow::bail!("This function is not implemented for this type")
-            }
-        }
     };
 
     TokenStream::from(expanded)
-}
-
-fn get_doc_comment(attrs: &[syn::Attribute]) -> String {
-    attrs
-        .iter()
-        .filter_map(|attr| {
-            if attr.path().is_ident("doc") {
-                if let Meta::NameValue(mnv) = &attr.meta {
-                    if let syn::Expr::Lit(lit) = &mnv.value {
-                        if let syn::Lit::Str(lit_str) = &lit.lit {
-                            return Some(lit_str.value().trim().to_string());
-                        }
-                    }
-                }
-            }
-            None
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>) -> proc_macro2::TokenStream {
