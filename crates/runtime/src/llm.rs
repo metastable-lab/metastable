@@ -7,17 +7,18 @@ use async_openai::types::{
     CompletionUsage, CreateChatCompletionRequestArgs, FunctionCall, FinishReason, FunctionObject
 };
 use serde::{Deserialize, Serialize};
-use sqlx::types::Uuid;
+use sqlx::types::{Json, Uuid};
 
 use crate::SystemConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LLMRunResponse {
     pub caller: Uuid,
+    pub system_config_name: &'static str,
+
     pub content: String,
     pub usage: CompletionUsage,
     pub finish_reason: Option<FinishReason>,
-    pub system_config: SystemConfig,
     pub misc_value: Option<serde_json::Value>,
 }
 
@@ -28,65 +29,82 @@ pub trait ToolCall: std::fmt::Debug + Sized + Clone + Send + Sync + 'static {
     fn to_function_object() -> FunctionObject;
 }
 
-pub trait LlmInput: std::fmt::Debug + Send + Sync {
-    fn caller(&self) -> &Uuid;
-    fn build(&self) -> Result<Vec<ChatCompletionRequestMessage>>;
-}
-
 #[async_trait::async_trait]
-pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized + ToolCall {
-    const NAME: &'static str;
-    type Input: LlmInput;
+pub trait Agent: std::fmt::Debug + Send + Sync + Sized {
+    const SYSTEM_CONFIG_NAME: &'static str;
+    type Tool: ToolCall;
+    type Input: std::fmt::Debug + Send + Sync + Clone + Default;
 
-    fn system_prompt(system_config: &SystemConfig, input: &Self::Input) -> String;
+    fn system_prompt(&self) -> String;
+    fn model() -> &'static str { "google/gemini-2.5-flash" }
+    fn base_url() -> &'static str { "https://openrouter.ai/api/v1" }
+    fn temperature() -> f32 { 0.7 }
+    fn max_tokens() -> i32 { 20000 }
+
+    fn caller(&self) -> &Uuid;
+    async fn input(&self, input: &Self::Input) -> Result<Vec<ChatCompletionRequestMessage>>;
+    async fn output(&self, output: &LLMRunResponse) -> Result<()>;
+
+    fn to_system_config(&self) -> SystemConfig {
+        SystemConfig {
+            id: Uuid::new_v4(),
+            name: Self::SYSTEM_CONFIG_NAME.to_string(),
+            system_prompt_version: 0,
+            system_prompt: self.system_prompt(),
+            openai_model: Self::model().to_string(),
+            openai_temperature: Self::temperature(),
+            openai_max_tokens: Self::max_tokens(),
+            openai_base_url: Self::base_url().to_string(),
+            functions: Json(vec![Self::Tool::to_function_object()]),
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
 
     async fn call(
-        client: &Arc<Client<OpenAIConfig>>,
-        system_config: &SystemConfig,
-        input: &Self::Input
-    ) -> Result<(LLMRunResponse, Self)> {
-        tracing::debug!("[LlmCall::call] Calling LLM: {}", Self::NAME);
+        &self, client: &Arc<Client<OpenAIConfig>>, input: &Self::Input
+    ) -> Result<(LLMRunResponse, Self::Tool)> {
+        tracing::debug!("[Agent::call] Calling Agent: {}", Self::SYSTEM_CONFIG_NAME);
 
-        let system_prompt = Self::system_prompt(system_config, &input);
+        let system_prompt = self.system_prompt();
         let system = ChatCompletionRequestMessage::System(
             ChatCompletionRequestSystemMessageArgs::default()
                 .content(system_prompt)
                 .build()
-                .expect("[LlmCall::call] System message should build")
+                .expect("[Agent::call] System message should build")
         );
 
         let mut messages = vec![system];
-        let input_messages = input.build()?;
+        let input_messages = self.input(input).await?;
 
         if input_messages.len() == 0 {
-            return Err(anyhow!("[LlmCall::call] No input messages"));
+            return Err(anyhow!("[Agent::call] No input messages"));
         }
         messages.extend(input_messages);
 
-        let tools = system_config.functions.iter()
-            .map(|function| ChatCompletionToolArgs::default()
-                .function(function.clone())
+        let tools = vec![
+            ChatCompletionToolArgs::default()
+                .function(Self::Tool::to_function_object())
                 .build()
-                .expect("[LlmCall::call] Tool should build")
-            )
-            .collect::<Vec<_>>();
+                .expect("[Agent::call] Tool should build")
+        ];
 
         let request = CreateChatCompletionRequestArgs::default()
-            .model(system_config.openai_model.clone())
+            .model(Self::model())
             .messages(messages)
             .tools(tools)
-            .temperature(system_config.openai_temperature)
-            .max_tokens(system_config.openai_max_tokens as u32)
+            .temperature(Self::temperature())
+            .max_tokens(Self::max_tokens() as u32)
             .build()?;
 
         let response = client.chat().create(request).await?;
         let choice = response.choices.first()
-            .ok_or(anyhow!("[LlmCall::call] No response from AI inference server for model {}", system_config.openai_model))?;
+            .ok_or(anyhow!("[Agent::call] No response from AI inference server for model {}", Self::model()))?;
 
         let message = choice.message.clone();
         let finish_reason = choice.finish_reason.clone();
         let usage = response.usage
-            .ok_or(anyhow!("[LlmCall::call] Model {} returned no usage", system_config.openai_model))?
+            .ok_or(anyhow!("[Agent::call] Model {} returned no usage", Self::model()))?
             .clone();
 
         let content = message.content.clone().unwrap_or_default();
@@ -98,22 +116,20 @@ pub trait LlmCall: std::fmt::Debug + Send + Sync + Sized + ToolCall {
             .collect::<Vec<_>>();
 
         if maybe_function_call.len() == 0 {
-            return Err(anyhow!("[LlmCall::call] No function call in the response"));
+            return Err(anyhow!("[Agent::call] No function call in the response"));
         }
 
         if maybe_function_call.len() > 1 {
-            return Err(anyhow!("[LlmCall::call] Multiple function calls in the response"));
+            return Err(anyhow!("[Agent::call] Multiple function calls in the response"));
         }
 
-        let output = Self::try_from_tool_call(&maybe_function_call[0])?;
-
         Ok((LLMRunResponse {
-            caller: input.caller().clone(),
+            caller: self.caller().clone(),
+            system_config_name: Self::SYSTEM_CONFIG_NAME,
             content,
             usage,
             finish_reason,
-            system_config: system_config.clone(),
             misc_value: None,
-        }, output))
+        }, Self::Tool::try_from_tool_call(&maybe_function_call[0])?))
     }
 }

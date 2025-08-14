@@ -19,7 +19,7 @@ pub use message::{MessageRole, MessageType, Message};
 pub use memory::Memory;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use client::ModuleClient;
-pub use llm::{LlmInput, LlmCall, ToolCall};
+pub use llm::{Agent, ToolCall};
 pub use engine::Engine;
 
 pub use metastable_llm_macros::LlmTool;

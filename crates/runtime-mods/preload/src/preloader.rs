@@ -90,6 +90,7 @@ impl Preloader {
                 }
 
                 if needs_update {
+                    db_config.system_prompt_version += 1;
                     db_config.update(&mut *tx).await?;
                 }
             }
