@@ -1,5 +1,4 @@
-use async_openai::types::FunctionObject;
-use serde_json::json;
+use crate::tools::ShowStoryOptions;
 use sqlx::types::{Json, Uuid};
 use metastable_common::get_current_timestamp;
 use metastable_runtime::SystemConfig;
@@ -47,26 +46,7 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
         openai_model: "google/gemini-2.5-flash".to_string(),
         openai_temperature: 0.7,
         openai_max_tokens: 5000,
-        functions: Json(vec![
-            FunctionObject {
-                name: "show_story_options".to_string(),
-                description: Some("向用户呈现角色创建的选项。".to_string()),
-                parameters: Some(json!({
-                    "type": "object",
-                    "properties": {
-                        "options": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            },
-                            "description": "向用户呈现的角色创建选项列表，内容也需要是中文。"
-                        }
-                    },
-                    "required": ["options"]
-                }).into()),
-                strict: Some(true),
-            }
-        ]),
+        functions: Json(vec![ShowStoryOptions::to_function_object()]),
         updated_at: get_current_timestamp(),
         created_at: get_current_timestamp(),
     }

@@ -1,5 +1,4 @@
-use async_openai::types::FunctionObject;
-use serde_json::json;
+use crate::tools::SendMessage;
 use sqlx::types::{Json, Uuid};
 use metastable_common::get_current_timestamp;
 use metastable_runtime::SystemConfig;
@@ -19,7 +18,8 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
 1.  **`tool_call` (你的实际回应)**:
     -   **必须**存在。**绝对禁止**为空或省略。
     -   **必须**调用 `send_message` 函数。
-    -   你所有的叙事、对话、动作和选项都**必须**放在这个函数调用的 `messages` 参数里。
+    -   你所有的叙事、对话、和动作都**必须**放在这个函数调用的 `messages` 参数里。
+    -   所有的故事选项都**必须**放在这个函数调用的 `options` 参数里。
     -   **`messages` 参数结构详解**:
         -   这是一个数组，每个元素都是一个包含 `type` 和 `content` 的对象。
         -   `type` 决定了消息的性质:
@@ -27,8 +27,10 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
             -   `"scenario"`: 场景、环境或氛围的描述。
             -   `"innerThoughts"`: 角色的内心想法或心理活动。
             -   `"chat"`: 角色说出的话。
-            -   `"options"`: 提供给用户的选择，其 `content` 必须是一个字符串数组。
+            -   `"text"`: 独白或任何不适合其他类型的文本。
         -   你应该组合使用这些类型来创造丰富、多层次的回应。
+    -   **`options` 参数结构详解**:
+        -   这是一个字符串数组，用于向用户提供故事选项。
 
 2.  **`content` (固定标识符)**:
     -   **必须**存在。
@@ -132,48 +134,7 @@ pub fn get_system_configs_for_char_creation() -> SystemConfig {
         openai_model: "google/gemini-2.5-flash".to_string(),
         openai_temperature: 0.7,
         openai_max_tokens: 20000,
-        functions: Json(vec![
-            FunctionObject {
-                name: "send_message".to_string(),
-                description: Some("用于向用户发送结构化消息的唯一工具。你必须使用此工具来发送所有回应，包括对话、动作、场景描述和选项。".to_string()),
-                parameters: Some(json!({
-                    "type": "object",
-                    "properties": {
-                        "messages": {
-                            "type": "array",
-                            "description": "一个包含多个消息片段的数组，按顺序组合成完整的回复。",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "type": {
-                                        "type": "string",
-                                        "description": "消息片段的类型。必须是 'action', 'scenario', 'innerThoughts', 'chat', 或 'options' 之一。",
-                                        "enum": ["action", "scenario", "innerThoughts", "chat", "options"]
-                                    },
-                                    "content": {
-                                        "description": "消息片段的内容。如果类型是'options'，则为一个字符串数组；否则为一个字符串。",
-                                        "oneOf": [
-                                            {
-                                                "type": "string"
-                                            },
-                                            {
-                                                "type": "array",
-                                                "items": {
-                                                    "type": "string"
-                                                }
-                                            }
-                                        ]
-                                    }
-                                },
-                                "required": ["type", "content"]
-                            }
-                        }
-                    },
-                    "required": ["messages"]
-                }).into()),
-                strict: Some(true),
-            }
-        ]),
+        functions: Json(vec![SendMessage::to_function_object()]),
         updated_at: get_current_timestamp(),
         created_at: get_current_timestamp(),
     }

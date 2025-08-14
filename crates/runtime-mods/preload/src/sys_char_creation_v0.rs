@@ -1,94 +1,10 @@
-use async_openai::types::FunctionObject;
-use serde_json::json;
-use sqlx::types::{Json, Uuid};
+use crate::tools::SummarizeCharacter;
 use metastable_common::get_current_timestamp;
 use metastable_runtime::SystemConfig;
+use sqlx::types::{Json, Uuid};
 
 pub fn get_system_configs_for_char_creation() -> SystemConfig {
-    let functions = vec![
-        FunctionObject {
-            name: "summarize_character".to_string(),
-            description: Some("根据与用户的对话，总结并创建一个完整的角色档案。".to_string()),
-            parameters: Some(json!({
-                "type": "object",
-                "properties": {
-                    "name": { "type": "string", "description": "角色的名字" },
-                    "description": { "type": "string", "description": "对角色的一段简短描述，包括其核心身份、外貌特点等。" },
-                    "gender": { "type": "string", "enum": ["Male", "Female", "Multiple", "Others"], "description": "角色的性别" },
-                    "language": { "type": "string", "enum": ["English", "Chinese", "Japanese", "Korean", "Others"], "description": "角色的主要使用语言" },
-                    "prompts_personality": { "type": "string", "description": "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。" },
-                    "prompts_scenario": { "type": "string", "description": "角色所处的典型场景或背景故事。这会影响角色扮演的开场。" },
-                    "prompts_example_dialogue": { "type": "string", "description": "一段示例对话，展示角色的说话风格和语气。" },
-                    "prompts_first_message": { "type": "string", "description": "角色在对话开始时会说的第一句话。" },
-                    "background_stories": { 
-                        "type": "array",
-                        "description": "背景故事条目。严格对象格式：{ type: 中文前缀, content: 值 }。type 只能取以下之一。",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": { "type": "string", "enum": [
-                                    "职业", "童年经历", "成长环境", "重大经历", "价值观", "过去的遗憾或创伤，无法释怀的事", "梦想，渴望的事情，追求的事情", "其他"
-                                ]},
-                                "content": { "type": "string" }
-                            },
-                            "required": ["type", "content"]
-                        }
-                    },
-                    "behavior_traits": { 
-                        "type": "array",
-                        "description": "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": { "type": "string", "enum": [
-                                    "行为举止", "外貌特征", "穿搭风格", "情绪表达方式", "个人沟通习惯", "与用户的沟通习惯", "个人行为特征", "与用户的沟通特征", "其他"
-                                ]},
-                                "content": { "type": "string" }
-                            },
-                            "required": ["type", "content"]
-                        }
-                    },
-                    "relationships": { 
-                        "type": "array",
-                        "description": "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": { "type": "string", "enum": [
-                                    "亲密伴侣", "家庭", "朋友", "敌人", "社交圈", "其他"
-                                ]},
-                                "content": { "type": "string" }
-                            },
-                            "required": ["type", "content"]
-                        }
-                    },
-                    "skills_and_interests": { 
-                        "type": "array",
-                        "description": "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": { "type": "string", "enum": [
-                                    "职业技能", "生活技能", "兴趣爱好", "弱点，不擅长的领域", "优点，擅长的事情", "内心矛盾冲突", "性癖", "其他"
-                                ]},
-                                "content": { "type": "string" }
-                            },
-                            "required": ["type", "content"]
-                        }
-                    },
-                    "additional_example_dialogue": { "type": "array", "items": { "type": "string" }, "description": "追加对话风格示例（多条）。" },
-                    "additional_info": { "type": "array", "items": { "type": "string" }, "description": "任何无法归类但很重要的信息，以中文句子表达。" },
-                    "tags": { "type": "array", "items": { "type": "string" }, "description": "描述角色特点的标签，便于搜索和分类。" }
-                },
-                "required": [
-                    "name", "description", "gender", "language", 
-                    "prompts_personality", "prompts_scenario", "prompts_example_dialogue", "prompts_first_message",
-                    "background_stories", "behavior_traits", "relationships", "skills_and_interests", "tags"
-                ]
-            }).into()),
-            strict: Some(true),
-        }
-    ];
+    let functions = vec![SummarizeCharacter::to_function_object()];
 
     SystemConfig {
         id: Uuid::new_v4(),

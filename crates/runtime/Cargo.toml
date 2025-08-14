@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+metastable-llm-macros = { path = "../llm-macros" }
 metastable-common = { path = "../common" }
 metastable-database = { path = "../database" }
 

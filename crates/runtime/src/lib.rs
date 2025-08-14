@@ -21,3 +21,5 @@ pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use client::ModuleClient;
 pub use llm::{LlmInput, LlmOutput, LlmCall};
 pub use engine::Engine;
+
+pub use metastable_llm_macros::LlmTool;
