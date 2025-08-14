@@ -9,9 +9,9 @@ metastable-database = { path = "../database" }
 metastable-runtime = { path = "../runtime" }
 # metastable-service-api = { path = "../api" }
 
-# metastable-runtime-roleplay = { path = "../runtime-mods/roleplay" }
-# metastable-runtime-character-creation = { path = "../runtime-mods/character-creation" }
-# metastable-runtime-mem0 = { path = "../runtime-mods/mem0" }
+metastable-runtime-roleplay = { path = "../runtime-mods/roleplay", optional = true }
+metastable-runtime-character-creation = { path = "../runtime-mods/character-creation", optional = true }
+metastable-runtime-mem0 = { path = "../runtime-mods/mem0", optional = true }
 
 tokio.workspace = true
 tracing.workspace = true
@@ -29,4 +29,9 @@ default = ["llm", "graph", "embeder", "postgres"]
 llm = ["dep:async-openai"]
 embeder = ["dep:async-openai"]
 graph = ["dep:neo4rs", "embeder"]
-postgres = ["embeder"]
+postgres = [
+    "embeder", 
+    "dep:metastable-runtime-roleplay", 
+    "dep:metastable-runtime-character-creation", 
+    "dep:metastable-runtime-mem0"
+]

@@ -21,6 +21,7 @@ members = [
     "crates/runtime-mods/roleplay",
     "crates/runtime-mods/mem0",
     "crates/runtime-mods/character-creation",
+    "crates/runtime-mods/preload",
 
     "services/metastable-sandbox",
     "services/metastable-service",
