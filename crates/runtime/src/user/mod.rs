@@ -1,5 +1,4 @@
 mod badge;
-mod usage;
 mod url;
 mod referral;
 mod follow;
@@ -13,13 +12,18 @@ use serde_json::json;
 use metastable_common::{encrypt, decrypt, get_current_timestamp};
 use metastable_database::SqlxObject;
 
-pub use usage::{UserUsage, UserUsagePoints};
 pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
 pub use follow::UserFollow;
 
 pub const BALANCE_CAP: i64 = 500;
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UserUsagePoints {
+    pub points_consumed_claimed: i64,
+    pub points_consumed_purchased: i64,
+    pub points_consumed_misc: i64,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
 #[text_codec(format = "paren", storage_lang = "en")]

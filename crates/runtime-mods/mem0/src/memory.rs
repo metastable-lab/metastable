@@ -24,7 +24,7 @@ impl Memory for Mem0Engine {
         self.init().await
     }
 
-    async fn add_messages(&self, messages: &[Mem0Messages]) -> Result<()> {
+    async fn add(&self, messages: &[Mem0Messages]) -> Result<()> {
         let filter = Mem0Filter {
             user_id: messages[0].user_id.clone(),
             character_id: messages[0].character_id.clone(),
@@ -222,7 +222,7 @@ impl Memory for Mem0Engine {
     }
 
     async fn update(&self, messages: &[Mem0Messages]) -> Result<()> {
-        self.add_messages(messages).await
+        self.add(messages).await
     }
 
     async fn delete(&self, _message_ids: &[Uuid]) -> Result<()> {

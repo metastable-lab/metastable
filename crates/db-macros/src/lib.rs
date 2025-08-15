@@ -178,6 +178,48 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
     for v in &variants { for (l, _) in &v.prefixes { if !all_langs.contains(l) { all_langs.push(l.clone()); } } }
     if !all_langs.contains(&storage_lang) { all_langs.push(storage_lang.clone()); }
 
+    let schema_impl = {
+        let mut arms = quote! {};
+        for lang in &all_langs {
+            let variant_names: Vec<String> = variants
+                .iter()
+                .map(|v| {
+                    v.prefixes
+                        .iter()
+                        .find(|(l, _)| l == lang)
+                        .map(|(_, c)| c.clone())
+                        .unwrap_or_else(|| v.ident.to_string())
+                })
+                .collect();
+            let lang_lit = lang.as_str();
+            arms.extend(quote! {
+                Some(#lang_lit) => serde_json::json!({
+                    "type": "string",
+                    "enum": [#(#variant_names),*]
+                }),
+            });
+        }
+
+        let default_variant_names: Vec<String> = variants
+            .iter()
+            .map(|v| v.ident.to_string())
+            .collect();
+
+        quote! {
+            impl #enum_ident {
+                pub fn schema(lang: Option<&str>) -> serde_json::Value {
+                    match lang {
+                        #arms
+                        _ => serde_json::json!({
+                            "type": "string",
+                            "enum": [#(#default_variant_names),*]
+                        }),
+                    }
+                }
+            }
+        }
+    };
+
     // Display and to_lang arms
     let display_match_arms: Vec<_> = variants.iter().map(|vi| {
         let ident = &vi.ident;
@@ -324,11 +366,37 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
         })
     }).collect();
 
+    let parse_with_type_and_content_arms: Vec<_> = variants.iter().flat_map(|vi| {
+        let ident = &vi.ident;
+        let content_str_ident = quote! { content_str };
+        vi.prefixes.iter().map(move |(_l, c)| {
+            let c_lit = syn::LitStr::new(c, Span::call_site());
+            if vi.is_unit {
+                quote! { if type_str == #c_lit { return Ok(Self::#ident); } }
+            } else if vi.is_tuple_string {
+                quote! { if type_str == #c_lit { return Ok(Self::#ident(#content_str_ident.to_string())); } }
+            } else if vi.is_tuple_vec_string {
+                quote! { if type_str == #c_lit { let vec = if #content_str_ident.trim().is_empty() { Vec::new() } else { #content_str_ident.split(',').map(|s| s.trim().to_string()).collect() }; return Ok(Self::#ident(vec)); } }
+            } else { quote! {} }
+        })
+    }).collect();
+
     // Default impl: if there is a catch-all variant with String, return it on unknown/unprefixed
-    let catch_all_ctor = if has_catch_all {
-        // find first catch_all String variant
+    let catch_all_ctor_s = if has_catch_all {
         let ca_ident = variants.iter().find(|v| v.is_catch_all && v.is_tuple_string).map(|v| v.ident.clone());
         if let Some(id) = ca_ident { quote! { return Ok(Self::#id(s.to_string())); } } else { quote! {} }
+    } else { quote! {} };
+
+    let catch_all_ctor_type_content = if has_catch_all {
+        let ca_ident = variants.iter().find(|v| v.is_catch_all && v.is_tuple_string).map(|v| v.ident.clone());
+        if let Some(id) = ca_ident {
+            if is_paren {
+                quote! { return Ok(Self::#id(format!("{}({})", type_str, content_str))); }
+            } else {
+                let cc = syn::LitStr::new(&colon_char_val, Span::call_site());
+                quote! { return Ok(Self::#id(format!("{}{} {}", type_str, #cc, content_str))); }
+            }
+        } else { quote! {} }
     } else { quote! {} };
 
     // Default impl for enums with catchall -> empty string; otherwise, derive Default is expected elsewhere
@@ -341,6 +409,12 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
         quote!{}
     } else {
         quote!{ anyhow::bail!("Invalid {} string: {}", stringify!(#enum_ident), s) }
+    };
+
+    let bail_stmt_type_content = if has_catch_all {
+        quote!{}
+    } else {
+        quote!{ anyhow::bail!("Invalid {} type: {} or content: {}", stringify!(#enum_ident), type_str, content_str) }
     };
 
     let expanded = quote! {
@@ -358,7 +432,7 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
                 let s = s.trim();
                 { #(#parse_match_arms_storage)* }
                 { #(#parse_any_lang_arms)* }
-                #catch_all_ctor
+                #catch_all_ctor_s
                 #bail_stmt
             }
         }
@@ -373,13 +447,24 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
             fn parse_any_lang(s: &str) -> anyhow::Result<Self> {
                 let s = s.trim();
                 { #(#parse_any_lang_arms)* }
-                let parsed: Self = s.parse()?;
-                Ok(parsed)
+                #catch_all_ctor_s
+                #bail_stmt
+            }
+
+            fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self> {
+                { #(#parse_with_type_and_content_arms)* }
+                #catch_all_ctor_type_content
+                #bail_stmt_type_content
             }
         }
 
         #default_impl
     };
 
-    TokenStream::from(expanded)
+    let final_expanded = quote! {
+        #expanded
+        #schema_impl
+    };
+
+    TokenStream::from(final_expanded)
 }

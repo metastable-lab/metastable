@@ -1,6 +1,7 @@
 mod crypto;
 mod crypto_hash;
 mod env;
+mod client;
 
 use chrono::Utc;
 use chrono_tz::Asia::Shanghai;
@@ -8,6 +9,7 @@ use chrono_tz::Asia::Shanghai;
 pub use crypto::{encrypt, decrypt, blake3_hash};
 pub use crypto_hash::CryptoHash;
 pub use env::EnvVars;
+pub use client::ModuleClient;
 
 pub fn get_current_timestamp() -> i64 {
     std::time::SystemTime::now()

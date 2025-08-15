@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
 
     tokio::spawn(async move {
         while let Some(mem0_messages) = mem0_messages_rx.recv().await {
-            let adding_result = mem0_engine.add_messages(&mem0_messages).await;
+            let adding_result = mem0_engine.add(&mem0_messages).await;
             if let Err(e) = adding_result {
                 tracing::warn!("[Mem0Engine::add_messages] Failed to add messages: {:?}", e);
             }

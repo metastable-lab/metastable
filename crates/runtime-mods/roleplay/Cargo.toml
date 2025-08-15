@@ -8,7 +8,8 @@ metastable-runtime = { path = "../../runtime" }
 metastable-common = { path = "../../common" }
 metastable-database = { path = "../../database" }
 metastable-db-macros = { path = "../../db-macros" }
-metastable-runtime-mem0 = { path = "../mem0" }
+# metastable-runtime-mem0 = { path = "../mem0" }
+metastable-clients = { path = "../../clients" }
 
 serde.workspace = true
 serde_json.workspace = true
@@ -20,4 +21,3 @@ tracing.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
-

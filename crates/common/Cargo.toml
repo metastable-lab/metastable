@@ -17,3 +17,5 @@ rand.workspace = true
 
 chrono.workspace = true
 chrono-tz.workspace = true
+
+async-trait.workspace = true
