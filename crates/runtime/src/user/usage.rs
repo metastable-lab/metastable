@@ -8,12 +8,7 @@ use metastable_database::SqlxObject;
 
 use crate::{user::User, LLMRunResponse};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct UserUsagePoints {
-    pub points_consumed_claimed: i64,
-    pub points_consumed_purchased: i64,
-    pub points_consumed_misc: i64,
-}
+
 
 #[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
 #[table_name = "user_usages"]

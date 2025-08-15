@@ -5,7 +5,10 @@ use sqlx::types::Uuid;
 
 use metastable_runtime::User;
 
-use crate::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, Relationships, SkillsAndInterests};
+use super::{
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, 
+    CharacterLanguage, CharacterStatus, Relationships, SkillsAndInterests
+};
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_characters_history"]

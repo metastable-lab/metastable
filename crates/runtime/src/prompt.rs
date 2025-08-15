@@ -5,7 +5,7 @@ use async_openai::types::{
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
-use crate::{MessageRole, MessageType};
+use crate::{Message, MessageRole, MessageType};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prompt {
@@ -115,5 +115,44 @@ impl Prompt {
                 ),
             })
         }).collect()
+    }
+
+    pub fn new_system(prompt: &str) -> Self {
+        Self {
+            role: MessageRole::System,
+            content_type: MessageType::Text,
+            content: prompt.to_string(),
+            toolcall: None,
+            created_at: 0,
+        }
+    }
+
+    pub fn from_message(message: &Message) -> [Self; 2] {
+        [
+            Self {
+                role: MessageRole::User,
+                content_type: message.user_message_content_type.clone(),
+                content: message.user_message_content.clone(),
+                toolcall: None,
+                created_at: message.created_at,
+            },
+            Self {
+                role: MessageRole::Assistant,
+                content_type: message.assistant_message_content_type.clone(),
+                content: message.assistant_message_content.clone(),
+                toolcall: message.assistant_message_tool_call.0.clone(),
+                created_at: message.created_at,
+            }
+        ]
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            role: MessageRole::User,
+            content_type: MessageType::Text,
+            content: "".to_string(),
+            toolcall: None,
+            created_at: 0,
+        }
     }
 }

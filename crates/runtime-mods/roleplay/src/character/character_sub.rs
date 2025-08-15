@@ -4,7 +4,7 @@ use metastable_database::SqlxObject;
 use sqlx::types::Uuid;
 
 use metastable_runtime::User;
-use crate::{Character};
+use super::Character;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_character_sub"]

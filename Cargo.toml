@@ -10,7 +10,7 @@ opt-level = 1
 
 [workspace]
 members = [
-    "crates/api",
+    # "crates/api",
     "crates/clients",
     "crates/common",
     "crates/database", 
@@ -19,9 +19,8 @@ members = [
     "crates/runtime",
 
     # "crates/runtime-mods/evm",
-    # "crates/runtime-mods/roleplay",
+    "crates/runtime-mods/roleplay",
     # "crates/runtime-mods/mem0",
-    # "crates/runtime-mods/character-creation",
     # "crates/runtime-mods/preload",
 
     # "services/metastable-sandbox",

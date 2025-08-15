@@ -3,10 +3,9 @@ use anyhow::Result;
 use sqlx::{Postgres, types::Uuid};
 
 use metastable_database::SqlxObject;
-use metastable_runtime::{User, SystemConfig};
+use metastable_runtime::{User, SystemConfig, Message};
 
 use crate::Character;
-use crate::message::RoleplayMessage;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "roleplay_sessions"]
@@ -25,7 +24,7 @@ pub struct RoleplaySession {
     #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
     pub system_config: Uuid,
 
-    #[foreign_key_many(referenced_table = "roleplay_messages", related_rust_type = "RoleplayMessage")]
+    #[foreign_key_many(referenced_table = "messages", related_rust_type = "Message")]
     pub history: Vec<Uuid>,
 
     pub use_character_memory: bool,

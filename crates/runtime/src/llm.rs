@@ -22,11 +22,11 @@ pub trait ToolCall: std::fmt::Debug + Sized + Clone + Send + Sync + 'static {
 pub trait Agent: Clone + Send + Sync + Sized {
     const SYSTEM_CONFIG_NAME: &'static str;
     type Tool: ToolCall;
-    type Input: std::fmt::Debug + Send + Sync + Clone + Default;
+    type Input: std::fmt::Debug + Send + Sync + Clone;
 
     fn system_prompt() -> &'static str;
-    fn model() -> &'static str { "google/gemini-2.5-flash" }
     fn base_url() -> &'static str { "https://openrouter.ai/api/v1" }
+    fn model() -> &'static str { "google/gemini-2.5-flash" }
     fn temperature() -> f32 { 0.7 }
     fn max_tokens() -> i32 { 20000 }
 
@@ -36,7 +36,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>>;
     async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>>;
 
-    fn to_system_config(&self) -> SystemConfig {
+    fn to_system_config() -> SystemConfig {
         SystemConfig {
             id: Uuid::new_v4(),
             name: Self::SYSTEM_CONFIG_NAME.to_string(),
@@ -51,19 +51,19 @@ pub trait Agent: Clone + Send + Sync + Sized {
             updated_at: 0,
         }
     }
-    fn system_config(&self) -> SystemConfig;
-    fn set_system_config(&mut self, system_config: SystemConfig);
+    fn system_config(&self) -> &SystemConfig;
 
-    async fn preload(&mut self) -> Result<()> {
-        let mut tx = self.db_client().get_client().begin().await?;
+    async fn preload(db: &PostgresClient) -> Result<SystemConfig> {
+        let mut tx = db.get_client().begin().await?;
         let system_config = SystemConfig::find_one_by_criteria(
             QueryCriteria::new()
                 .add_filter("name", "=", Some(Self::SYSTEM_CONFIG_NAME.to_string())),
             &mut *tx
         ).await?;
 
-        let default_system_config = self.to_system_config();
-        if let Some(db_config) = system_config {
+        let default_system_config = Self::to_system_config();
+
+        let c = if let Some(db_config) = system_config {
             let mut db_config = db_config.clone();
             let mut needs_update = false;
             if db_config.system_prompt != default_system_config.system_prompt {
@@ -94,15 +94,14 @@ pub trait Agent: Clone + Send + Sync + Sized {
             if needs_update {
                 db_config.system_prompt_version += 1;
                 db_config.clone().update(&mut *tx).await?;
-                self.set_system_config(db_config.clone());
             }
+            db_config   
         } else {
-            let config = default_system_config.clone().create(&mut *tx).await?;
-            self.set_system_config(config.clone());
+            default_system_config.clone().create(&mut *tx).await?
         };
 
         tx.commit().await?;
-        Ok(())
+        Ok(c)
     }
 
     async fn call(

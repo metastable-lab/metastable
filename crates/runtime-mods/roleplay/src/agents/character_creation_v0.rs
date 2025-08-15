@@ -1,20 +1,18 @@
 use anyhow::Result;
-use async_openai::types::{ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs};
 use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::{Agent, Message, MessageRole, MessageType, NewLLMRunResponse as LLMRunResponse, SystemConfig, ToolCall};
+use metastable_runtime::{Agent, Message, MessageRole, MessageType, Prompt, SystemConfig};
 use serde_json::Value;
-use sqlx::types::{Json, Uuid};
+use sqlx::types::Uuid;
 use metastable_runtime::LlmTool;
-use metastable_runtime_roleplay::{
-    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, RoleplayMessageType, RoleplaySession,
-    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
-};
+
 use serde::{Deserialize, Serialize};
 use metastable_clients::{PostgresClient, LlmClient};
 
-use crate::CharacterCreationMessage;
-
+use crate::{
+    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, RoleplaySession,
+    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
+};
 
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
 #[llm_tool(
@@ -72,21 +70,16 @@ pub struct SummarizeCharacter {
 pub struct CharacterCreationAgent {
     db: PostgresClient,
     llm: LlmClient,
-    system_config_id: Uuid,
+    system_config: SystemConfig,
 }
 
 impl CharacterCreationAgent {
     pub async fn new() -> Result<Self> {
         let db = PostgresClient::setup_connection().await;
         let llm = LlmClient::setup_connection().await;
-        let mut tx = db.get_client().begin().await?;
-        let system_config = SystemConfig::find_one_by_criteria(
-            QueryCriteria::new().add_filter("name", "=", Some(Self::SYSTEM_CONFIG_NAME.to_string())),
-            &mut *tx
-        ).await?
-            .ok_or(anyhow::anyhow!("[CharacterCreationAgent::new] System config not found"))?;
-        tx.commit().await?;
-        Ok(Self { db, llm, system_config_id: system_config.id })
+        let system_config = Self::preload(&db).await?;
+
+        Ok(Self { db, llm, system_config })
     }
 }
 
@@ -97,9 +90,11 @@ impl Agent for CharacterCreationAgent {
     type Input = Uuid; // roleplay_session_id
 
     fn llm_client(&self) -> &LlmClient { &self.llm }
+    fn db_client(&self) -> &PostgresClient { &self.db }
     fn model() -> &'static str { "x-ai/grok-3-mini" }
+    fn system_config(&self) -> &SystemConfig { &self.system_config }
 
-    async fn build_input(&self, input: &Self::Input) -> Result<Vec<ChatCompletionRequestMessage>> {
+    async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
         let mut tx = self.db.get_client().begin().await?;
         let session = RoleplaySession::find_one_by_criteria(
             QueryCriteria::new().add_filter("id", "=", Some(input.to_string())),
@@ -107,23 +102,28 @@ impl Agent for CharacterCreationAgent {
         ).await?
             .ok_or(anyhow::anyhow!("[CharacterCreationAgent::input] Session not found"))?;
 
-        let system_message = Self::system_prompt();
-        let system = ChatCompletionRequestMessage::System(
-            ChatCompletionRequestSystemMessageArgs::default()
-                .content(system_message)
-                .build()
-                .expect("[Agent::call] System message should build")
-        );
+        let system = Prompt::new_system(Self::system_prompt());
 
-        let messages = session.fetch_history(&mut *tx).await?;
-        let mut messages = Message::pack(&messages)?;
-        messages.insert(0, system);
+        let prompts = session.fetch_history(&mut *tx).await?
+            .iter()
+            .flat_map(|m| Prompt::from_message(m))
+            .collect::<Vec<_>>();
         tx.commit().await?;
-
-        Ok(messages)
+        
+        let messages = Prompt::pack_flat_messages(prompts)?;
+        Ok(vec![
+            system,
+            Prompt {
+                role: MessageRole::User,
+                content_type: MessageType::Text,
+                content: format!("请根据以下对话，总结并创建一个完整的角色档案。\n\n{}", messages),
+                toolcall: None,
+                created_at: 0,
+            },
+        ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, response: &LLMRunResponse, tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
         let mut tx = self.db.get_client().begin().await?;
         let character = Character {
             id: Uuid::new_v4(),
@@ -144,7 +144,9 @@ impl Agent for CharacterCreationAgent {
             prompts_skills_and_interests: tool.skills_and_interests.clone(),
             prompts_additional_info: tool.additional_info.clone(),
             tags: tool.tags.clone(),
-            creator: response.caller.clone(),
+            creator: message.owner.clone(),
+            creation_message: message.id.clone(),
+            creation_session: input.clone(),
             version: 1,
             status: CharacterStatus::Draft,
             creator_notes: None,
@@ -152,25 +154,6 @@ impl Agent for CharacterCreationAgent {
             updated_at: get_current_timestamp(),
         };
         let character = character.create(&mut *tx).await?;
-
-        let character_creation_message = CharacterCreationMessage {
-            id: Uuid::new_v4(),
-            roleplay_session_id: input.clone(),
-            character_creation_system_config: self.system_config_id.clone(),
-            owner: response.caller.clone(),
-
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            character_creation_call: Json(vec![]),
-            character_creation_maybe_character_str: Some(serde_json::to_string(&character)?),
-
-            character_creation_maybe_character_id: Some(character.id),
-            content: response.content.clone(),
-
-            created_at: get_current_timestamp(),
-            updated_at: get_current_timestamp(),
-        };
-        character_creation_message.create(&mut *tx).await?;
         tx.commit().await?;
 
         Ok(Some(serde_json::json!({ "character_id": character.id })))

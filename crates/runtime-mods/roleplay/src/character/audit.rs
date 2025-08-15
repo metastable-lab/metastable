@@ -4,7 +4,7 @@ use sqlx::types::Uuid;
 use metastable_database::SqlxObject;
 use metastable_runtime::User;
 
-use crate::{Character, CharacterStatus};
+use super::{Character, CharacterStatus};
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_character_audit_logs"]
@@ -23,4 +23,3 @@ pub struct AuditLog {
     pub notes: String,
     pub created_at: i64,
 }
-
