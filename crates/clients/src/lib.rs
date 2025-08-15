@@ -16,6 +16,6 @@ pub use llm::LlmClient;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresClient, PgvectorClient};
 #[cfg(feature = "graph")]
-pub use neo4j::GraphClient;
+pub use neo4j::{GraphClient, EntityTag, Relationship, GraphEntities, Mem0Filter};
 
 pub use consts::*;

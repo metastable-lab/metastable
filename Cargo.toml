@@ -18,9 +18,8 @@ members = [
     "crates/llm-macros",
     "crates/runtime",
 
-    # "crates/runtime-mods/evm",
     "crates/runtime-mods/roleplay",
-    # "crates/runtime-mods/mem0",
+    "crates/runtime-mods/mem0",
 
     # "services/metastable-sandbox",
     # "services/metastable-service",

@@ -2,6 +2,7 @@ use std::{collections::{HashMap, HashSet}, env};
 
 use anyhow::Result;
 use metastable_common::{define_module_client, ModuleClient};
+use metastable_llm_macros::LlmTool;
 use neo4rs::{query, ConfigBuilder, Graph};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
@@ -11,28 +12,29 @@ use crate::{
     DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_SEARCH_LIMIT, DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD
 };
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LlmTool)]
 pub struct Relationship { // TOOLCALL Return
     pub source: String,
     pub relationship: String,
     pub destination: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 pub struct GraphEntities {
     pub relationships: Vec<Relationship>,
     pub entity_tags: HashMap<String, String>,
     pub filter: Mem0Filter,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 pub struct Mem0Filter {
     pub user_id: Uuid,
+    pub user_aka: String,
     pub character_id: Option<Uuid>,
     pub session_id: Option<Uuid>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LlmTool)]
 pub struct EntityTag { // TOOLCALL Return
     pub entity_name: String,
     pub entity_tag: String,

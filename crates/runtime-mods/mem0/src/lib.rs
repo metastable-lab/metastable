@@ -1,29 +1,52 @@
 mod pgvector;
-mod graph;
-
-mod llm;
-
+mod agents;
 mod engine;
-mod env;
-mod raw_message;
-mod message;
 
-mod memory;
-
-pub use engine::Mem0Engine;
-pub use raw_message::{GraphEntities, EntityTag, Mem0Filter};
-pub use message::Mem0Messages;
 pub use pgvector::EmbeddingMessage;
+use anyhow::Result;
 
-pub type Embedding = Vec<f32>;
-pub const EMBEDDING_DIMS: i32 = 1024;
-pub const EMBEDDING_MODEL: &str = "Qwen/Qwen3-Embedding-0.6B";
+use metastable_clients::{EmbederClient, GraphClient, LlmClient, PgvectorClient, PostgresClient};
+use metastable_common::ModuleClient;
 
-pub const DEFAULT_VECTOR_DB_SEARCH_LIMIT: usize = 100;
-pub const DEFAULT_GRAPH_DB_SEARCH_LIMIT: usize = 20;
+#[derive(Clone)]
+pub struct Mem0Engine {
+    pub(crate) data_db: PostgresClient,
+    pub(crate) vector_db: PgvectorClient,
+    pub(crate) llm: LlmClient,
+    pub(crate) graph_db: GraphClient,
+    pub(crate) embeder: EmbederClient,
+}
 
-/// used for merge similar items in the graph db
-pub const DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD: f32 = 0.9;
-/// used for general search in the graph db 
-pub const DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD: f32 = 0.7;
-pub const DEFAULT_VECTOR_DB_SEARCH_TRESHOLD: f32 = 0.7;
+impl Mem0Engine {
+    pub async fn new() -> Result<Self> {
+        let data_db = PostgresClient::setup_connection().await;
+        let vector_db = PgvectorClient::setup_connection().await;
+        let graph_db = GraphClient::setup_connection().await;
+        let embeder = EmbederClient::setup_connection().await;
+        let llm = LlmClient::setup_connection().await;
+
+        Ok(Self {  data_db, vector_db,  graph_db, embeder, llm })
+    }
+
+    pub async fn init(&self) -> Result<()> {
+        self.graph_db.initialize().await?;
+        Ok(())
+    }
+}
+
+#[macro_export]
+macro_rules! init_mem0 {
+    () => {
+        static MEM0_ENGINE: tokio::sync::OnceCell<Mem0Engine> = tokio::sync::OnceCell::const_new();
+
+        async fn get_mem0_engine() -> &'static Mem0Engine {
+            MEM0_ENGINE
+                .get_or_init(|| async {
+                    let mem0_engine = Mem0Engine::new().await.expect("Failed to initialize Mem0Engine");
+                    mem0_engine.init().await.expect("Failed to initialize Mem0Engine");
+                    mem0_engine
+                })
+                .await
+        }
+    };
+}
