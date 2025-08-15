@@ -1,13 +1,10 @@
-use anyhow::{anyhow, Result};
-use async_openai::types::{
-    ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, 
-    ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, 
-    ChatCompletionRequestUserMessageArgs
-};
+use anyhow::Result;
+use async_openai::types::{CompletionUsage, FunctionCall};
 use serde::{Deserialize, Serialize};
-use metastable_database::TextCodecEnum;
+use metastable_database::{SqlxObject, TextCodecEnum};
 
-use sqlx::types::Uuid;
+use sqlx::types::{Json, Uuid};
+use crate::{SystemConfig, User};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
 #[text_codec(format = "paren", storage_lang = "en")]
@@ -31,67 +28,40 @@ pub enum MessageType {
     Audio(String),
 }
 
-pub trait Message: Clone + Send + Sync + 'static {
-    fn id(&self) -> &Uuid;
+#[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
+#[table_name = "messages"]
+pub struct Message {
+    pub id: Uuid,
 
-    fn role(&self) -> &MessageRole;
-    fn owner(&self) -> &Uuid;
+    #[indexed]
+    #[foreign_key(referenced_table = "users", related_rust_type = "User")]
+    pub owner: Uuid,
+    #[indexed]
+    #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
+    pub system_config: Uuid,
 
-    fn content_type(&self) -> &MessageType;
-    fn content(&self) -> Option<String>;
+    pub user_message_content: String,
+    pub user_message_content_type: MessageType,
 
-    fn pack(message: &[Self]) -> Result<Vec<ChatCompletionRequestMessage>> {
-        message
-            .iter()
-            .map(|m| {
-                Ok(match m.role() {
-                    MessageRole::System => ChatCompletionRequestMessage::System(
-                        ChatCompletionRequestSystemMessageArgs::default()
-                            .content(m.content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::User => ChatCompletionRequestMessage::User(
-                        ChatCompletionRequestUserMessageArgs::default()
-                            .content(m.content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::Assistant => ChatCompletionRequestMessage::Assistant(
-                        ChatCompletionRequestAssistantMessageArgs::default()
-                            .content(m.content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                    MessageRole::ToolCall => ChatCompletionRequestMessage::Tool(
-                        ChatCompletionRequestToolMessageArgs::default()
-                            .content(m.content().unwrap_or_default())
-                            .build()
-                            .map_err(|e| anyhow!("Failed to pack message: {}", e))?
-                    ),
-                })
-            })
-            .collect()
-    }
+    pub input_toolcall: Json<Option<FunctionCall>>,
 
-    fn pack_flat_messages(messages: &[Self]) -> Result<String> {
-        let mut flat_messages = Vec::new();
-        for message in messages {
-            match message.role() {
-                MessageRole::System => {
-                    flat_messages.push(format!("system: {}", message.content().unwrap_or_default()));
-                }
-                MessageRole::User => {
-                    flat_messages.push(format!("user: {}", message.content().unwrap_or_default()));
-                }
-                MessageRole::Assistant => {
-                    flat_messages.push(format!("assistant: {}", message.content().unwrap_or_default()));
-                }
-                MessageRole::ToolCall => {
-                    flat_messages.push(format!("tool_call: {}", message.content().unwrap_or_default()));
-                }
-            }
-        }
-        Ok(flat_messages.join("\n"))
-    }
+    pub assistant_message_content: String,
+    pub assistant_message_content_type: MessageType,
+    pub assistant_message_tool_call: Json<Option<FunctionCall>>,
+    
+    pub model_name: String,
+    pub usage: Json<CompletionUsage>,
+    pub finish_reason: Option<String>,
+    pub refusal: Option<String>,
+
+    pub points_consumed_claimed: i64,
+    pub points_consumed_purchased: i64,
+    pub points_consumed_misc: i64,
+
+    pub is_stale: bool,
+    pub is_memorizeable: bool,
+    pub is_in_memory: bool,
+
+    pub created_at: i64,
+    pub updated_at: i64,
 }

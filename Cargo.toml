@@ -19,13 +19,13 @@ members = [
     "crates/runtime",
 
     # "crates/runtime-mods/evm",
-    "crates/runtime-mods/roleplay",
-    "crates/runtime-mods/mem0",
-    "crates/runtime-mods/character-creation",
-    "crates/runtime-mods/preload",
+    # "crates/runtime-mods/roleplay",
+    # "crates/runtime-mods/mem0",
+    # "crates/runtime-mods/character-creation",
+    # "crates/runtime-mods/preload",
 
-    "services/metastable-sandbox",
-    "services/metastable-service",
+    # "services/metastable-sandbox",
+    # "services/metastable-service",
 ]
 resolver = "2"
 
