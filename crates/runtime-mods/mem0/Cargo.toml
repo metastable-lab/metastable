@@ -21,3 +21,8 @@ tokio.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
 futures.workspace = true
+
+
+[features]
+default = ["graph"]
+graph = ["metastable-clients/graph"]
