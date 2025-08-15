@@ -33,10 +33,10 @@ pub struct Character {
     pub creator: Uuid,
 
     #[foreign_key(referenced_table = "messages", related_rust_type = "Message")]
-    pub creation_message: Uuid,
+    pub creation_message: Option<Uuid>,
 
     #[foreign_key(referenced_table = "roleplay_sessions", related_rust_type = "RoleplaySession")]
-    pub creation_session: Uuid,
+    pub creation_session: Option<Uuid>,
 
     pub version: i64,
 

@@ -1,6 +1,6 @@
 use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
-use metastable_runtime_roleplay::{
+use crate::{
     Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, 
     CharacterStatus, BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests
 };
@@ -83,6 +83,10 @@ pub fn get_characters_for_char_creation(user_id: Uuid) -> Vec<Character> {
             ],
             creator_notes: None,
             tags: vec!["创造".to_string(), "引导".to_string(), "脑洞".to_string(), "角色设计".to_string()],
+
+            creation_message: None,
+            creation_session: None,
+
             created_at: get_current_timestamp(),
             updated_at: get_current_timestamp(),
         },

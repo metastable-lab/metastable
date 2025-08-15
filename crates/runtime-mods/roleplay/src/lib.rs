@@ -1,6 +1,7 @@
 mod character;
 mod session;
 mod input;
+mod preload_character;
 
 mod agents;
 
