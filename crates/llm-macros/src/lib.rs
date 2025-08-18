@@ -19,6 +19,7 @@ struct ToolOpts {
 struct FieldOpts {
     description: Option<String>,
     enum_lang: Option<String>,
+    is_enum: bool,
 }
 
 #[proc_macro_derive(LlmTool, attributes(llm_tool))]
@@ -40,7 +41,7 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                     let field_ty = &f.ty;
                     let description = field_opts.description.unwrap_or_default();
                     let schema_call =
-                        get_schema_for_type(field_ty, field_opts.enum_lang.as_deref());
+                        get_schema_for_type(field_ty, field_opts.enum_lang.as_deref(), field_opts.is_enum);
                     quote! {
                         let mut schema = #schema_call;
                         if let Some(obj) = schema.as_object_mut() {
@@ -86,42 +87,145 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                     let field_name = f.ident.as_ref().unwrap();
                     let field_name_str = field_name.to_string();
 
+                    // Determine if the field is Option<T> and/or Vec<T>
+                    let mut is_option = false;
+                    let mut base_ty = f.ty.clone();
+                    if let Type::Path(type_path) = &f.ty {
+                        if let Some(segment) = type_path.path.segments.last() {
+                            if segment.ident == "Option" {
+                                is_option = true;
+                                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                                    if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+                                        base_ty = inner_ty.clone();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let mut is_vec = false;
+                    let mut vec_inner_ty_opt: Option<Type> = None;
+                    if let Type::Path(type_path) = &base_ty {
+                        if let Some(segment) = type_path.path.segments.last() {
+                            if segment.ident == "Vec" {
+                                is_vec = true;
+                                if let PathArguments::AngleBracketed(args) = &segment.arguments {
+                                    if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+                                        vec_inner_ty_opt = Some(inner_ty.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if field_opts.enum_lang.is_some() {
-                        if let Type::Path(type_path) = &f.ty {
-                            if let Some(segment) = type_path.path.segments.last() {
-                                if segment.ident == "Vec" {
-                                    if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                                        if let Some(GenericArgument::Type(inner_ty)) =
-                                            args.args.first()
-                                        {
-                                            return quote! {
-                                                #field_name: {
-                                                     let value = tool_call_args.get(#field_name_str).ok_or_else(|| ::serde::de::Error::custom(format!("Missing field: {}", #field_name_str)))?;
-                                                     let arr = value.as_array().ok_or_else(|| ::serde::de::Error::custom(format!("Field {} is not an array", #field_name_str)))?;
-                                                     arr.iter().map(|v| {
-                                                        let obj = v.as_object().ok_or_else(|| serde_json::Error::custom("Invalid object in array"))?;
-                                                        let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| serde_json::Error::custom("Missing type in object"))?;
-                                                        let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| serde_json::Error::custom("Missing content in object"))?;
-                                                        <#inner_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str).map_err(|e| serde_json::Error::custom(e.to_string()))
-                                                     }).collect::<Result<Vec<_>, _>>()?
+                        // Enum-like fields using TextPromptCodec
+                        if is_vec {
+                            let inner_ty = vec_inner_ty_opt.expect("Vec inner type must exist");
+                            if is_option {
+                                // Option<Vec<Enum>> with language-aware parsing of [{type, content}]
+                                quote! {
+                                    #field_name: {
+                                        use serde::de::Error;
+                                        match tool_call_args.get(#field_name_str) {
+                                            None => None,
+                                            Some(value) if value.is_null() => None,
+                                            Some(value) => {
+                                                let arr = value.as_array().ok_or_else(|| Error::custom(format!("Field {} is not an array", #field_name_str)))?;
+                                                Some(arr.iter().map(|v| {
+                                                    let obj = v.as_object().ok_or_else(|| Error::custom("Invalid object in array"))?;
+                                                    let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
+                                                    let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
+                                                    <#inner_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
+                                                        .map_err(|e| Error::custom(e.to_string()))
+                                                }).collect::<Result<Vec<_>, _>>()?)
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Vec<Enum> mandatory
+                                quote! {
+                                    #field_name: {
+                                        use serde::de::Error;
+                                        let value = tool_call_args.get(#field_name_str).ok_or_else(|| Error::custom(format!("Missing field: {}", #field_name_str)))?;
+                                        let arr = value.as_array().ok_or_else(|| Error::custom(format!("Field {} is not an array", #field_name_str)))?;
+                                        arr.iter().map(|v| {
+                                            let obj = v.as_object().ok_or_else(|| Error::custom("Invalid object in array"))?;
+                                            let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
+                                            let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
+                                            <#inner_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
+                                                .map_err(|e| Error::custom(e.to_string()))
+                                        }).collect::<Result<Vec<_>, _>>()?
+                                    }
+                                }
+                            }
+                        } else {
+                            // Single enum-like field
+                            let enum_ty = base_ty.clone();
+                            if is_option {
+                                quote! {
+                                    #field_name: {
+                                        use serde::de::Error;
+                                        match tool_call_args.get(#field_name_str) {
+                                            None => None,
+                                            Some(value) if value.is_null() => None,
+                                            Some(value) => {
+                                                if let Some(s) = value.as_str() {
+                                                    Some(<#enum_ty as ::metastable_database::TextPromptCodec>::parse_any_lang(s)
+                                                        .map_err(|e| Error::custom(e.to_string()))?)
+                                                } else if let Some(obj) = value.as_object() {
+                                                    let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
+                                                    let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
+                                                    Some(<#enum_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
+                                                        .map_err(|e| Error::custom(e.to_string()))?)
+                                                } else {
+                                                    return Err(Error::custom(format!("Invalid value for field {}", #field_name_str)));
                                                 }
-                                            };
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                quote! {
+                                    #field_name: {
+                                        use serde::de::Error;
+                                        let value = tool_call_args.get(#field_name_str).ok_or_else(|| Error::custom(format!("Missing field: {}", #field_name_str)))?;
+                                        if let Some(s) = value.as_str() {
+                                            <#enum_ty as ::metastable_database::TextPromptCodec>::parse_any_lang(s)
+                                                .map_err(|e| Error::custom(e.to_string()))?
+                                        } else if let Some(obj) = value.as_object() {
+                                            let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
+                                            let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
+                                            <#enum_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
+                                                .map_err(|e| Error::custom(e.to_string()))?
+                                        } else {
+                                            return Err(Error::custom(format!("Invalid value for field {}", #field_name_str)));
                                         }
                                     }
                                 }
                             }
                         }
-                        quote! {
-                            #field_name: {
-                                let value = tool_call_args.get(#field_name_str).ok_or_else(|| ::serde::de::Error::custom(format!("Missing field: {}", #field_name_str)))?;
-                                <#f.ty as ::metastable_database::TextPromptCodec>::parse_any_lang(&value.to_string()).map_err(|e| serde_json::Error::custom(e.to_string()))?
-                            }
-                        }
                     } else {
-                        quote! {
-                            #field_name: {
-                                let value = tool_call_args.get(#field_name_str).ok_or_else(|| ::serde::de::Error::custom(format!("Missing field: {}", #field_name_str)))?;
-                                serde_json::from_value(value.clone())?
+                        // Non-enum fields
+                        if is_option {
+                            quote! {
+                                #field_name: {
+                                    use serde::de::Error;
+                                    match tool_call_args.get(#field_name_str) {
+                                        None => None,
+                                        Some(value) if value.is_null() => None,
+                                        Some(value) => Some(serde_json::from_value(value.clone())?)
+                                    }
+                                }
+                            }
+                        } else {
+                            quote! {
+                                #field_name: {
+                                    use serde::de::Error;
+                                    let value = tool_call_args.get(#field_name_str).ok_or_else(|| Error::custom(format!("Missing field: {}", #field_name_str)))?;
+                                    serde_json::from_value(value.clone())?
+                                }
                             }
                         }
                     }
@@ -135,6 +239,11 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
                         Self: Sized,
                     {
                         use serde::de::Error;
+                        // Validate function name matches this tool
+                        if tool_call.name != #tool_name {
+                            return Err(Error::custom(format!("Unexpected tool name: got '{}', expected '{}'", tool_call.name, #tool_name)));
+                        }
+
                         let tool_call_args: serde_json::Value = serde_json::from_str(&tool_call.arguments)?;
                         let tool_call_args = tool_call_args.as_object().ok_or_else(|| serde_json::Error::custom("Invalid tool call arguments"))?;
                         Ok(Self {
@@ -151,7 +260,7 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
         Data::Enum(e) => {
             let variants = e.variants.iter().map(|v| {
                 let ty = &v.fields.iter().next().unwrap().ty;
-                get_schema_for_type(ty, None)
+                get_schema_for_type(ty, None, true)
             });
             let schema_impl = quote! {
                 pub fn schema() -> serde_json::Value {
@@ -185,7 +294,7 @@ pub fn derive_llm_tool(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>) -> proc_macro2::TokenStream {
+fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>, is_enum: bool) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
             let type_name = &segment.ident;
@@ -206,12 +315,20 @@ fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>) -> proc_macro2::Token
                 return quote! {
                     serde_json::json!({ "type": "boolean" })
                 };
+            } else if type_name == "Uuid" {
+                // Render Uuid as a string with uuid format
+                return quote! {
+                    serde_json::json!({ "type": "string", "format": "uuid" })
+                };
             } else if type_name == "Vec" {
                 if let PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                        let inner_schema = get_schema_for_type(inner_ty, None);
                         if enum_lang.is_some() {
-                            let type_schema = get_schema_for_type(inner_ty, enum_lang);
+                            let lang_opt = match enum_lang {
+                                Some(lang) => quote! { Some(#lang) },
+                                None => quote! { None },
+                            };
+                            let type_schema = quote! { <#inner_ty as ::metastable_database::TextPromptCodec>::schema(#lang_opt) };
                             return quote! {
                                 serde_json::json!({
                                     "type": "array",
@@ -227,6 +344,7 @@ fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>) -> proc_macro2::Token
                             };
                         }
 
+                        let inner_schema = get_schema_for_type(inner_ty, None, is_enum);
                         return quote! {
                             serde_json::json!({
                                 "type": "array",
@@ -238,20 +356,20 @@ fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>) -> proc_macro2::Token
             } else if type_name == "Option" {
                 if let PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                        return get_schema_for_type(inner_ty, enum_lang);
+                        return get_schema_for_type(inner_ty, enum_lang, is_enum);
                     }
                 }
             }
         }
     }
-    
-    if enum_lang.is_some() {
+
+    if is_enum || enum_lang.is_some() {
         let lang_opt = match enum_lang {
             Some(lang) => quote! { Some(#lang) },
             None => quote! { None },
         };
-        quote! { <#ty>::schema(#lang_opt) }
+        quote! { <#ty as ::metastable_database::TextPromptCodec>::schema(#lang_opt) }
     } else {
-        quote! { <#ty>::schema(None) }
+        quote! { <#ty as ::metastable_runtime::ToolCall>::schema() }
     }
 }

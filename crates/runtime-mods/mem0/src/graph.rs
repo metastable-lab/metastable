@@ -30,7 +30,7 @@ pub struct EntityTag { // TOOLCALL Return
 }
 
 impl GraphEntities {
-    pub fn new(relationships: Vec<Relationship>, entity_tags: Vec<EntityTag>, filter: Mem0Filter) -> Self {
+    pub fn _new(relationships: Vec<Relationship>, entity_tags: Vec<EntityTag>, filter: Mem0Filter) -> Self {
         let entity_tags = entity_tags
             .into_iter()
             .map(|tag| (tag.entity_name, tag.entity_tag))

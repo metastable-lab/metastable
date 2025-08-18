@@ -1,5 +1,5 @@
 mod pgvector;
-mod agents;
+pub mod agents;
 mod engine;
 #[cfg(feature = "graph")]
 mod graph;

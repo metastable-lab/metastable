@@ -1,7 +1,7 @@
 use metastable_llm_macros::LlmTool;
 use metastable_runtime_roleplay::{
     BackgroundStories, BehaviorTraits, CharacterGender, CharacterLanguage, Relationships,
-    SkillsAndInterests,
+    SkillsAndInterests, CharacterOrientation,
 };
 
 use serde::{Deserialize, Serialize};
@@ -16,9 +16,11 @@ pub struct SummarizeCharacter {
     pub name: String,
     #[llm_tool(description = "对角色的一段简短描述，包括其核心身份、外貌特点等。")]
     pub description: String,
-    #[llm_tool(description = "角色的性别")]
+    #[llm_tool(description = "角色的性别", is_enum = true)]
     pub gender: CharacterGender,
-    #[llm_tool(description = "角色的主要使用语言")]
+    #[llm_tool(description = "角色的性取向", is_enum = true)]
+    pub orientation: CharacterOrientation,
+    #[llm_tool(description = "角色的主要使用语言", is_enum = true)]
     pub language: CharacterLanguage,
     #[llm_tool(description = "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。")]
     pub prompts_personality: String,
@@ -76,6 +78,7 @@ mod tests {
              "name": { "type": "string", "description": "角色的名字" },
                     "description": { "type": "string", "description": "对角色的一段简短描述，包括其核心身份、外貌特点等。" },
                     "gender": { "type": "string", "enum": ["Male", "Female", "Multiple", "Others"], "description": "角色的性别" },
+                    "orientation": { "type": "string", "enum": ["Female", "Male", "Full"], "description": "角色的性取向" },
                     "language": { "type": "string", "enum": ["English", "Chinese", "Japanese", "Korean", "Others"], "description": "角色的主要使用语言" },
                     "prompts_personality": { "type": "string", "description": "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。" },
                     "prompts_scenario": { "type": "string", "description": "角色所处的典型场景或背景故事。这会影响角色扮演的开场。" },
@@ -142,7 +145,7 @@ mod tests {
                     "tags": { "type": "array", "items": { "type": "string" }, "description": "描述角色特点的标签，便于搜索和分类。" }
                 },
                 "required": [
-                    "name", "description", "gender", "language",
+                    "name", "description", "gender", "orientation", "language",
                     "prompts_personality", "prompts_scenario", "prompts_example_dialogue", "prompts_first_message",
                     "background_stories", "behavior_traits", "relationships", "skills_and_interests", "tags"
                 ]
@@ -162,7 +165,7 @@ mod tests {
     async fn test_parse_tool_call() {
         let tool_call_json = json!({
             "name": "summarize_character",
-            "arguments": "{\n  \"name\": \"艾拉\",\n  \"description\": \"一位充满活力的年轻探险家，总是渴望发现新奇事物。\",\n  \"gender\": \"Female\",\n  \"language\": \"Chinese\",\n  \"prompts_personality\": \"热情、好奇、勇敢\",\n  \"prompts_scenario\": \"在一个古老的森林里寻找传说中的遗迹。\",\n  \"prompts_example_dialogue\": \"哇，你看那边！那是什么？我们快去看看！\",\n  \"prompts_first_message\": \"你好，我是艾拉，你愿意和我一起去冒险吗？\",\n  \"background_stories\": [\n    { \"type\": \"职业\", \"content\": \"探险家\" },\n    { \"type\": \"成长环境\", \"content\": \"在一个充满冒险故事的家庭长大\" }\n  ],\n  \"behavior_traits\": [\n    { \"type\": \"行为举止\", \"content\": \"总是充满活力，喜欢跑跑跳跳\" }\n  ],\n  \"relationships\": [\n    { \"type\": \"朋友\", \"content\": \"与各种各样的生物都能成为朋友\" }\n  ],\n  \"skills_and_interests\": [\n    { \"type\": \"兴趣爱好\", \"content\": \"收集各种奇特的石头和植物\" }\n  ],\n  \"additional_example_dialogue\": [],\n  \"additional_info\": [],\n  \"tags\": [\"探险\", \"年轻\", \"女性\"] \n}"
+            "arguments": "{\n  \"name\": \"艾拉\",\n  \"description\": \"一位充满活力的年轻探险家，总是渴望发现新奇事物。\",\n  \"gender\": \"Female\",\n  \"orientation\": \"Full\",\n  \"language\": \"Chinese\",\n  \"prompts_personality\": \"热情、好奇、勇敢\",\n  \"prompts_scenario\": \"在一个古老的森林里寻找传说中的遗迹。\",\n  \"prompts_example_dialogue\": \"哇，你看那边！那是什么？我们快去看看！\",\n  \"prompts_first_message\": \"你好，我是艾拉，你愿意和我一起去冒险吗？\",\n  \"background_stories\": [\n    { \"type\": \"职业\", \"content\": \"探险家\" },\n    { \"type\": \"成长环境\", \"content\": \"在一个充满冒险故事的家庭长大\" }\n  ],\n  \"behavior_traits\": [\n    { \"type\": \"行为举止\", \"content\": \"总是充满活力，喜欢跑跑跳跳\" }\n  ],\n  \"relationships\": [\n    { \"type\": \"朋友\", \"content\": \"与各种各样的生物都能成为朋友\" }\n  ],\n  \"skills_and_interests\": [\n    { \"type\": \"兴趣爱好\", \"content\": \"收集各种奇特的石头和植物\" }\n  ],\n  \"additional_example_dialogue\": [],\n  \"additional_info\": [],\n  \"tags\": [\"探险\", \"年轻\", \"女性\"] \n}"
         });
 
         let tool_call: FunctionCall =
@@ -172,6 +175,7 @@ mod tests {
 
         assert_eq!(summary.name, "艾拉");
         assert_eq!(summary.gender, CharacterGender::Female);
+        assert_eq!(summary.orientation, CharacterOrientation::Full);
         assert_eq!(summary.language, CharacterLanguage::Chinese);
         assert_eq!(
             summary.background_stories,

@@ -6,7 +6,7 @@ mod extract_relationship;
 mod del_relationship;
 
 pub use extract_facts::{ExtractFactsAgent, ExtractFactsInput};
-pub use update_memory::{UpdateMemoryAgent, UpdateMemoryInput};
+pub use update_memory::{UpdateMemoryAgent, UpdateMemoryInput, UpdateMemory};
 
 #[cfg(feature = "graph")]
 pub use extract_entities::{ExtractEntitiesAgent, ExtractEntitiesInput};

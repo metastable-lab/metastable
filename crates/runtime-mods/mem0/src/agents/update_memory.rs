@@ -16,13 +16,21 @@ init_mem0!();
 
 #[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 pub struct MemoryEntrySimplified {
+    #[llm_tool(description = "ID of the memory in UUID format. Use existing ID for updates/deletes, or the nil UUID for additions.")]
     pub id: Uuid,
+    #[llm_tool(description = "Content of the memory.")]
     pub content: String,
+    #[llm_tool(description = "Operation to be performed.", is_enum = true)]
     pub event: MemoryEvent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
-pub struct UpdateMemoryOutput {
+#[llm_tool(
+    name = "update_memory",
+    description = "Updates the memory with new facts, including adding, modifying, or deleting entries."
+)]
+pub struct UpdateMemory {
+    #[llm_tool(description = "A list of memory operations to perform.")]
     pub memory: Vec<MemoryEntrySimplified>,
 }
 
@@ -53,7 +61,7 @@ impl UpdateMemoryAgent {
 #[async_trait::async_trait]
 impl Agent for UpdateMemoryAgent {
     const SYSTEM_CONFIG_NAME: &'static str = "update_memory_v0";
-    type Tool = UpdateMemoryOutput;
+    type Tool = UpdateMemory;
     type Input = UpdateMemoryInput;
 
     fn llm_client(&self) -> &LlmClient { &self.mem0_engine.llm }

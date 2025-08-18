@@ -7,6 +7,7 @@ use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery, TextCodecEnu
 use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize, TextCodecEnum)]
+#[text_codec(format = "upper", storage_lang = "en")]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MemoryEvent {
     Add,

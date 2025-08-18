@@ -24,11 +24,11 @@ pub struct SummarizeCharacter {
     pub name: String,
     #[llm_tool(description = "对角色的一段简短描述，包括其核心身份、外貌特点等。")]
     pub description: String,
-    #[llm_tool(description = "角色的性别")]
+    #[llm_tool(description = "角色的性别", is_enum = true)]
     pub gender: CharacterGender,
-    #[llm_tool(description = "角色的性取向")]
+    #[llm_tool(description = "角色的性取向", is_enum = true)]
     pub orientation: CharacterOrientation,
-    #[llm_tool(description = "角色的主要使用语言")]
+    #[llm_tool(description = "角色的主要使用语言", is_enum = true)]
     pub language: CharacterLanguage,
     #[llm_tool(description = "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。")]
     pub prompts_personality: String,

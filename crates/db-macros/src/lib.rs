@@ -206,16 +206,12 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
             .collect();
 
         quote! {
-            impl #enum_ident {
-                pub fn schema(lang: Option<&str>) -> serde_json::Value {
-                    match lang {
-                        #arms
-                        _ => serde_json::json!({
-                            "type": "string",
-                            "enum": [#(#default_variant_names),*]
-                        }),
-                    }
-                }
+            match lang {
+                #arms
+                _ => serde_json::json!({
+                    "type": "string",
+                    "enum": [#(#default_variant_names),*]
+                }),
             }
         }
     };
@@ -456,6 +452,10 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
                 #catch_all_ctor_type_content
                 #bail_stmt_type_content
             }
+            
+            fn schema(lang: Option<&str>) -> serde_json::Value {
+                #schema_impl
+            }
         }
 
         #default_impl
@@ -463,7 +463,6 @@ pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
 
     let final_expanded = quote! {
         #expanded
-        #schema_impl
     };
 
     TokenStream::from(final_expanded)

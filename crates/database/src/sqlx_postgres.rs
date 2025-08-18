@@ -245,6 +245,7 @@ pub trait TextPromptCodec: Sized {
     /// Parse from any supported language representation.
     fn parse_any_lang(s: &str) -> anyhow::Result<Self>;
     fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self>;
+    fn schema(lang: Option<&str>) -> serde_json::Value;
 }
 
 #[async_trait::async_trait]
