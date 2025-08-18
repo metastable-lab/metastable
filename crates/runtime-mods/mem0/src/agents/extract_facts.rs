@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use metastable_common::{get_current_timestamp, get_time_in_utc8};
 use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig};
-use metastable_clients::{LlmClient, Mem0Filter, PostgresClient};
+use metastable_clients::{LlmClient, PostgresClient};
 use serde_json::Value;
 
-use crate::{EmbeddingMessage, init_mem0, Mem0Engine};
+use crate::{init_mem0, Mem0Engine, Mem0Filter};
 
 init_mem0!();
 
@@ -54,11 +54,11 @@ impl Agent for ExtractFactsAgent {
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
         let system_prompt = Self::system_prompt()
-            .replace("{{request_time}}", get_time_in_utc8())
-            .replace("{{user}}", input.filter.user_id.to_string());
+            .replace("{{request_time}}", &get_time_in_utc8())
+            .replace("{{user}}", &input.filter.user_id.to_string());
 
         Ok(vec![
-            Prompt::new_system(system_prompt),
+            Prompt::new_system(&system_prompt),
             Prompt {
                 role: MessageRole::User,
                 content_type: MessageType::Text,
@@ -69,10 +69,7 @@ impl Agent for ExtractFactsAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
-        let embeddings = EmbeddingMessage::batch_create(
-            &self.mem0_engine, &tool.facts, &input.filter
-        ).await?;
+    async fn handle_output(&self, _input: &Self::Input, _message: &Message, _tool: &Self::Tool) -> Result<Option<Value>> {
         Ok(None)
     }
 

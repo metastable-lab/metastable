@@ -8,9 +8,8 @@ use metastable_database::{OrderDirection, SqlxObject, Vector};
 use metastable_clients::DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD;
 
 pub use batch::{MemoryUpdateEntry, MemoryEvent};
-use metastable_clients::Mem0Filter;
 
-use crate::Mem0Engine;
+use crate::{Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize, SqlxObject)]
 #[table_name = "embeddings"]

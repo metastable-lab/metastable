@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use metastable_common::get_current_timestamp;
 use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig};
-use metastable_clients::{EntityTag, GraphEntities, LlmClient, Mem0Filter, PostgresClient, Relationship};
+use metastable_clients::{LlmClient, PostgresClient};
 use serde_json::Value;
 
-use crate::{init_mem0, Mem0Engine};
+use crate::{init_mem0, Mem0Engine, graph::{EntityTag, Relationship, GraphEntities}, Mem0Filter};
 
 init_mem0!();
 
@@ -57,11 +57,12 @@ impl Agent for DeleteRelationshipsAgent {
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
         let system_prompt = Self::system_prompt()
-            .replace("{{user}}", input.user_aka.clone());
+            .replace("{{user}}", &input.user_aka);
 
         let type_mapping_keys = input.type_mapping.iter().map(|e| e.entity_name.clone()).collect::<Vec<_>>();
+        let embeddings = self.mem0_engine.embeder.embed(type_mapping_keys).await?;
         let existing_memories = self.mem0_engine.graph_db
-            .search(&type_mapping_keys, &input.filter).await?;
+            .search(embeddings, &input.filter).await?;
         let existing_memories_text = existing_memories.iter()
             .map(|r| format!("{} -- {} -- {}", r.source, r.relationship, r.destination))
             .collect::<Vec<_>>()
@@ -86,7 +87,7 @@ impl Agent for DeleteRelationshipsAgent {
         }
 
         let graph_entities = GraphEntities {
-            relationships: relationships,
+            relationships,
             entity_tags: input.type_mapping.iter().map(|e| (e.entity_name.clone(), e.entity_tag.clone())).collect(),
             filter: input.filter.clone(),
         };

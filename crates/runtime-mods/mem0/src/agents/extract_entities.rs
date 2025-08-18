@@ -5,10 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use metastable_common::get_current_timestamp;
 use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig};
-use metastable_clients::{EntityTag, LlmClient, Mem0Filter, PostgresClient};
+use metastable_clients::{LlmClient, PostgresClient};
 use serde_json::Value;
 
-use crate::{init_mem0, Mem0Engine};
+use crate::{init_mem0, Mem0Engine, EntityTag, Mem0Filter};
 
 init_mem0!();
 
@@ -55,10 +55,10 @@ impl Agent for ExtractEntitiesAgent {
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
         let system_prompt = Self::system_prompt()
-            .replace("{{user}}", input.user_aka.clone());
+            .replace("{{user}}", &input.user_aka);
 
         Ok(vec![
-            Prompt::new_system(system_prompt),
+            Prompt::new_system(&system_prompt),
             Prompt {
                 role: MessageRole::User,
                 content_type: MessageType::Text,
@@ -69,7 +69,7 @@ impl Agent for ExtractEntitiesAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, _input: &Self::Input, _message: &Message, _tool: &Self::Tool) -> Result<Option<Value>> {
         Ok(None)
     }
 

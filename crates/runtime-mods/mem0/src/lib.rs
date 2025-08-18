@@ -1,6 +1,8 @@
 mod pgvector;
 mod agents;
 mod engine;
+#[cfg(feature = "graph")]
+mod graph;
 
 pub use pgvector::EmbeddingMessage;
 use anyhow::Result;
@@ -9,13 +11,24 @@ use metastable_clients::{EmbederClient, LlmClient, PgvectorClient, PostgresClien
 use metastable_common::ModuleClient;
 
 #[cfg(feature = "graph")]
-use metastable_clients::GraphClient;
+use graph::{GraphClient, EntityTag};
+use serde::{Deserialize, Serialize};
+use sqlx::types::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mem0Filter {
+    pub user_id: Uuid,
+    pub user_aka: String,
+    pub character_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+}
 
 #[derive(Clone)]
 pub struct Mem0Engine {
     pub(crate) data_db: PostgresClient,
     pub(crate) vector_db: PgvectorClient,
     pub(crate) llm: LlmClient,
+    
     #[cfg(feature = "graph")]
     pub(crate) graph_db: GraphClient,
     pub(crate) embeder: EmbederClient,

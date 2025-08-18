@@ -2,12 +2,14 @@ use std::{collections::{HashMap, HashSet}, env};
 
 use anyhow::Result;
 use metastable_common::{define_module_client, ModuleClient};
+use metastable_runtime::LlmTool;
 use neo4rs::{query, ConfigBuilder, Graph};
 use serde::{Deserialize, Serialize};
 
-use crate::{Embedding, EmbederClient, EMBEDDING_DIMS, DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_SEARCH_LIMIT, DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD, Mem0Filter};
+use metastable_clients::{Embedding, EmbederClient, EMBEDDING_DIMS, DEFAULT_GRAPH_DB_TEXT_SEARCH_THRESHOLD, DEFAULT_GRAPH_DB_SEARCH_LIMIT, DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD};
+use crate::Mem0Filter;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LlmTool)]
 pub struct Relationship { // TOOLCALL Return
     pub source: String,
     pub relationship: String,
@@ -21,12 +23,11 @@ pub struct GraphEntities {
     pub filter: Mem0Filter,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, LlmTool)]
 pub struct EntityTag { // TOOLCALL Return
     pub entity_name: String,
     pub entity_tag: String,
 }
-
 
 impl GraphEntities {
     pub fn new(relationships: Vec<Relationship>, entity_tags: Vec<EntityTag>, filter: Mem0Filter) -> Self {

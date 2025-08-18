@@ -1,8 +1,7 @@
 use anyhow::Result;
-use metastable_clients::Mem0Filter;
 use metastable_runtime::{Agent, MessageRole, MessageType, Prompt};
 
-use crate::{EmbeddingMessage, Mem0Engine};
+use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 use crate::agents::{
     ExtractFactsAgent, ExtractFactsInput, 
     UpdateMemoryAgent, UpdateMemoryInput

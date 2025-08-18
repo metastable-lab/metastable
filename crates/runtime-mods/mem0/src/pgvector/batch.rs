@@ -2,13 +2,11 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use metastable_common::{ModuleClient, get_current_timestamp};
-use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
+use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery, TextCodecEnum};
 
-use metastable_clients::Mem0Filter;
+use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
-use crate::{EmbeddingMessage, Mem0Engine};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TextCodecEnum)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MemoryEvent {
     Add,

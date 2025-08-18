@@ -5,16 +5,16 @@ use serde::{Deserialize, Serialize};
 
 use metastable_common::get_current_timestamp;
 use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig};
-use metastable_clients::{LlmClient, Mem0Filter, PostgresClient};
+use metastable_clients::{LlmClient, PostgresClient};
 use serde_json::{json, Value};
 use sqlx::types::Uuid;
 
-use crate::{init_mem0, EmbeddingMessage, Mem0Engine};
+use crate::{init_mem0, EmbeddingMessage, Mem0Engine, Mem0Filter};
 use crate::pgvector::{MemoryEvent, MemoryUpdateEntry};
 
 init_mem0!();
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 pub struct MemoryEntrySimplified {
     pub id: Uuid,
     pub content: String,
@@ -79,11 +79,11 @@ impl Agent for UpdateMemoryAgent {
         let old_memories_text = serde_json::to_string_pretty(&old_memories).unwrap_or_else(|_| "[]".to_string());
 
         let system_prompt = Self::system_prompt()
-            .replace("{{memories}}", old_memories_text)
-            .replace("{{facts}}", retrieved_facts_text);
+            .replace("{{memories}}", &old_memories_text)
+            .replace("{{facts}}", &retrieved_facts_text);
 
         Ok(vec![
-            Prompt::new_system(system_prompt),
+            Prompt::new_system(&system_prompt),
             Prompt {
                 role: MessageRole::User,
                 content_type: MessageType::Text,
@@ -94,13 +94,13 @@ impl Agent for UpdateMemoryAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, input: &Self::Input, _message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
         let memory_updates = tool.memory.iter().map(|entry| {
             MemoryUpdateEntry {
                 id: entry.id,
                 filter: input.filter.clone(),
-                event: entry.event,
-                content: entry.content,
+                event: entry.event.clone(),
+                content: entry.content.clone(),
             }
         }).collect::<Vec<_>>();
 
