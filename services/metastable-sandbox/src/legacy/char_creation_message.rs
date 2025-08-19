@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
 use metastable_database::SqlxObject;
-use metastable_runtime::{MessageRole, MessageType, SystemConfig, User};
-use crate::{Character, RoleplaySession};
+use metastable_runtime::{Character, MessageRole, MessageType, SystemConfig, User};
+use super::RoleplaySession;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
 #[table_name = "character_creation_messages"]
@@ -31,6 +31,28 @@ pub struct CharacterCreationMessage {
     pub character_creation_maybe_character_id: Option<Uuid>,
 
     pub content: String,
+
+    pub is_migrated: bool,
+
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+impl CharacterCreationMessage {
+
+    pub fn update_character(&self, character: &Character) -> Result<Character> {
+
+        let maybe_character_id = self.character_creation_maybe_character_id;
+        let character_id = character.id;
+
+        if maybe_character_id.is_some() && maybe_character_id.unwrap() != character_id {
+            anyhow::bail!("Character ID mismatch: {:?} != {:?}", maybe_character_id, character_id);
+        }
+
+        let mut char = character.clone();
+        char.creation_message = None;
+        char.creation_session = Some(self.roleplay_session_id);
+
+        Ok(char)
+    }
 }

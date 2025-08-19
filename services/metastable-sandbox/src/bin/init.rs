@@ -23,6 +23,7 @@ init_databases!(
         metastable_runtime_roleplay::Character,
         metastable_runtime_roleplay::CharacterHistory,
         metastable_runtime_roleplay::CharacterSub,
+    
         metastable_runtime_roleplay::RoleplaySession,
         metastable_runtime_roleplay::AuditLog,
     ],
@@ -31,11 +32,13 @@ init_databases!(
     ]
 );
 
-pub async fn migrate_database(old_db: &Arc<PgPool>, new_db: &Arc<PgPool>) -> Result<()> {
-    let mut tx = new_db.begin().await?;
-    let old_db = old_db.clone();
-    let new_db = new_db.clone();
-    
+
+
+
+pub async fn migrate_database(db: &Arc<PgPool>) -> Result<()> {
+    let mut tx = db.begin().await?;
+
+    Ok(())
     
 }
 

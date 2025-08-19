@@ -142,8 +142,8 @@ fn generate_from_str_impl(enum_ident: &Ident, storage_lang: &str, format: &Forma
                         }
                     },
                     FormatKind::Colon(c) => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}{} ", #prefix, #c)) {
-                            return Ok(Self::#variant_ident(inner.to_string()));
+                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
+                            return Ok(Self::#variant_ident(inner.trim().to_string()));
                         }
                     },
                 }
@@ -162,7 +162,7 @@ fn generate_from_str_impl(enum_ident: &Ident, storage_lang: &str, format: &Forma
                         }
                     },
                     FormatKind::Colon(c) => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}{} ", #prefix, #c)) {
+                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
                             if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
                                 let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
                                 return Ok(Self::#variant_ident(vec));
@@ -268,8 +268,8 @@ fn generate_parse_any_lang_impl(enum_ident: &Ident, format: &FormatKind, variant
                             }
                         },
                         FormatKind::Colon(c) => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}{} ", #prefix, #c)) {
-                                return Ok(Self::#variant_ident(inner.to_string()));
+                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
+                                return Ok(Self::#variant_ident(inner.trim().to_string()));
                             }
                         },
                     }
@@ -288,7 +288,7 @@ fn generate_parse_any_lang_impl(enum_ident: &Ident, format: &FormatKind, variant
                             }
                         },
                         FormatKind::Colon(c) => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}{} ", #prefix, #c)) {
+                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
                                 if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
                                     let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
                                     return Ok(Self::#variant_ident(vec));

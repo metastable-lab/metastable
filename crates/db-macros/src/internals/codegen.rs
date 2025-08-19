@@ -156,6 +156,18 @@ pub fn generate_sqlx_crud_impl(struct_name: &Ident, table_name_str: &str, fields
                     .await
                     .map(|done| done.rows_affected())
             }
+
+            async fn toggle_trigger<'e, E>(executor: E, status: bool) -> Result<(), ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
+            {
+                let action = if status { "ENABLE" } else { "DISABLE" };
+                let sql = format!(
+                    "ALTER TABLE \"{}\" {} TRIGGER ALL",
+                    #table_name_str, action
+                );
+                ::sqlx::query(&sql).execute(executor).await.map(|_| ())
+            }
         }
     }
 }
@@ -480,7 +492,7 @@ fn generate_create_table_sql(table_name_str: &str, fields_data: &[FieldData]) ->
 
 fn generate_insert_sql(table_name_str: &str, active_fields: &[&FieldData]) -> String {
     let insert_col_sql_names: Vec<String> = active_fields.iter()
-        .filter(|f| f.name != "created_at" && f.name != "updated_at" && !f.is_pk)
+        // .filter(|f| f.name != "created_at" && f.name != "updated_at" && !f.is_pk)
         .map(|f| format!("\"{}\"", f.name))
         .collect();
 

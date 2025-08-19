@@ -9,8 +9,8 @@ use metastable_runtime::LlmTool;
 use serde::{Deserialize, Serialize};
 use metastable_clients::{PostgresClient, LlmClient};
 
-use crate::{
-    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, RoleplaySession,
+use metastable_runtime::{
+    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, ChatSession,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
 };
 
@@ -96,15 +96,18 @@ impl Agent for CharacterCreationAgent {
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
         let mut tx = self.db.get_client().begin().await?;
-        let session = RoleplaySession::find_one_by_criteria(
-            QueryCriteria::new().add_filter("id", "=", Some(input.to_string())),
+        let session = ChatSession::find_one_by_criteria(
+            QueryCriteria::new().add_valued_filter("id", "=", input.clone()),
             &mut *tx
         ).await?
             .ok_or(anyhow::anyhow!("[CharacterCreationAgent::input] Session not found"))?;
 
         let system = Prompt::new_system(Self::system_prompt());
 
-        let prompts = session.fetch_history(&mut *tx).await?
+        let prompts = Message::find_by_criteria(
+            QueryCriteria::new().add_valued_filter("session", "=", session.id),
+            &mut *tx
+        ).await?
             .iter()
             .flat_map(|m| Prompt::from_message(m))
             .collect::<Vec<_>>();

@@ -4,12 +4,20 @@ mod cards;
 mod system_config;
 mod llm;
 mod prompt;
+mod character;
+mod session;
 
 pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow};
 pub use system_config::SystemConfig;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use message::{MessageRole, MessageType, Message};
 pub use prompt::Prompt;
+pub use character::{Character, CharacterSub, CharacterHistory, 
+    CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
+    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
+    AuditLog,
+};
+pub use session::ChatSession;
 
 pub use llm::{Agent, ToolCall};
 

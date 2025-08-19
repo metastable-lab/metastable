@@ -8,7 +8,9 @@ use serde_json::Value;
 
 use crate::input::RoleplayInput;
 use crate::preload_character::get_characters_for_char_creation;
-use crate::{Character, SendMessage};
+use crate::SendMessage;
+
+use metastable_runtime::Character;
 
 #[derive(Clone)]
 pub struct RoleplayCharacterCreationV1Agent {

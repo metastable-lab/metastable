@@ -3,8 +3,7 @@ use serde::{Deserialize, Serialize};
 use metastable_database::SqlxObject;
 use sqlx::types::Uuid;
 
-use metastable_runtime::User;
-use super::Character;
+use crate::{User, Character};
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_character_sub"]

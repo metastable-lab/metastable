@@ -5,10 +5,12 @@ use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
 use metastable_runtime::{Agent, Message, Prompt, SystemConfig, User, UserRole};
 use metastable_clients::{PostgresClient, LlmClient};
 use serde_json::Value;
+use metastable_runtime::{Character};
 
+use crate::ShowStoryOptions;
 use crate::input::RoleplayInput;
 use crate::preload_character::get_characters_for_char_creation;
-use crate::{Character, ShowStoryOptions};
+
 
 #[derive(Clone)]
 pub struct RoleplayCharacterCreationV0Agent {

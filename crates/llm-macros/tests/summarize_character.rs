@@ -1,5 +1,5 @@
 use metastable_llm_macros::LlmTool;
-use metastable_runtime_roleplay::{
+use metastable_runtime::{
     BackgroundStories, BehaviorTraits, CharacterGender, CharacterLanguage, Relationships,
     SkillsAndInterests, CharacterOrientation,
 };

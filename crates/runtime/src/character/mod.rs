@@ -9,17 +9,18 @@ use serde::{Deserialize, Serialize};
 use metastable_database::SqlxObject;
 use sqlx::types::Uuid;
 
-use metastable_runtime::{Message, MessageRole, MessageType, Prompt, User};
+use crate::{Message, MessageRole, MessageType, Prompt, User};
 
 pub use character_detail::{
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
     CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
 };
-use crate::RoleplaySession;
 
 pub use audit::AuditLog;
 pub use character_history::CharacterHistory;
 pub use character_sub::CharacterSub;
+
+use crate::ChatSession;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_characters"]
@@ -35,7 +36,7 @@ pub struct Character {
     #[foreign_key(referenced_table = "messages", related_rust_type = "Message")]
     pub creation_message: Option<Uuid>,
 
-    #[foreign_key(referenced_table = "roleplay_sessions", related_rust_type = "RoleplaySession")]
+    #[foreign_key(referenced_table = "chat_sessions", related_rust_type = "ChatSession")]
     pub creation_session: Option<Uuid>,
 
     pub version: i64,

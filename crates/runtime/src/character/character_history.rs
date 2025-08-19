@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use metastable_database::SqlxObject;
 use sqlx::types::Uuid;
 
-use metastable_runtime::User;
+use crate::User;
 
 use super::{
     BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, 

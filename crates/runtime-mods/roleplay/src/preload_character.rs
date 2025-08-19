@@ -1,6 +1,6 @@
 use sqlx::types::Uuid;
 use metastable_common::get_current_timestamp;
-use crate::{
+use metastable_runtime::{
     Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, 
     CharacterStatus, BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests
 };

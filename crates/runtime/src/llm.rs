@@ -107,7 +107,6 @@ pub trait Agent: Clone + Send + Sync + Sized {
         let messages = Prompt::validate_and_sort(messages)?;
         let user_message = messages.last().expect("already validated");
 
-        println!("messages: {:?}", messages);
         let llm_messages = Prompt::pack(messages.clone())?;
 
         let tools = vec![
@@ -155,6 +154,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             id: Uuid::new_v4(),
             owner: caller.clone(),
             system_config: self.system_config().id,
+            session: None,
             
             user_message_content: user_message.content.clone(),
             user_message_content_type: user_message.content_type.clone(),
@@ -165,7 +165,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             assistant_message_tool_call: Json(Some(tool_calls[0].function.clone())),
 
             model_name: Self::model().to_string(),
-            usage: Json(usage),
+            usage: Json(Some(usage)),
             finish_reason: finish_reason.map(|finish_reason| format!("{:?}", finish_reason)),
             refusal: refusal.clone(),
 

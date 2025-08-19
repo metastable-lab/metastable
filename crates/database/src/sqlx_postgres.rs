@@ -63,6 +63,10 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
     where
         E: Executor<'e, Database = Postgres> + Send,
         Self: Send;
+
+    async fn toggle_trigger<'e, E>(executor: E, status: bool) -> Result<(), SqlxError>
+    where
+        E: Executor<'e, Database = Postgres> + Send;
 } 
 
 /// Specifies the direction for ordering query results.

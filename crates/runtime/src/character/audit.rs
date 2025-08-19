@@ -2,7 +2,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 use metastable_database::SqlxObject;
-use metastable_runtime::User;
+
+use crate::User;
 
 use super::{Character, CharacterStatus};
 

@@ -56,16 +56,18 @@ macro_rules! init_databases {
                     .expect("Failed to connect to default database");
 
                 if drop_tables {
-                    $( 
-                        let drop_table_sql_str = <$default_type as $crate::SqlxSchema>::drop_table_sql();
-                        if !drop_table_sql_str.trim().is_empty() { 
-                            sqlx::query(&drop_table_sql_str).execute(&pool).await
-                                .unwrap_or_else(|e| {
-                                    eprintln!("Warning: Failed to drop table for '{}'. Error: {:?}", stringify!($default_type), e);
-                                    sqlx::postgres::PgQueryResult::default()
-                                });
-                        }
-                    )*
+
+                    panic!("drop_tables is true");
+                    // $( 
+                    //     let drop_table_sql_str = <$default_type as $crate::SqlxSchema>::drop_table_sql();
+                    //     if !drop_table_sql_str.trim().is_empty() { 
+                    //         sqlx::query(&drop_table_sql_str).execute(&pool).await
+                    //             .unwrap_or_else(|e| {
+                    //                 eprintln!("Warning: Failed to drop table for '{}'. Error: {:?}", stringify!($default_type), e);
+                    //                 sqlx::postgres::PgQueryResult::default()
+                    //             });
+                    //     }
+                    // )*
                 }
 
                 if create_tables {
@@ -134,16 +136,17 @@ macro_rules! init_databases {
                     .expect("Failed to create vector extension.");
 
                 if drop_tables {
-                    $( 
-                        let drop_table_sql_str = <$pgvector_type as $crate::SqlxSchema>::drop_table_sql();
-                        if !drop_table_sql_str.trim().is_empty() { 
-                            sqlx::query(&drop_table_sql_str).execute(&pool).await
-                                .unwrap_or_else(|e| {
-                                    eprintln!("Warning: Failed to drop table for '{}'. Error: {:?}", stringify!($pgvector_type), e);
-                                    sqlx::postgres::PgQueryResult::default()
-                                });
-                        }
-                    )*
+                    panic!("drop_tables is true");
+                    // $( 
+                    //     let drop_table_sql_str = <$pgvector_type as $crate::SqlxSchema>::drop_table_sql();
+                    //     if !drop_table_sql_str.trim().is_empty() { 
+                    //         sqlx::query(&drop_table_sql_str).execute(&pool).await
+                    //             .unwrap_or_else(|e| {
+                    //                 eprintln!("Warning: Failed to drop table for '{}'. Error: {:?}", stringify!($pgvector_type), e);
+                    //                 sqlx::postgres::PgQueryResult::default()
+                    //             });
+                    //     }
+                    // )*
                 }
 
                 if create_tables {

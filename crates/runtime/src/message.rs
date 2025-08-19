@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use metastable_database::{SqlxObject, TextCodecEnum};
 
 use sqlx::types::{Json, Uuid};
-use crate::{SystemConfig, User};
+use crate::{SystemConfig, User, ChatSession};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
 #[text_codec(format = "paren", storage_lang = "en")]
@@ -39,6 +39,9 @@ pub struct Message {
     #[indexed]
     #[foreign_key(referenced_table = "system_configs", related_rust_type = "SystemConfig")]
     pub system_config: Uuid,
+    #[indexed]
+    #[foreign_key(referenced_table = "chat_sessions", related_rust_type = "ChatSession")]
+    pub session: Option<Uuid>,
 
     pub user_message_content: String,
     pub user_message_content_type: MessageType,
@@ -50,7 +53,7 @@ pub struct Message {
     pub assistant_message_tool_call: Json<Option<FunctionCall>>,
     
     pub model_name: String,
-    pub usage: Json<CompletionUsage>,
+    pub usage: Json<Option<CompletionUsage>>,
     pub finish_reason: Option<String>,
     pub refusal: Option<String>,
 
