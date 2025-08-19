@@ -76,6 +76,7 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
             created_at: session.created_at,
         };
         let new_session = new_session.create(&mut *tx).await?;
+        new_session.clone().force_set_timestamp(&mut *tx, session.created_at, session.updated_at).await?;
 
         tracing::info!("Fetching messages for session {}", count);
         count += 1;
@@ -108,12 +109,11 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
         let system_config = session.fetch_system_config(&mut *tx).await?
             .ok_or(anyhow::anyhow!("No system config found for session {}", session.id))?;
 
-        let mut messages_ids = Vec::new();
         for (user_msg, assistant_msg) in pairs {
             let mut message = RoleplayMessage::to_message(&system_config, &user_msg, &assistant_msg);
             message.session = Some(new_session.id);
             let msg = message.create(&mut *tx).await?;
-            messages_ids.push(msg.id);
+            msg.force_set_timestamp(&mut *tx, user_msg.created_at, assistant_msg.created_at).await?;
         }
         tracing::info!("session {:?} migrated to {:?}", session.id, new_session.id);
 

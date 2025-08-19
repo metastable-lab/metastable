@@ -168,6 +168,25 @@ pub fn generate_sqlx_crud_impl(struct_name: &Ident, table_name_str: &str, fields
                 );
                 ::sqlx::query(&sql).execute(executor).await.map(|_| ())
             }
+
+            async fn force_set_timestamp<'e, E>(self, executor: E, created_at: i64, updated_at: i64) -> Result<Self, ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
+                Self: Send
+            {
+                let sql = format!(
+                    "UPDATE \"{}\" SET \"created_at\" = $1, \"updated_at\" = $2 WHERE \"id\" = $3 RETURNING *",
+                    <Self as ::metastable_database::SqlxSchema>::TABLE_NAME
+                );
+
+                ::sqlx::query_as::<_, <Self as ::metastable_database::SqlxSchema>::Row>(&sql)
+                    .bind(created_at)
+                    .bind(updated_at)
+                    .bind(self.id)
+                    .fetch_one(executor)
+                    .await
+                    .map(<Self as ::metastable_database::SqlxSchema>::from_row)
+            }
         }
     }
 }
@@ -492,7 +511,7 @@ fn generate_create_table_sql(table_name_str: &str, fields_data: &[FieldData]) ->
 
 fn generate_insert_sql(table_name_str: &str, active_fields: &[&FieldData]) -> String {
     let insert_col_sql_names: Vec<String> = active_fields.iter()
-        // .filter(|f| f.name != "created_at" && f.name != "updated_at" && !f.is_pk)
+        .filter(|f| f.name != "created_at" && f.name != "updated_at" && !f.is_pk)
         .map(|f| format!("\"{}\"", f.name))
         .collect();
 

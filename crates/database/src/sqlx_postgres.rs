@@ -64,6 +64,11 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
         E: Executor<'e, Database = Postgres> + Send,
         Self: Send;
 
+    async fn force_set_timestamp<'e, E>(self, executor: E, created_at: i64, updated_at: i64) -> Result<Self, SqlxError>
+    where
+        E: Executor<'e, Database = Postgres> + Send,
+        Self: Send;
+
     async fn toggle_trigger<'e, E>(executor: E, status: bool) -> Result<(), SqlxError>
     where
         E: Executor<'e, Database = Postgres> + Send;
