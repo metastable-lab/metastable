@@ -47,6 +47,8 @@ impl RoleplayMessage {
             options,
         }.into_tool_call();
 
+        println!("toolcall: {:?}", toolcall);
+
         if toolcall.is_err() {
             tracing::error!("Failed to build toolcall: {:?}", toolcall.err());
             return None;

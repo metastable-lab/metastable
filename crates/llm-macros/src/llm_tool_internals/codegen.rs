@@ -184,21 +184,7 @@ fn generate_into_tool_call_impl(tool_name: &str, fields: &[&LlmToolField]) -> To
         let (is_option, base_ty) = unwrap_option(&f.ty);
         let (is_vec, _) = unwrap_vec(&base_ty);
 
-        let serializer = if f.is_enum {
-            if is_vec {
-                quote! {
-                    let mut items = Vec::new();
-                    for item in value {
-                        items.push(serde_json::to_value(item.to_string())?);
-                    }
-                    args.insert(#field_name_str.to_string(), serde_json::Value::Array(items));
-                }
-            } else {
-                quote! {
-                    args.insert(#field_name_str.to_string(), serde_json::to_value(value.to_string())?);
-                }
-            }
-        } else if let Some(enum_lang) = f.enum_lang.as_deref() {
+        let serializer = if let Some(enum_lang) = f.enum_lang.as_deref() {
             if is_vec {
                 quote! {
                     let mut items = Vec::new();
@@ -214,6 +200,20 @@ fn generate_into_tool_call_impl(tool_name: &str, fields: &[&LlmToolField]) -> To
             } else {
                 quote! {
                     args.insert(#field_name_str.to_string(), serde_json::to_value(::metastable_database::TextPromptCodec::to_lang(value, #enum_lang))?);
+                }
+            }
+        } else if f.is_enum {
+            if is_vec {
+                quote! {
+                    let mut items = Vec::new();
+                    for item in value {
+                        items.push(serde_json::to_value(item.to_string())?);
+                    }
+                    args.insert(#field_name_str.to_string(), serde_json::Value::Array(items));
+                }
+            } else {
+                quote! {
+                    args.insert(#field_name_str.to_string(), serde_json::to_value(value.to_string())?);
                 }
             }
         } else {

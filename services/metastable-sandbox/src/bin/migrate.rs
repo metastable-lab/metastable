@@ -52,7 +52,8 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
 
     let sessions = LegacyRoleplaySession::find_by_criteria(
         QueryCriteria::new()
-            .add_valued_filter("is_migrated", "=", false),
+            // .add_valued_filter("is_migrated", "=", false)
+            ,
         &mut *tx
     ).await?;
     tx.commit().await?;
@@ -119,7 +120,7 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
 
         s.is_migrated = true;
         s.update(&mut *tx).await?;
-        tx.commit().await?;
+        tx.rollback().await?;
     }
 
     let mut tx = db.begin().await?;
