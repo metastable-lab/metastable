@@ -5,6 +5,8 @@ mod preload_character;
 
 mod agents;
 
+pub mod legacy;
+
 pub use character::{
     Character, CharacterSub, CharacterHistory, 
     CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,

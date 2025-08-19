@@ -242,6 +242,8 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
 pub trait TextPromptCodec: Sized {
     /// Format for display, using the storage language.
     fn to_lang(&self, lang: &str) -> String;
+    /// Returns the type and content parts for a given language.
+    fn to_lang_parts(&self, lang: &str) -> (String, String);
     /// Parse from any supported language representation.
     fn parse_any_lang(s: &str) -> anyhow::Result<Self>;
     fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self>;

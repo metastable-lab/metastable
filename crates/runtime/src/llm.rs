@@ -15,6 +15,7 @@ use crate::{Message, MessageType, Prompt, SystemConfig};
 pub trait ToolCall: std::fmt::Debug + Sized + Clone + Send + Sync + 'static {
     fn schema() -> serde_json::Value;
     fn try_from_tool_call(tool_call: &FunctionCall) -> Result<Self, serde_json::Error>;
+    fn into_tool_call(&self) -> Result<FunctionCall, serde_json::Error>;
     fn to_function_object() -> FunctionObject;
 }
 
@@ -46,7 +47,6 @@ pub trait Agent: Clone + Send + Sync + Sized {
             openai_temperature: Self::temperature(),
             openai_max_tokens: Self::max_tokens(),
             openai_base_url: Self::base_url().to_string(),
-            functions: Json(vec![Self::Tool::to_function_object()]),
             created_at: 0,
             updated_at: 0,
         }
@@ -86,11 +86,6 @@ pub trait Agent: Clone + Send + Sync + Sized {
                 needs_update = true;
             }
 
-            if db_config.functions != default_system_config.functions {
-                db_config.functions = default_system_config.functions.clone();
-                needs_update = true;
-            }
-
             if needs_update {
                 db_config.system_prompt_version += 1;
                 db_config.clone().update(&mut *tx).await?;
@@ -112,6 +107,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
         let messages = Prompt::validate_and_sort(messages)?;
         let user_message = messages.last().expect("already validated");
 
+        println!("messages: {:?}", messages);
         let llm_messages = Prompt::pack(messages.clone())?;
 
         let tools = vec![

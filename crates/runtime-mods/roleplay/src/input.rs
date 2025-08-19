@@ -22,7 +22,7 @@ impl RoleplayInput {
         let (session, character, user, user_message) = match &self {
             Self::ContinueSession(session_id, user_message) => {
                 let session = RoleplaySession::find_one_by_criteria(
-                    QueryCriteria::new().add_filter("id", "=", Some(session_id.to_string())),
+                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
                     &mut *tx
                 ).await?
                     .ok_or(anyhow!("[RoleplayCharacterCreationV0Agent::build_input] Session not found"))?;
@@ -36,7 +36,7 @@ impl RoleplayInput {
             },
             Self::RegenerateSession(session_id) => {
                 let session = RoleplaySession::find_one_by_criteria(
-                    QueryCriteria::new().add_filter("id", "=", Some(session_id.to_string())),
+                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
                     &mut *tx
                 ).await?
                     .ok_or(anyhow!("[RoleplayCharacterCreationV0Agent::build_input] Session not found"))?;
@@ -82,7 +82,7 @@ impl RoleplayInput {
             Self::RegenerateSession(session_id) => session_id.clone(),
         };
         let mut session = RoleplaySession::find_one_by_criteria(
-            QueryCriteria::new().add_filter("id", "=", Some(session_id.to_string())),
+            QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
             &mut *tx
         ).await?
             .ok_or(anyhow!("[RoleplayInput::handle_outputs] Session not found"))?;

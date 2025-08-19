@@ -37,7 +37,6 @@ impl Agent for RoleplayCharacterCreationV1Agent {
     fn db_client(&self) -> &PostgresClient { &self.db }
     fn model() -> &'static str { "google/gemini-2.5-flash" }
     fn system_config(&self) -> &SystemConfig { &self.system_config }
-
     
     async fn preload(db: &PostgresClient) -> Result<SystemConfig> {
         let system_config = <Self as Agent>::preload(db).await?;

@@ -127,6 +127,16 @@ impl Prompt {
         }
     }
 
+    pub fn new_user(prompt: &str) -> Self {
+        Self {
+            role: MessageRole::User,
+            content_type: MessageType::Text,
+            content: prompt.to_string(),
+            toolcall: None,
+            created_at: 0,
+        }
+    }
+
     pub fn from_message(message: &Message) -> [Self; 2] {
         [
             Self {

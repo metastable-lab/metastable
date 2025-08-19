@@ -1,7 +1,6 @@
 use anyhow::Result;
-use async_openai::types::FunctionObject;
 use serde::{Deserialize, Serialize};
-use sqlx::types::{Json, Uuid};
+use sqlx::types::Uuid;
 
 use metastable_database::SqlxObject;
 
@@ -20,7 +19,6 @@ pub struct SystemConfig {
     pub openai_temperature: f32,
     pub openai_max_tokens: i32,
 
-    pub functions: Json<Vec<FunctionObject>>,
     pub updated_at: i64,
     pub created_at: i64,
 }

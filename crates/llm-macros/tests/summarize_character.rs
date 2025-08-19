@@ -62,7 +62,7 @@ pub struct SummarizeCharacter {
 mod tests {
     use super::*;
     use metastable_runtime::ToolCall;
-    use async_openai::types::{FunctionCall, FunctionObject};
+    use async_openai::types::{FunctionObject};
     use serde_json::json;
 
     #[tokio::test]
@@ -86,7 +86,6 @@ mod tests {
                     "prompts_first_message": { "type": "string", "description": "角色在对话开始时会说的第一句话。" },
                     "background_stories": {
                         "type": "array",
-                        "description": "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -96,11 +95,11 @@ mod tests {
                                 "content": { "type": "string" }
                             },
                             "required": ["type", "content"]
-                        }
+                        },
+                        "description": "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。"
                     },
                     "behavior_traits": {
                         "type": "array",
-                        "description": "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -110,11 +109,11 @@ mod tests {
                                 "content": { "type": "string" }
                             },
                             "required": ["type", "content"]
-                        }
+                        },
+                        "description": "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
                     "relationships": {
                         "type": "array",
-                        "description": "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -124,11 +123,11 @@ mod tests {
                                 "content": { "type": "string" }
                             },
                             "required": ["type", "content"]
-                        }
+                        },
+                        "description": "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
                     "skills_and_interests": {
                         "type": "array",
-                        "description": "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -138,7 +137,8 @@ mod tests {
                                 "content": { "type": "string" }
                             },
                             "required": ["type", "content"]
-                        }
+                        },
+                        "description": "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
                     "additional_example_dialogue": { "type": "array", "items": { "type": "string" }, "description": "追加对话风格示例（多条）。" },
                     "additional_info": { "type": "array", "items": { "type": "string" }, "description": "任何无法归类但很重要的信息，以中文句子表达。" },
@@ -162,27 +162,55 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_parse_tool_call() {
-        let tool_call_json = json!({
-            "name": "summarize_character",
-            "arguments": "{\n  \"name\": \"艾拉\",\n  \"description\": \"一位充满活力的年轻探险家，总是渴望发现新奇事物。\",\n  \"gender\": \"Female\",\n  \"orientation\": \"Full\",\n  \"language\": \"Chinese\",\n  \"prompts_personality\": \"热情、好奇、勇敢\",\n  \"prompts_scenario\": \"在一个古老的森林里寻找传说中的遗迹。\",\n  \"prompts_example_dialogue\": \"哇，你看那边！那是什么？我们快去看看！\",\n  \"prompts_first_message\": \"你好，我是艾拉，你愿意和我一起去冒险吗？\",\n  \"background_stories\": [\n    { \"type\": \"职业\", \"content\": \"探险家\" },\n    { \"type\": \"成长环境\", \"content\": \"在一个充满冒险故事的家庭长大\" }\n  ],\n  \"behavior_traits\": [\n    { \"type\": \"行为举止\", \"content\": \"总是充满活力，喜欢跑跑跳跳\" }\n  ],\n  \"relationships\": [\n    { \"type\": \"朋友\", \"content\": \"与各种各样的生物都能成为朋友\" }\n  ],\n  \"skills_and_interests\": [\n    { \"type\": \"兴趣爱好\", \"content\": \"收集各种奇特的石头和植物\" }\n  ],\n  \"additional_example_dialogue\": [],\n  \"additional_info\": [],\n  \"tags\": [\"探险\", \"年轻\", \"女性\"] \n}"
-        });
-
-        let tool_call: FunctionCall =
-            serde_json::from_value(tool_call_json).unwrap();
-
-        let summary = SummarizeCharacter::try_from_tool_call(&tool_call).unwrap();
-
-        assert_eq!(summary.name, "艾拉");
-        assert_eq!(summary.gender, CharacterGender::Female);
-        assert_eq!(summary.orientation, CharacterOrientation::Full);
-        assert_eq!(summary.language, CharacterLanguage::Chinese);
-        assert_eq!(
-            summary.background_stories,
-            vec![
+    async fn test_summarize_character_round_trip() {
+        let summary = SummarizeCharacter {
+            name: "艾拉".to_string(),
+            description: "一位充满活力的年轻探险家，总是渴望发现新奇事物。".to_string(),
+            gender: CharacterGender::Female,
+            orientation: CharacterOrientation::Full,
+            language: CharacterLanguage::Chinese,
+            prompts_personality: "热情、好奇、勇敢".to_string(),
+            prompts_scenario: "在一个古老的森林里寻找传说中的遗迹。".to_string(),
+            prompts_example_dialogue: "哇，你看那边！那是什么？我们快去看看！".to_string(),
+            prompts_first_message: "你好，我是艾拉，你愿意和我一起去冒险吗？".to_string(),
+            background_stories: vec![
                 BackgroundStories::Professions("探险家".to_string()),
                 BackgroundStories::GrowthEnvironment("在一个充满冒险故事的家庭长大".to_string())
-            ]
-        );
+            ],
+            behavior_traits: vec![
+                BehaviorTraits::GeneralBehaviorTraits("总是充满活力，喜欢跑跑跳跳".to_string())
+            ],
+            relationships: vec![
+                Relationships::Friends("与各种各样的生物都能成为朋友".to_string())
+            ],
+            skills_and_interests: vec![
+                SkillsAndInterests::HobbiesAndInterests("收集各种奇特的石头和植物".to_string())
+            ],
+            additional_example_dialogue: Some(vec![]),
+            additional_info: Some(vec![]),
+            tags: vec!["探险".to_string(), "年轻".to_string(), "女性".to_string()],
+        };
+
+        let tool_call = summary.into_tool_call().unwrap();
+        println!("tool_call: {:?}", tool_call);
+        let reconstructed_summary = SummarizeCharacter::try_from_tool_call(&tool_call).unwrap();
+        println!("reconstructed_summary: {:?}", reconstructed_summary);
+
+        assert_eq!(summary.name, reconstructed_summary.name);
+        assert_eq!(summary.description, reconstructed_summary.description);
+        assert_eq!(summary.gender, reconstructed_summary.gender);
+        assert_eq!(summary.orientation, reconstructed_summary.orientation);
+        assert_eq!(summary.language, reconstructed_summary.language);
+        assert_eq!(summary.prompts_personality, reconstructed_summary.prompts_personality);
+        assert_eq!(summary.prompts_scenario, reconstructed_summary.prompts_scenario);
+        assert_eq!(summary.prompts_example_dialogue, reconstructed_summary.prompts_example_dialogue);
+        assert_eq!(summary.prompts_first_message, reconstructed_summary.prompts_first_message);
+        assert_eq!(summary.background_stories, reconstructed_summary.background_stories);
+        assert_eq!(summary.behavior_traits, reconstructed_summary.behavior_traits);
+        assert_eq!(summary.relationships, reconstructed_summary.relationships);
+        assert_eq!(summary.skills_and_interests, reconstructed_summary.skills_and_interests);
+        assert_eq!(summary.additional_example_dialogue, reconstructed_summary.additional_example_dialogue);
+        assert_eq!(summary.additional_info, reconstructed_summary.additional_info);
+        assert_eq!(summary.tags, reconstructed_summary.tags);
     }
 }

@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 metastable-runtime = { path = "../../crates/runtime" }
 metastable-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
-metastable-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
 metastable-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
 metastable-database = { path = "../../crates/database" }
 metastable-common = { path = "../../crates/common" }
