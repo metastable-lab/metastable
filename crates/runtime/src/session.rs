@@ -23,3 +23,18 @@ pub struct ChatSession {
     pub updated_at: i64,
     pub created_at: i64,
 }
+
+impl ChatSession {
+    pub fn new(character_id: Uuid, owner: Uuid, use_character_memory: bool) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            public: false,
+            owner,
+            character: character_id,
+            use_character_memory,
+            hidden: false,
+            updated_at: 0,
+            created_at: 0,
+        }
+    }
+}

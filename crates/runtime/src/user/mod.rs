@@ -2,6 +2,7 @@ mod badge;
 mod url;
 mod referral;
 mod follow;
+mod consumption;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
 pub use follow::UserFollow;
+pub use consumption::{UserPointsConsumption, UserPointsConsumptionType};
 
 pub const BALANCE_CAP: i64 = 500;
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -38,6 +40,7 @@ pub enum UserRole {
 pub struct User {
     pub id: Uuid,
     #[unique]
+    #[indexed]
     pub user_id: String,
     pub user_aka: String,
 

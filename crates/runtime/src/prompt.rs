@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use async_openai::types::{
     ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionToolType, FunctionCall
 };
+use metastable_common::get_current_timestamp;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
 
@@ -133,7 +134,7 @@ impl Prompt {
             content_type: MessageType::Text,
             content: prompt.to_string(),
             toolcall: None,
-            created_at: 0,
+            created_at: get_current_timestamp(),
         }
     }
 

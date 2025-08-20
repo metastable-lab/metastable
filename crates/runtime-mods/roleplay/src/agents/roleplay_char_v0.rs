@@ -7,7 +7,7 @@ use metastable_clients::{PostgresClient, LlmClient};
 use serde_json::Value;
 use metastable_runtime::{Character};
 
-use crate::ShowStoryOptions;
+use crate::agents::ShowStoryOptions;
 use crate::input::RoleplayInput;
 use crate::preload_character::get_characters_for_char_creation;
 

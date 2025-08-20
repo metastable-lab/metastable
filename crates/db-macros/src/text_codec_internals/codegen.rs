@@ -77,6 +77,9 @@ fn generate_to_lang_parts_impl(_enum_ident: &Ident, _storage_lang: &str, _format
             VariantKind::VecString => {
                  quote! { Self::#variant_ident(vec) => { #prefix_logic; (prefix.to_string(), vec.join(",")) } }
             },
+            VariantKind::Uuid => {
+                quote! { Self::#variant_ident(inner) => { #prefix_logic; (prefix.to_string(), inner.to_string()) } }
+            },
             _ => quote! {},
         }
     });
@@ -108,6 +111,12 @@ fn generate_display_impl(enum_ident: &Ident, storage_lang: &str, format: &Format
                 match format {
                     FormatKind::Paren => quote! { Self::#variant_ident(vec) => write!(f, "{}({}{}{})", #prefix, #open, vec.join(#sep), #close) },
                     FormatKind::Colon(c) => quote! { Self::#variant_ident(vec) => write!(f, "{}{} {}{}{}", #prefix, #c, #open, vec.join(#sep), #close) },
+                }
+            },
+            VariantKind::Uuid => {
+                match format {
+                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => write!(f, "{}({})", #prefix, inner) },
+                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => write!(f, "{}{} {}", #prefix, #c, inner) },
                 }
             },
             VariantKind::Unsupported => quote! {},
@@ -171,6 +180,24 @@ fn generate_from_str_impl(enum_ident: &Ident, storage_lang: &str, format: &Forma
                     },
                 }
             },
+            VariantKind::Uuid => {
+                match format {
+                    FormatKind::Paren => quote! {
+                        if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
+                            if let Ok(uuid) = inner.parse() {
+                                return Ok(Self::#variant_ident(uuid));
+                            }
+                        }
+                    },
+                    FormatKind::Colon(c) => quote! {
+                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
+                            if let Ok(uuid) = inner.trim().parse() {
+                                return Ok(Self::#variant_ident(uuid));
+                            }
+                        }
+                    },
+                }
+            },
             VariantKind::Unsupported => quote!{},
         }
     });
@@ -228,6 +255,12 @@ fn generate_to_lang_impl(_enum_ident: &Ident, _storage_lang: &str, format: &Form
                 match format {
                     FormatKind::Paren => quote! { Self::#variant_ident(vec) => { #prefix_logic; format!("{}({}{}{})", prefix, #open, vec.join(#sep), #close) } },
                     FormatKind::Colon(c) => quote! { Self::#variant_ident(vec) => { #prefix_logic; format!("{}{} {}{}{}", prefix, #c, #open, vec.join(#sep), #close) } },
+                }
+            },
+            VariantKind::Uuid => {
+                match format {
+                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}({})", prefix, inner) } },
+                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}{} {}", prefix, #c, inner) } },
                 }
             },
             _ => quote! {},
@@ -297,6 +330,24 @@ fn generate_parse_any_lang_impl(enum_ident: &Ident, format: &FormatKind, variant
                         },
                     }
                 },
+                VariantKind::Uuid => {
+                    match format {
+                        FormatKind::Paren => quote! {
+                            if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
+                                if let Ok(uuid) = inner.parse() {
+                                    return Ok(Self::#variant_ident(uuid));
+                                }
+                            }
+                        },
+                        FormatKind::Colon(c) => quote! {
+                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
+                                if let Ok(uuid) = inner.trim().parse() {
+                                    return Ok(Self::#variant_ident(uuid));
+                                }
+                            }
+                        },
+                    }
+                },
                 VariantKind::Unsupported => quote! {},
             }
         }).collect::<Vec<_>>()
@@ -345,6 +396,13 @@ fn generate_parse_with_type_and_content_impl(enum_ident: &Ident, variants: &[Tex
                 if type_str == #prefix {
                     let vec = if content_str.trim().is_empty() { Vec::new() } else { content_str.split(',').map(|s| s.trim().to_string()).collect() };
                     return Ok(Self::#variant_ident(vec));
+                }
+            },
+            VariantKind::Uuid => quote! {
+                if type_str == #prefix {
+                    if let Ok(uuid) = content_str.parse() {
+                        return Ok(Self::#variant_ident(uuid));
+                    }
                 }
             },
             VariantKind::Unsupported => quote!{},

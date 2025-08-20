@@ -21,7 +21,7 @@ impl RoleplayInput {
             Self::ContinueSession(session_id, user_message) => {
                 let session = ChatSession::find_one_by_criteria(
                     QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
-                    &mut *tx
+                    &mut *tx 
                 ).await?
                     .ok_or(anyhow!("[RoleplayCharacterCreationV0Agent::build_input] Session not found"))?;
 

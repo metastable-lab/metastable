@@ -1,5 +1,7 @@
 use anyhow::anyhow;
 use metastable_common::get_current_timestamp;
+use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, CharacterStatus, ChatSession, DrawHistory, DrawType, Prompt, User, UserPointsConsumption, UserPointsConsumptionType};
+use metastable_runtime_roleplay::RoleplayInput;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -8,209 +10,192 @@ use axum::{
     routing::post, Json, Router
 };
 use sqlx::types::Uuid;
-use metastable_runtime::{user::UserUsagePoints, CardPool, DrawHistory, DrawType, RuntimeClient, UserUsage};
-use metastable_runtime_character_creation::CharacterCreationMessage;
-use metastable_runtime_roleplay::{Character, CharacterStatus, RoleplayMessage, RoleplaySession};
+
 use metastable_database::{OrderDirection, QueryCriteria, SqlxCrud, SqlxFilterQuery};
-use metastable_runtime::SystemConfig;
+use metastable_common::ModuleClient;
 
 use crate::{
-    ensure_account, 
-    middleware::authenticate, 
-    response::{AppError, AppSuccess},
-    GlobalState
+    ensure_account, global_state::{AgentRouterInput, AgentRouterOutput}, middleware::authenticate, response::{AppError, AppSuccess}, GlobalState
 };
 
 pub fn runtime_routes() -> Router<GlobalState> {
     Router::new()
-        .route("/runtime/roleplay/create_session",
-            post(roleplay_create_session)
+        .route("/runtime/call", 
+            post(call_agent)
             .route_layer(middleware::from_fn(authenticate))
         )
-
-        .route("/runtime/roleplay/chat/{session_id}",
-            post(roleplay_chat)
-            .route_layer(middleware::from_fn(authenticate))
-        )
-
-        .route("/runtime/roleplay/rollback/{session_id}",
-            post(roleplay_rollback)
-            .route_layer(middleware::from_fn(authenticate))
-        )
-
-        .route("/runtime/character-creation/create",
-            post(character_creation_create)
-            .route_layer(middleware::from_fn(authenticate))
-        )
-
-        .route("/runtime/character-creation/review/{character_id}",
-            post(character_creation_review)
-            .route_layer(middleware::from_fn(authenticate))
-        )
-
         .route("/runtime/cards/draw/{card_pool_id}",
             post(draw_card)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateSessionRequest { pub character_id: Uuid, pub system_config_id: Uuid }
-async fn roleplay_create_session(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Json(payload): Json<CreateSessionRequest>,
-) -> Result<AppSuccess, AppError> {
-    let (user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] User not found")))?;
-
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-    let _character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", payload.character_id),
-        &mut *tx
-    ).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] Character not found")))?;
-    let _system_config = SystemConfig::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", payload.system_config_id),
-        &mut *tx
-    ).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_create_session] System config not found")))?;
-
-    let mut session = RoleplaySession::default();
-    session.character = payload.character_id;
-    session.system_config = payload.system_config_id;
-    session.owner = user.id;
-    session.create(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Session created successfully", json!(())))
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RuntimeCallType {
+    CharacterCreation,
+    CharacterReview,
+    RoleplayV1,
+    RoleplayV1Regenerate,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatRequest { pub message: String }
-async fn roleplay_chat(
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeCallRequest {
+    pub call_type: RuntimeCallType,
+
+    pub character_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub message: Option<String>
+}
+
+async fn call_agent(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
-    Path(session_id): Path<Uuid>,
-    Json(payload): Json<ChatRequest>,
+    Json(payload): Json<RuntimeCallRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 3).await?;
-    let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] User not found")))?;
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] User not found")))?;
 
-    let message = RoleplayMessage::user_message(
-        &payload.message, &session_id,  &user.id
-    );
+    let price = match payload.call_type {
+        RuntimeCallType::CharacterCreation => 3,
+        RuntimeCallType::CharacterReview => 0,
+        RuntimeCallType::RoleplayV1 => 3,
+        RuntimeCallType::RoleplayV1Regenerate => 1,
+    };
 
-    let response = state.roleplay_client.on_new_message(&message).await?;
+    let usage = user.pay(price)
+        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent] {}", e)))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-    let user_usage = UserUsage::from_llm_response(&response, points_consumed.clone());
-    user_usage.create(&mut *tx).await?;
+    let mut tx = state.db.get_client().begin().await?;    
+    let result = (async || match payload.call_type {
+        RuntimeCallType::CharacterCreation => {
+            // REQUIRED: session_id
+            let session_id = payload.session_id
+                .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::CharacterCreation] session_id is required")))?;
 
-    if points_consumed.points_consumed_purchased > 0 {
-        let mut creator = RoleplaySession::find_one_by_criteria(
-            QueryCriteria::new().add_filter("id", "=", Some(session_id)),
-            &mut *tx
-        ).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Character not found")))?
-            .fetch_character(&mut *tx).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Character not found")))?
-            .fetch_creator(&mut *tx).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Creator not found")))?;
+            let payload = AgentRouterInput::CharacterCreation(session_id);
+            let response = state.agents_router.route(&user.id, payload).await?;
+            if let AgentRouterOutput::CharacterCreation(m, _, val) = response {
+                let value = val
+                    .ok_or_else(|| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::CharacterCreation] Value is required")))?;
 
-        creator.running_misc_balance += 1;
-        creator.update(&mut *tx).await?;
+                let usage = UserPointsConsumption::from_points_consumed(
+                    UserPointsConsumptionType::LlmCharacterCreation(m.id),
+                    &user.id, usage, None, 0
+                );
+                usage.create(&mut *tx).await?;
+                user.update(&mut *tx).await?;
+
+                Ok(value)
+            } else {
+                Err(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::CharacterCreation] Unexpected response")))
+            }
+        }
+        RuntimeCallType::CharacterReview => {
+            // REQUIRED: character_id
+            let character_id = payload.character_id
+                .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::CharacterReview] character_id is required")))?;
+            let mut character = Character::find_one_by_criteria(
+                QueryCriteria::new().add_filter("id", "=", Some(character_id)),
+                &mut *tx
+            ).await?
+                .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::CharacterReview] Character not found")))?;
+
+            character.status = CharacterStatus::Reviewing;
+            character.update(&mut *tx).await?;
+
+            Ok(json!(()))
+        }
+        RuntimeCallType::RoleplayV1 | RuntimeCallType::RoleplayV1Regenerate => {
+            // Option 1: session_id, message << just chat
+            // Option 2: character_id, message << create a new session, then chat
+            // THEN, dependes on character_features, decide if it is with roleplay_char or pure roleplay
+            let (session_id, is_pure_roleplay, character_creator) = if let Some(session_id) = payload.session_id {
+                let session = ChatSession::find_one_by_criteria(
+                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
+                    &mut *tx
+                ).await?
+                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Session not found")))?;
+
+                let character = session.fetch_character(&mut *tx).await?
+                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
+
+                (session_id, character.features.contains(&CharacterFeature::Roleplay), character.creator)
+            } else if let Some(character_id) = payload.character_id {
+                let character = Character::find_one_by_criteria(
+                    QueryCriteria::new().add_filter("id", "=", Some(character_id)),
+                    &mut *tx
+                ).await?
+                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
+
+                let session = ChatSession::new(
+                    character_id, user.id, 
+                    character.features.contains(&CharacterFeature::Roleplay));
+                let session = session.create(&mut *tx).await?;
+
+                (session.id, character.features.contains(&CharacterFeature::Roleplay), character.creator)
+            } else {
+                return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::RoleplayV1] session_id or character_id is required")));
+            };
+
+            let roleplay_input = match payload.call_type {
+                RuntimeCallType::RoleplayV1 => {
+                    let message = payload.message.clone()
+                        .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::RoleplayV1] message is required")))?;
+                    let prompt = Prompt::new_user(&message);
+
+                    RoleplayInput::ContinueSession(session_id, prompt)
+                }
+                RuntimeCallType::RoleplayV1Regenerate => {
+                    RoleplayInput::RegenerateSession(session_id)
+                }
+                _ => unreachable!(),
+            };
+
+            let input = match is_pure_roleplay {
+                true => AgentRouterInput::RoleplayV1(roleplay_input),
+                false => AgentRouterInput::RoleplayCharacterCreationV1(roleplay_input),
+            };
+
+            let consumtpion_type = match state.agents_router.route(&user.id, input).await? {
+                AgentRouterOutput::RoleplayV1(m, _, _) => UserPointsConsumptionType::LlmCall(m.id),
+                AgentRouterOutput::RoleplayCharacterCreationV1(m, _, _) => UserPointsConsumptionType::LlmCharacterCreation(m.id),
+                _ => {
+                    return Err(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::RoleplayV1] Unexpected response")));
+                }
+            };
+
+            let mut creator = User::find_one_by_criteria(
+                QueryCriteria::new().add_valued_filter("id", "=", character_creator),
+                &mut *tx
+            ).await?
+                .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] Creator not found")))?;
+
+            creator.running_misc_balance += 1;
+            let creator = creator.update(&mut *tx).await?;
+            
+            let usage = UserPointsConsumption::from_points_consumed(
+                consumtpion_type, &user.id,
+                usage,
+                Some(creator.id), 1
+            );
+            usage.create(&mut *tx).await?;
+            user.update(&mut *tx).await?;
+
+            Ok(json!(()))
+        }
+    })().await;
+
+    match result {
+        Ok(value) => {
+            tx.commit().await?;
+            Ok(AppSuccess::new(StatusCode::OK, "agent call success", value))
+        }
+        Err(e) => {
+            tx.rollback().await?;
+            Err(e)
+        }
     }
-
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Chat completed successfully", json!(response)))
 }
-
-async fn roleplay_rollback(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Path(session_id): Path<Uuid>,
-) -> Result<AppSuccess, AppError> {
-    let (user, points_consumed) = ensure_account(&state.roleplay_client, &user_id_str, 3).await?;
-    let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_rollback] User not found")))?;
-
-    let message = RoleplayMessage::user_message(
-        "rollback", &session_id,  &user.id
-    );
-
-    let response = state.roleplay_client.on_rollback(&message).await?;
-
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-    let user_usage = UserUsage::from_llm_response(&response, points_consumed.clone());
-    user_usage.create(&mut *tx).await?;
-
-    if points_consumed.points_consumed_purchased > 0 {
-        let mut creator = RoleplaySession::find_one_by_criteria(
-            QueryCriteria::new().add_filter("id", "=", Some(session_id)),
-            &mut *tx
-        ).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Character not found")))?
-            .fetch_character(&mut *tx).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Character not found")))?
-            .fetch_creator(&mut *tx).await?
-            .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[roleplay_chat] Creator not found")))?;
-
-        creator.running_misc_balance += 1;
-        creator.update(&mut *tx).await?;
-    }
-
-    tx.commit().await?;
-    Ok(AppSuccess::new(StatusCode::OK, "Last message regenerated successfully", json!(())))
-}
-
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreateCharacterRequest { pub roleplay_session_id: Uuid }
-async fn character_creation_create(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Json(payload): Json<CreateCharacterRequest>,
-) -> Result<AppSuccess, AppError> {
-    let (user, _) = ensure_account(&state.character_creation_client, &user_id_str, 1).await?;
-    let user = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_create] User not found")))?;
-
-    let message = CharacterCreationMessage::blank_user_message(
-        &payload.roleplay_session_id, &user.id
-    );
-    let response = state.character_creation_client.on_new_message(&message).await?;
-    let misc_value = response.clone().misc_value.ok_or(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[character_creation_create] Character creation response misc value not found")))?;
-
-    let mut tx = state.character_creation_client.get_db().begin().await?;
-    let user_usage = UserUsage::from_llm_response(&response, UserUsagePoints::default());
-    user_usage.create(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Character creation completed successfully", misc_value))
-}
-
-async fn character_creation_review(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Path(character_id): Path<Uuid>,
-) -> Result<AppSuccess, AppError> {
-    let (user, _) = ensure_account(&state.character_creation_client, &user_id_str, 0).await?;
-    let _ = user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] User not found")))?;
-
-    let mut tx = state.character_creation_client.get_db().begin().await?;
-    let mut character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_filter("id", "=", Some(character_id)),
-        &mut *tx
-    ).await?
-        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[character_creation_review] Character not found")))?;
-
-    character.status = CharacterStatus::Reviewing;
-    character.update(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Character creation review completed successfully", json!(())))
-}
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DrawCardRequest {  pub draw_type: DrawType }
@@ -220,12 +205,11 @@ async fn draw_card(
     Path(card_pool_id): Path<Uuid>,
     Json(payload): Json<DrawCardRequest>,
 ) -> Result<AppSuccess, AppError> {
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] User not found")))?;
 
-    let (user, _) = ensure_account(&state.roleplay_client, &user_id_str, 1).await?;
-    let mut user = user.ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] User not found")))?;
+    let mut tx = state.db.get_client().begin().await?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-    
     let card_pool = CardPool::find_one_by_criteria(
         QueryCriteria::new().add_filter("id", "=", Some(card_pool_id)),
         &mut *tx
@@ -260,8 +244,12 @@ async fn draw_card(
     };
 
     if let Ok(usage) = user.pay(draw_cost) {
-        let user_usage = UserUsage::from_points_consumed(user.id, usage);
+        let user_usage = UserPointsConsumption::from_points_consumed(
+            UserPointsConsumptionType::Others(String::new()),
+            &user.id, usage, None, 0
+        );
         user_usage.create(&mut *tx).await?;
+        user.update(&mut *tx).await?;
     } else {
         return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[draw_card] Insufficient balance")));
     }

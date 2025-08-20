@@ -6,7 +6,7 @@ use metastable_clients::{PostgresClient, LlmClient};
 use serde_json::Value;
 
 use crate::input::RoleplayInput;
-use crate::SendMessage;
+use crate::agents::SendMessage;
 
 #[derive(Clone)]
 pub struct RoleplayV1Agent {

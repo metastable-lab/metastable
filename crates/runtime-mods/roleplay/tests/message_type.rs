@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use metastable_database::TextPromptCodec;
-use metastable_runtime_roleplay::RoleplayMessageType;
+use metastable_runtime_roleplay::agents::RoleplayMessageType;
 
 #[test]
 fn test_roleplay_message_type_text_codec() -> Result<()> {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use metastable_database::{SqlxObject, TextCodecEnum};
 
 use sqlx::types::{Json, Uuid};
-use crate::{SystemConfig, User, ChatSession};
+use crate::{ChatSession, SystemConfig, User};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
 #[text_codec(format = "paren", storage_lang = "en")]
@@ -56,10 +56,6 @@ pub struct Message {
     pub usage: Json<Option<CompletionUsage>>,
     pub finish_reason: Option<String>,
     pub refusal: Option<String>,
-
-    pub points_consumed_claimed: i64,
-    pub points_consumed_purchased: i64,
-    pub points_consumed_misc: i64,
 
     pub is_stale: bool,
     pub is_memorizeable: bool,

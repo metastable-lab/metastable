@@ -10,7 +10,7 @@ opt-level = 1
 
 [workspace]
 members = [
-    # "crates/api",
+    "crates/api",
     "crates/clients",
     "crates/common",
     "crates/database", 
@@ -22,7 +22,7 @@ members = [
     "crates/runtime-mods/mem0",
 
     "services/metastable-sandbox",
-    # "services/metastable-service",
+    "services/metastable-service",
 ]
 resolver = "2"
 

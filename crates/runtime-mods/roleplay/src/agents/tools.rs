@@ -12,7 +12,6 @@ pub struct ShowStoryOptions {
     pub options: Vec<String>,
 }
 
-
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextCodecEnum)]
 #[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
 pub enum RoleplayMessageType {

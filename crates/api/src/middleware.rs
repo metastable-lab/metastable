@@ -3,10 +3,11 @@ use axum::http::StatusCode;
 use axum::{extract::Request, response::Response};
 use axum::middleware::Next;
 
+use metastable_common::ModuleClient;
 use metastable_common::EnvVars;
-use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::user::UserUsagePoints;
-use metastable_runtime::{RuntimeClient, User};
+use metastable_clients::PostgresClient;
+use metastable_database::{QueryCriteria, SqlxFilterQuery};
+use metastable_runtime::User;
 
 use crate::response::AppError;
 use crate::utils::extract_auth_token;
@@ -35,41 +36,20 @@ pub async fn authenticate(
     Ok(response)
 }
 
-pub async fn ensure_account<S: RuntimeClient>(
-    state: &S, user_id_str: &String, price: i64,
-) -> Result<(Option<User>, UserUsagePoints), AppError> {
+pub async fn ensure_account(
+    db: &PostgresClient, user_id_str: &String
+) -> Result<Option<User>, AppError> {
 
     if user_id_str.is_empty() || user_id_str == "anonymous" {
-        return Ok((None, UserUsagePoints::default()));
+        return Ok(None);
     }
 
-    let db = state.get_db();
-    let mut tx = db.begin().await?;
-    match User::find_one_by_criteria(
+    let mut tx = db.get_client().begin().await?;
+    let maybe_user = User::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone()),
         &mut *tx
-    ).await? {
-        Some(mut user) => {
-            if price > 0 {
-                let _ = user.try_claim_free_balance(50);
-                let paid = user.pay(price);
-                if paid.is_err() {
-                    tx.commit().await?;
-                    return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Insufficient balance")));
-                } else {
-                    user.clone().update(&mut *tx).await?;
-                    tx.commit().await?;
-                    Ok((Some(user), paid.unwrap()))
-                }
-            }
-            else {
-                tx.commit().await?;
-                Ok((Some(user), UserUsagePoints::default()))
-            }
-        }
-        None => {
-            tx.commit().await?;
-            Ok((None, UserUsagePoints::default()))
-        },
-    }
+    ).await?;
+    tx.commit().await?;
+
+    Ok(maybe_user)
 }

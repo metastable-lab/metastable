@@ -169,10 +169,6 @@ pub trait Agent: Clone + Send + Sync + Sized {
             finish_reason: finish_reason.map(|finish_reason| format!("{:?}", finish_reason)),
             refusal: refusal.clone(),
 
-            points_consumed_claimed: 0,
-            points_consumed_purchased: 0,
-            points_consumed_misc: 0,
-
             is_stale: false,
             is_memorizeable: false,
             is_in_memory: false,

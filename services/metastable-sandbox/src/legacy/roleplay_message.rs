@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::types::{Json, Uuid};
 
 use metastable_runtime::{Message, MessageRole, MessageType, SystemConfig, ToolCall, User};
-use metastable_runtime_roleplay::{RoleplayMessageType, SendMessage};
+use metastable_runtime_roleplay::agents::{RoleplayMessageType, SendMessage};
 use super::RoleplaySession;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
@@ -85,9 +85,6 @@ impl RoleplayMessage {
             usage: Json(None),
             finish_reason: None,
             refusal: None,
-            points_consumed_claimed: 0,
-            points_consumed_purchased: 0,
-            points_consumed_misc: 0,
             
             is_stale: user_message.is_removed || assistant_message.is_removed,
             is_memorizeable: true,

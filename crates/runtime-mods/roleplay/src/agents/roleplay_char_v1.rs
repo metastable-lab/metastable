@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::input::RoleplayInput;
 use crate::preload_character::get_characters_for_char_creation;
-use crate::SendMessage;
+use crate::agents::SendMessage;
 
 use metastable_runtime::Character;
 

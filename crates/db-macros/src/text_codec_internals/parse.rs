@@ -29,6 +29,7 @@ pub enum VariantKind {
     Unit,
     String,
     VecString,
+    Uuid,
     Unsupported,
 }
 
@@ -100,6 +101,8 @@ fn parse_variant(variant: &Variant) -> Result<TextCodecVariant, syn::Error> {
                 VariantKind::String
             } else if ty_str == "Vec<String>" || ty_str == "std::string::String" {
                 VariantKind::VecString
+            } else if ty_str == "Uuid" || ty_str == "sqlx::types::Uuid" {
+                VariantKind::Uuid
             } else {
                 VariantKind::Unsupported
             }
