@@ -15,6 +15,11 @@ pub enum UserPointsConsumptionType {
     #[prefix(lang = "en", content = "LlmCharacterCreation")]
     LlmCharacterCreation(Uuid),
 
+    #[prefix(lang = "en", content = "MemoryUpdate")]
+    MemoryUpdate(Uuid),
+    #[prefix(lang = "en", content = "FactExtraction")]
+    FactExtraction,
+
     #[catch_all(no_prefix = true)]
     Others(String),
 }

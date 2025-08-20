@@ -7,8 +7,6 @@ edition = "2021"
 metastable-runtime = { path = "../../runtime" }
 metastable-common = { path = "../../common" }
 metastable-database = { path = "../../database" }
-metastable-db-macros = { path = "../../db-macros" }
-# metastable-runtime-mem0 = { path = "../mem0" }
 metastable-clients = { path = "../../clients" }
 
 serde.workspace = true

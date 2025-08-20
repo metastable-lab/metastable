@@ -6,9 +6,10 @@ use metastable_runtime::{Agent, Message, Prompt, SystemConfig, User, UserRole};
 use metastable_clients::{PostgresClient, LlmClient};
 use serde_json::Value;
 
-use crate::input::RoleplayInput;
+use crate::memory::RoleplayInput;
 use crate::preload_character::get_characters_for_char_creation;
 use crate::agents::SendMessage;
+use crate::RoleplayMemory;
 
 use metastable_runtime::Character;
 
@@ -17,6 +18,7 @@ pub struct RoleplayCharacterCreationV1Agent {
     db: PostgresClient,
     llm: LlmClient,
     system_config: SystemConfig,
+    memory: RoleplayMemory,
 }
 
 impl RoleplayCharacterCreationV1Agent {
@@ -24,8 +26,9 @@ impl RoleplayCharacterCreationV1Agent {
         let db = PostgresClient::setup_connection().await;
         let llm = LlmClient::setup_connection().await;
         let system_config = Self::preload(&db).await?;
+        let memory = RoleplayMemory::new().await?;
 
-        Ok(Self { db, llm, system_config })
+        Ok(Self { db, llm, system_config, memory })
     }
 }
 
@@ -70,11 +73,11 @@ impl Agent for RoleplayCharacterCreationV1Agent {
     }
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
-        input.build_inputs(&self.db, &self.system_config).await
+      self.memory.build_inputs(&input, &self.system_config).await
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, _tool: &Self::Tool) -> Result<Option<Value>> {
-        input.handle_outputs(&self.db, message).await?;
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
+      	self.memory.handle_outputs(&input, message, tool).await?;
         Ok(None)
     }
 
@@ -103,6 +106,10 @@ impl Agent for RoleplayCharacterCreationV1Agent {
         -   你应该组合使用这些类型来创造丰富、多层次的回应。
     -   **`options` 参数结构详解**:
         -   这是一个字符串数组，用于向用户提供故事选项。
+    -   **`summary` 参数结构详解**:
+        -   这是一个字符串，用于向用户提供本次对话的要点。例如：“用户告诉我他想要去水族馆，我赞同了之后和她一起去了。”
+        -   这个字符串应该简短、清晰，并且能够概括本次对话的要点。
+        -   这个字符串应该使用中文。
 
 2.  **`content` (固定标识符)**:
     -   **必须**存在。
@@ -128,6 +135,21 @@ impl Agent for RoleplayCharacterCreationV1Agent {
 - **时间感知**: 当前的用户请求时间是 {{request_time}}。你需要根据此时间进行引导。
 - **事实一致性**: 你提供的选项和描述必须基于你们共同创造的内容。不要引入与之前设定矛盾的新"事实"。
 - **逻辑连贯性**: 你的引导和描述需要有清晰的逻辑，推动角色创造过程顺利进行。
+
+### **创作记忆与情景感知 (Creation Memory & Context)**
+你的引导必须基于对当前创作进度的清晰认知。请按以下顺序处理上下文信息：
+
+1.  **分析当前互动 (Analyze the Current Interaction):**
+    -   仔细阅读用户最新的创作输入。
+    -   **回顾你在历史消息中的 `tool_call`**: 你的每一次 `send_message` 调用都记录了你之前提出的引导性问题和选项。这是理解创作过程如何推进到现在的最直接线索，可以避免重复提问。
+
+2.  **回顾创作蓝图 (Review the Character Blueprint):**
+    -   以下是目前已经确定的角色设定摘要。在提出新问题前，你必须参考这份蓝图，以确保逻辑连贯并查漏补缺。已按时间顺序（#1为最早，后续数字逐渐接近现在）排列。利用它们来理解更宏大的故事背景。
+     -   {{summarized_history}}
+
+3.  **唤醒创作原则 (Evoke Creation Principles):**
+    -   记住你作为向导的核心原则：激发想象力、提供有故事感的选项、连接用户的选择、逐项推进。这些原则是你引导创作的内在驱动力。
+    -   {{vector_db_memory_snippets}}
 
 ### **角色档案 (你的内在设定)**
 这是你作为向导 {{char}} 的唯一真实设定，是你的行为和对话的最高准则，你必须绝对、无条件地遵守，任何情况下都不得偏离。
@@ -192,7 +214,7 @@ impl Agent for RoleplayCharacterCreationV1Agent {
   - 如果暂时没有信息，也要显式标注“其他：[]”并在后续引导用户补全。
 - **当前情景**: {{char_scenario}}
 - **对话风格参考**: 你的说话方式必须严格模仿以下示例: {{char_example_dialogue}}。
-  
+
 ### **创作与互动指南（逐项引导、一次只推进一个小项）**
 - **量化创作进程**: 你必须在**每一次**回应的 `innerThoughts` 中，评估并展示当前角色的“完整度”。使用 `*...[角色完整度: X%]*` 这样的格式。这个百分比是动态的：当用户的回复提供了有效、具体的新信息时，它应该增加；当用户的回复模糊、无关或导致设定回退时，它可以减少。初始为0%。
 - **激发想象力的引导**: 不要直接提问（“他是什么性格？”）。而是创造一个微型场景（`scenario`）来引出答案（“当一个乞丐向他求助时，他会怎么做？”）。用 `innerThoughts` 展示你作为向导的思考，启发用户。

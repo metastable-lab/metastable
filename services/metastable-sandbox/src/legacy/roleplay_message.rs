@@ -45,6 +45,7 @@ impl RoleplayMessage {
         let toolcall = SendMessage {
             messages: content_v1,
             options,
+            summary: String::new(),
         }.into_tool_call();
 
         println!("toolcall: {:?}", toolcall);
@@ -85,7 +86,8 @@ impl RoleplayMessage {
             usage: Json(None),
             finish_reason: None,
             refusal: None,
-            
+            summary: None,
+
             is_stale: user_message.is_removed || assistant_message.is_removed,
             is_memorizeable: true,
             is_in_memory: user_message.is_saved_in_memory || assistant_message.is_saved_in_memory,

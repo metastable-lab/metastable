@@ -1,5 +1,5 @@
 use metastable_runtime::LlmTool;
-use metastable_database::{TextCodecEnum, TextPromptCodec};
+use metastable_database::TextCodecEnum;
 use serde::{Deserialize, Serialize};
 
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
@@ -28,26 +28,6 @@ pub enum RoleplayMessageType {
     Text(String),
 }
 
-impl RoleplayMessageType {
-    pub fn to_text(&self) -> String { self.to_lang("zh") }
-
-    pub fn batch_to_text(msg: &[Self]) -> String {
-        let mut text = String::new();
-        for m in msg {
-            text.push_str(&m.to_text());
-            text.push('\n');
-        }
-        text
-    }
-
-    pub fn from_text_batch(text: &str) -> anyhow::Result<Vec<Self>> {
-        text.lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| line.parse())
-            .collect()
-    }
-}
-
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
 #[llm_tool(
     name = "send_message",
@@ -58,4 +38,6 @@ pub struct SendMessage {
     pub messages: Vec<RoleplayMessageType>,
     #[llm_tool(description = "一个包含多个选项的数组，按顺序组合成完整的回复。")]
     pub options: Vec<String>,
+    #[llm_tool(description = "一个简短的总结，用于描述本次对话的要点。例如：“用户告诉我他想要去水族馆，我赞同了之后和她一起去了。")]
+    pub summary: String,
 }

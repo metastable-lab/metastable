@@ -52,6 +52,8 @@ pub struct Message {
     pub assistant_message_content_type: MessageType,
     pub assistant_message_tool_call: Json<Option<FunctionCall>>,
     
+    pub summary: Option<String>,
+
     pub model_name: String,
     pub usage: Json<Option<CompletionUsage>>,
     pub finish_reason: Option<String>,

@@ -169,6 +169,8 @@ pub trait Agent: Clone + Send + Sync + Sized {
             finish_reason: finish_reason.map(|finish_reason| format!("{:?}", finish_reason)),
             refusal: refusal.clone(),
 
+            summary: None,
+
             is_stale: false,
             is_memorizeable: false,
             is_in_memory: false,

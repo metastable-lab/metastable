@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use metastable_common::get_current_timestamp;
-use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, CharacterStatus, ChatSession, DrawHistory, DrawType, Prompt, User, UserPointsConsumption, UserPointsConsumptionType};
+use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, ChatSession, DrawHistory, DrawType, Prompt, User, UserPointsConsumption, UserPointsConsumptionType};
 use metastable_runtime_roleplay::RoleplayInput;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -33,7 +33,6 @@ pub fn runtime_routes() -> Router<GlobalState> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RuntimeCallType {
     CharacterCreation,
-    CharacterReview,
     RoleplayV1,
     RoleplayV1Regenerate,
 }
@@ -57,7 +56,6 @@ async fn call_agent(
 
     let price = match payload.call_type {
         RuntimeCallType::CharacterCreation => 3,
-        RuntimeCallType::CharacterReview => 0,
         RuntimeCallType::RoleplayV1 => 3,
         RuntimeCallType::RoleplayV1Regenerate => 1,
     };
@@ -89,21 +87,6 @@ async fn call_agent(
             } else {
                 Err(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::CharacterCreation] Unexpected response")))
             }
-        }
-        RuntimeCallType::CharacterReview => {
-            // REQUIRED: character_id
-            let character_id = payload.character_id
-                .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::CharacterReview] character_id is required")))?;
-            let mut character = Character::find_one_by_criteria(
-                QueryCriteria::new().add_filter("id", "=", Some(character_id)),
-                &mut *tx
-            ).await?
-                .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::CharacterReview] Character not found")))?;
-
-            character.status = CharacterStatus::Reviewing;
-            character.update(&mut *tx).await?;
-
-            Ok(json!(()))
         }
         RuntimeCallType::RoleplayV1 | RuntimeCallType::RoleplayV1Regenerate => {
             // Option 1: session_id, message << just chat
@@ -180,6 +163,8 @@ async fn call_agent(
             );
             usage.create(&mut *tx).await?;
             user.update(&mut *tx).await?;
+
+            state.memory_update_tx.send(session_id).await?;
 
             Ok(json!(()))
         }

@@ -14,4 +14,7 @@ pub use llm::LlmClient;
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresClient, PgvectorClient};
 
+mod vector;
+pub use vector::{EmbeddingMessage, MemoryEvent, MemoryUpdateEntry, BatchUpdateSummary, Mem0Filter};
+
 pub use consts::*;

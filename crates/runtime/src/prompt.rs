@@ -166,4 +166,27 @@ impl Prompt {
             created_at: 0,
         }
     }
+
+    pub fn inject_system_memory(&mut self, recent_summary: Vec<String>, memory_snippets: Vec<String>) {
+        if self.role != MessageRole::System {
+            return;
+        }
+
+        let formatted_summary = recent_summary
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("#{} {}", i + 1, s))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let formatted_snippets = memory_snippets
+            .iter()
+            .map(|s| format!("- {}", s))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        self.content = self.content
+            .replace("{{summarized_history}}", &formatted_summary)
+            .replace("{{vector_db_memory_snippets}}", &formatted_snippets);
+    }
 }

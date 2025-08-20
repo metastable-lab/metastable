@@ -42,6 +42,10 @@ pub fn user_routes() -> Router<GlobalState> {
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
+        .route("/user/character/review/{character_id}", 
+            post(review_character)
+            .route_layer(middleware::from_fn(authenticate))
+        )
         .route("/user/update_character/{character_id}",
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
@@ -177,6 +181,32 @@ async fn follow(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
+}
+
+async fn review_character(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[review_character] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[review_character] Character not found"))?;
+    
+    if character.creator != user.id {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[review_character] user not authorized to make changes")));
+    }
+    
+    character.status = CharacterStatus::Reviewing;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character reviewed successfully", json!(())))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
