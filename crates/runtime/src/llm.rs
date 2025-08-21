@@ -47,6 +47,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             openai_temperature: Self::temperature(),
             openai_max_tokens: Self::max_tokens(),
             openai_base_url: Self::base_url().to_string(),
+            functions: Json(vec![Self::Tool::to_function_object()]),
             created_at: 0,
             updated_at: 0,
         }
@@ -129,6 +130,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             .ok_or(anyhow!("[Agent::call] No response from AI inference server for model {}", Self::model()))?;
 
         let message = choice.message.clone();
+        println!("raw message: {:?}", message);
         let finish_reason = choice.finish_reason.clone();
         let refusal = choice.message.refusal.clone();
         let usage = response.usage
@@ -179,7 +181,10 @@ pub trait Agent: Clone + Send + Sync + Sized {
             updated_at: 0,
         };
 
+        println!("msg: {:?}", resulting_message);
+
         let tool = Self::Tool::try_from_tool_call(&tool_calls[0].function)?;
+        println!("{:?}", tool);
         let misc_value = self.handle_output(input, &resulting_message, &tool).await?;
 
         Ok((resulting_message, tool, misc_value))

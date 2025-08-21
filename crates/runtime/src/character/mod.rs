@@ -136,7 +136,7 @@ impl Character {
             content_type: MessageType::Text,
             content: p,
             toolcall: None,
-            created_at: 0,
+            created_at: 1,
         }
     }
 }

@@ -40,7 +40,7 @@ init_databases!(
         RoleplayMessage,
     ],
     pgvector: [ 
-        metastable_runtime_mem0::EmbeddingMessage
+        metastable_clients::EmbeddingMessage
     ]
 );
 

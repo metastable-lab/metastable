@@ -11,8 +11,6 @@ use metastable_database::init_databases;
 
 init_databases!(
     default: [
-        metastable_runtime::ChatSession,
-
         metastable_runtime::User,
         metastable_runtime::UserUrl,
         metastable_runtime::UserReferral,
@@ -26,13 +24,15 @@ init_databases!(
         metastable_runtime::DrawHistory,
 
         metastable_runtime::Message,
+        metastable_runtime::ChatSession,
+        metastable_runtime::UserPointsLog,
 
         metastable_runtime::Character,
         metastable_runtime::CharacterHistory,
         metastable_runtime::CharacterSub,
         metastable_runtime::AuditLog,
     ],
-    pgvector: [
+    pgvector: [ 
         metastable_clients::EmbeddingMessage
     ]
 );
@@ -45,6 +45,7 @@ async fn main() -> Result<()> {
     let trace = TraceLayer::new_for_http();
 
     let (global_state, memory_updater_rx) = GlobalState::new().await?;
+    println!("Global State Init");
     tokio::spawn(async move {
         let memory_updater = MemoryUpdater::new().await.unwrap();
         memory_updater.run(memory_updater_rx).await.unwrap();

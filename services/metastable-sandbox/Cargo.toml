@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 metastable-runtime = { path = "../../crates/runtime" }
 metastable-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
-metastable-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
 metastable-database = { path = "../../crates/database" }
+metastable-clients = { path = "../../crates/clients" }
 metastable-common = { path = "../../crates/common" }
 
 tokio = { workspace = true }

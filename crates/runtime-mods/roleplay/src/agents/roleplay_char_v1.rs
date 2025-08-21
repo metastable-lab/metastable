@@ -1,17 +1,13 @@
 use anyhow::Result;
 
 use metastable_common::ModuleClient;
-use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
-use metastable_runtime::{Agent, Message, Prompt, SystemConfig, User, UserRole};
+use metastable_runtime::{Agent, Message, Prompt, SystemConfig};
 use metastable_clients::{PostgresClient, LlmClient};
 use serde_json::Value;
 
 use crate::memory::RoleplayInput;
-use crate::preload_character::get_characters_for_char_creation;
 use crate::agents::SendMessage;
 use crate::RoleplayMemory;
-
-use metastable_runtime::Character;
 
 #[derive(Clone)]
 pub struct RoleplayCharacterCreationV1Agent {
@@ -42,35 +38,6 @@ impl Agent for RoleplayCharacterCreationV1Agent {
     fn db_client(&self) -> &PostgresClient { &self.db }
     fn model() -> &'static str { "google/gemini-2.5-flash" }
     fn system_config(&self) -> &SystemConfig { &self.system_config }
-    
-    async fn preload(db: &PostgresClient) -> Result<SystemConfig> {
-        let system_config = <Self as Agent>::preload(db).await?;
-
-        let mut tx = db.get_client().begin().await?;
-        let admin_user = User::find_one_by_criteria(
-            QueryCriteria::new().add_filter("role", "=", Some(UserRole::Admin.to_string())),
-            &mut *tx
-        ).await?
-            .ok_or(anyhow::anyhow!("[Preloader::load_characters] No admin user found"))?;
-
-        let characters = get_characters_for_char_creation(admin_user.id);
-        for mut character in characters {
-            let existing_char = Character::find_one_by_criteria(
-                QueryCriteria::new().add_filter("name", "=", Some(character.name.clone())),
-                &mut *tx
-            ).await?;
-
-            if existing_char.is_none() {
-                character.create(&mut *tx).await?;
-            } else {
-                character.id = existing_char.unwrap().id;
-                character.update(&mut *tx).await?;
-            }
-        }
-        tx.commit().await?;
-
-        Ok(system_config)
-    }
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
       self.memory.build_inputs(&input, &self.system_config).await
@@ -98,11 +65,10 @@ impl Agent for RoleplayCharacterCreationV1Agent {
     -   **`messages` 参数结构详解**:
         -   这是一个数组，每个元素都是一个包含 `type` 和 `content` 的对象。
         -   `type` 决定了消息的性质:
-            -   `"action"`: 角色的身体动作。
-            -   `"scenario"`: 场景、环境或氛围的描述。
-            -   `"innerThoughts"`: 角色的内心想法或心理活动。
-            -   `"chat"`: 角色说出的话。
-            -   `"text"`: 独白或任何不适合其他类型的文本。
+            -   `"动作"`: 角色的身体动作。
+            -   `"场景"`: 场景、环境或氛围的描述。
+            -   `"内心独白"`: 角色的内心想法或心理活动。
+            -   `"对话"`: 角色说出的话。
         -   你应该组合使用这些类型来创造丰富、多层次的回应。
     -   **`options` 参数结构详解**:
         -   这是一个字符串数组，用于向用户提供故事选项。

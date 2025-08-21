@@ -24,6 +24,10 @@ pub fn runtime_routes() -> Router<GlobalState> {
             post(call_agent)
             .route_layer(middleware::from_fn(authenticate))
         )
+        .route("/runtime/create_session/{character_id}",
+            post(create_session)
+            .route_layer(middleware::from_fn(authenticate))
+        )
         .route("/runtime/cards/draw/{card_pool_id}",
             post(draw_card)
             .route_layer(middleware::from_fn(authenticate))
@@ -41,8 +45,8 @@ pub enum RuntimeCallType {
 pub struct RuntimeCallRequest {
     pub call_type: RuntimeCallType,
 
+    pub session_id: Uuid,
     pub character_id: Option<Uuid>,
-    pub session_id: Option<Uuid>,
     pub message: Option<String>
 }
 
@@ -63,11 +67,7 @@ async fn call_agent(
     let mut tx = state.db.get_client().begin().await?;    
     let result = (async || match payload.call_type {
         RuntimeCallType::CharacterCreation => {
-            // REQUIRED: session_id
-            let session_id = payload.session_id
-                .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::CharacterCreation] session_id is required")))?;
-
-            let payload = AgentRouterInput::CharacterCreation(session_id);
+            let payload = AgentRouterInput::CharacterCreation(payload.session_id);
             let response = state.agents_router.route(&user.id, payload).await?;
             if let AgentRouterOutput::CharacterCreation(m, _, val) = response {
                 let value = val
@@ -83,36 +83,17 @@ async fn call_agent(
             }
         }
         RuntimeCallType::RoleplayV1 | RuntimeCallType::RoleplayV1Regenerate => {
-            // Option 1: session_id, message << just chat
-            // Option 2: character_id, message << create a new session, then chat
-            // THEN, dependes on character_features, decide if it is with roleplay_char or pure roleplay
-            let (session_id, is_pure_roleplay, character_creator) = if let Some(session_id) = payload.session_id {
-                let session = ChatSession::find_one_by_criteria(
-                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
-                    &mut *tx
-                ).await?
-                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Session not found")))?;
+            let session = ChatSession::find_one_by_criteria(
+                QueryCriteria::new().add_valued_filter("id", "=", payload.session_id),
+                &mut *tx
+            ).await?
+                .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Session not found")))?;
 
-                let character = session.fetch_character(&mut *tx).await?
-                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
+            let character = session.fetch_character(&mut *tx).await?
+                .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
 
-                (session_id, character.features.contains(&CharacterFeature::Roleplay), character.creator)
-            } else if let Some(character_id) = payload.character_id {
-                let character = Character::find_one_by_criteria(
-                    QueryCriteria::new().add_filter("id", "=", Some(character_id)),
-                    &mut *tx
-                ).await?
-                    .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
-
-                let session = ChatSession::new(
-                    character_id, user.id, 
-                    character.features.contains(&CharacterFeature::Roleplay));
-                let session = session.create(&mut *tx).await?;
-
-                (session.id, character.features.contains(&CharacterFeature::Roleplay), character.creator)
-            } else {
-                return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::RoleplayV1] session_id or character_id is required")));
-            };
+            let is_pure_roleplay = character.features.contains(&CharacterFeature::Roleplay);
+            let character_creator = character.creator;
 
             let roleplay_input = match payload.call_type {
                 RuntimeCallType::RoleplayV1 => {
@@ -120,10 +101,10 @@ async fn call_agent(
                         .ok_or_else(|| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent::RoleplayV1] message is required")))?;
                     let prompt = Prompt::new_user(&message);
 
-                    RoleplayInput::ContinueSession(session_id, prompt)
+                    RoleplayInput::ContinueSession(payload.session_id, prompt)
                 }
                 RuntimeCallType::RoleplayV1Regenerate => {
-                    RoleplayInput::RegenerateSession(session_id)
+                    RoleplayInput::RegenerateSession(payload.session_id)
                 }
                 _ => unreachable!(),
             };
@@ -167,7 +148,7 @@ async fn call_agent(
                 _ => unreachable!(),
             }
 
-            state.memory_update_tx.send(session_id).await?;
+            state.memory_update_tx.send(payload.session_id).await?;
 
             Ok(json!(()))
         }
@@ -183,6 +164,31 @@ async fn call_agent(
             Err(e)
         }
     }
+}
+
+async fn create_session(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_session] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_session] Character not found")))?;
+
+    let session = ChatSession::new(character_id, user.id, character.features.contains(&CharacterFeature::Roleplay));
+    let session = session.create(&mut *tx).await?;
+
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Session created successfully", json!({
+        "session_id": session.id,
+    })))
 }
 
 #[derive(Debug, Serialize, Deserialize)]

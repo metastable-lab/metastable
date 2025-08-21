@@ -34,7 +34,7 @@ pub enum RoleplayMessageType {
     description = "用于向用户发送结构化消息的唯一工具。你必须使用此工具来发送所有回应，包括对话、动作、场景描述和选项。"
 )]
 pub struct SendMessage {
-    #[llm_tool(description = "一个包含多个消息片段的数组，按顺序组合成完整的回复。", is_enum = true)]
+    #[llm_tool(description = "一个包含多个消息片段的数组，按顺序组合成完整的回复。", is_enum = true, enum_lang = "zh")]
     pub messages: Vec<RoleplayMessageType>,
     #[llm_tool(description = "一个包含多个选项的数组，按顺序组合成完整的回复。")]
     pub options: Vec<String>,
