@@ -8,9 +8,9 @@ use axum::{
     routing::post, Json, Router
 };
 
-use metastable_common::{encrypt, EnvVars};
+use metastable_common::{encrypt, EnvVars, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::{RuntimeClient, User, UserRole};
+use metastable_runtime::{User, UserRole};
 
 use crate::{
     middleware::authenticate, response::{AppError, AppSuccess}, utils::{generate_otp, generate_timebased_counter, verify_otp}, ApiServerEnv, GlobalState
@@ -120,7 +120,7 @@ async fn session(
     State(state): State<GlobalState>,
     Extension(user_id): Extension<String>,
 ) -> Result<AppSuccess, AppError> {
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
     let user = User::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("user_id", "=", user_id.clone()),
         &mut *tx

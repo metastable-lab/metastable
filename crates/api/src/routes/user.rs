@@ -9,11 +9,14 @@ use axum::{
 };
 use sqlx::types::Uuid;
 
-use metastable_common::get_current_timestamp;
+use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::{user::{UserReferral, UserUrl}, RuntimeClient, User, UserFollow};
-use metastable_runtime_roleplay::{BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus, CharacterSub};
 
+use metastable_runtime::{
+    UserReferral, UserUrl, User, UserFollow, 
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, 
+    CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus, CharacterSub
+};
 use crate::{
     ensure_account, 
     middleware::authenticate, 
@@ -23,9 +26,6 @@ use crate::{
 
 pub fn user_routes() -> Router<GlobalState> {
     Router::new()
-        .route("/user/try_login",
-            post(try_login)
-        )
         .route("/user/register",
             post(register)
         )
@@ -42,6 +42,10 @@ pub fn user_routes() -> Router<GlobalState> {
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
+        .route("/user/character/review/{character_id}", 
+            post(review_character)
+            .route_layer(middleware::from_fn(authenticate))
+        )
         .route("/user/update_character/{character_id}",
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
@@ -51,44 +55,6 @@ pub fn user_routes() -> Router<GlobalState> {
             post(create_character_sub)
             .route_layer(middleware::from_fn(authenticate))
         )
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TryLoginRequest {
-    pub user_id: String,
-}
-
-async fn try_login(
-    State(state): State<GlobalState>,
-    Json(payload): Json<TryLoginRequest>,
-) -> Result<AppSuccess, AppError> {
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-
-    // 1. check if the user already exists
-    let user = User::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("user_id", "=", payload.user_id.clone()),
-        &mut *tx
-    ).await?;
-
-    match user {
-        Some(mut user) => {
-            let _ = user.try_claim_free_balance(100); // whatever, we don't care about the error
-            user.update(&mut *tx).await?;
-            tx.commit().await?;
-            return Ok(AppSuccess::new(
-                StatusCode::OK, 
-                "User already exists", 
-                json!({ "registration_required": false })
-            ));
-        }
-        None => {
-            return Ok(AppSuccess::new(
-                StatusCode::OK, 
-                "[/user/try_login] User not found", 
-                json!({ "registration_required": true })
-            ));
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -102,7 +68,7 @@ async fn register(
     State(state): State<GlobalState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
 
     // 1. check if the user already exists
     let user = User::find_one_by_criteria(
@@ -130,17 +96,20 @@ async fn register(
     user.user_id = payload.user_id.clone();
     user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
-    let _ = user.try_claim_free_balance(50); // infallable
 
-    user.running_misc_balance += 50;
-    let user = user.create(&mut *tx).await?;
+    let mut user = user.create(&mut *tx).await?;
+    let claimed_log = user.try_claim_free_balance(50).expect("user MUST be able to claim on account creation"); // infallable
+    let invitaion_log = user.invitation_reward(&referer.id, 100, 50);
+    let invitation_reward_log = referer.invitation_reward(&user.id, 50, 100);
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
-
-    referer.running_misc_balance += 100;
     referer.update(&mut *tx).await?;
+
+    claimed_log.create(&mut *tx).await?;
+    invitaion_log.create(&mut *tx).await?;
+    invitation_reward_log.create(&mut *tx).await?;
 
     tx.commit().await?;
 
@@ -157,10 +126,10 @@ async fn buy_referral(
     Json(payload): Json<BuyReferralRequest>,
 ) -> Result<AppSuccess, AppError> {
     let count = payload.count.unwrap_or(1);
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let mut user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[buy_referral] User not found")))?;
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[buy_referral] User not found")))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
 
     let referrals = user.buy_referral_code(count)?;
     for referral in &referrals {
@@ -183,10 +152,10 @@ async fn create_url(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<CreateUrlRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_url] User not found")))?;
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_url] User not found")))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
     let url = UserUrl::new(user.id, payload.path, payload.url_type);
     let url = url.create(&mut *tx).await?;
     tx.commit().await?;
@@ -206,15 +175,41 @@ async fn follow(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<FollowRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let follower = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
+    let follower = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
     let follow = UserFollow::new(follower.id, payload.following_id);
     follow.create(&mut *tx).await?;
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
+}
+
+async fn review_character(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[review_character] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[review_character] Character not found"))?;
+    
+    if character.creator != user.id {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[review_character] user not authorized to make changes")));
+    }
+    
+    character.status = CharacterStatus::Reviewing;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character reviewed successfully", json!(())))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -248,10 +243,10 @@ async fn update_character(
     Path(character_id): Path<Uuid>,
     Json(payload): Json<UpdateCharacterRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[update_character] User not found")))?;
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[update_character] User not found")))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
+    let mut tx = state.db.get_client().begin().await?;
 
     let mut old_character = Character::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("id", "=", character_id),
@@ -321,17 +316,15 @@ async fn update_character(
     
 }
 
-
 async fn create_character_sub(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
     Path(character_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 0).await?;
-    let user = maybe_user.ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
 
-    let mut tx = state.roleplay_client.get_db().begin().await?;
-
+    let mut tx = state.db.get_client().begin().await?;
     let character_sub = CharacterSub::new(user.id, character_id, vec![]);
     character_sub.create(&mut *tx).await?;
     tx.commit().await?;

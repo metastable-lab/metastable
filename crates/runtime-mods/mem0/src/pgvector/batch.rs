@@ -1,14 +1,13 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use metastable_common::get_current_timestamp;
-use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
+use metastable_common::{ModuleClient, get_current_timestamp};
+use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery, TextCodecEnum};
 
-use crate::pgvector::{EmbeddingMessage};
-use crate::Mem0Filter;
-use crate::Mem0Engine;
+use crate::{EmbeddingMessage, Mem0Engine, Mem0Filter};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TextCodecEnum)]
+#[text_codec(format = "upper", storage_lang = "en")]
 #[serde(rename_all = "UPPERCASE")]
 pub enum MemoryEvent {
     Add,
@@ -55,7 +54,7 @@ impl Mem0Engine {
         let update_contents: Vec<String> = to_update.iter().map(|u| u.content.clone()).collect();
 
         let all_contents_to_embed = [add_contents.as_slice(), update_contents.as_slice()].concat();
-        let embeddings = self.embed(all_contents_to_embed).await?;
+        let embeddings = self.embeder.embed(all_contents_to_embed).await?;
 
         let (add_embeddings, update_embeddings) = embeddings.split_at(add_contents.len());
 
@@ -106,7 +105,7 @@ impl Mem0Engine {
             })
             .collect();
 
-        let mut tx = self.get_vector_db().begin().await?;
+        let mut tx = self.vector_db.get_client().begin().await?;
 
         for embedding in add_messages {
             embedding.create(&mut *tx).await?;

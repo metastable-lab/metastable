@@ -63,6 +63,15 @@ pub trait SqlxCrud: SqlxSchema + SqlxFilterQuery + Sized {
     where
         E: Executor<'e, Database = Postgres> + Send,
         Self: Send;
+
+    async fn force_set_timestamp<'e, E>(self, executor: E, created_at: i64, updated_at: i64) -> Result<Self, SqlxError>
+    where
+        E: Executor<'e, Database = Postgres> + Send,
+        Self: Send;
+
+    async fn toggle_trigger<'e, E>(executor: E, status: bool) -> Result<(), SqlxError>
+    where
+        E: Executor<'e, Database = Postgres> + Send;
 } 
 
 /// Specifies the direction for ordering query results.
@@ -240,11 +249,14 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
 /// Trait for enums that can be rendered/parsing into localized text forms for prompts and storage.
 /// Implementations typically come from a derive macro.
 pub trait TextPromptCodec: Sized {
-    /// Render to the specified language (does not affect DB storage).
+    /// Format for display, using the storage language.
     fn to_lang(&self, lang: &str) -> String;
-
+    /// Returns the type and content parts for a given language.
+    fn to_lang_parts(&self, lang: &str) -> (String, String);
     /// Parse from any supported language representation.
     fn parse_any_lang(s: &str) -> anyhow::Result<Self>;
+    fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self>;
+    fn schema(lang: Option<&str>) -> serde_json::Value;
 }
 
 #[async_trait::async_trait]

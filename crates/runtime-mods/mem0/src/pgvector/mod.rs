@@ -3,12 +3,13 @@ mod batch;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use metastable_common::get_current_timestamp;
+use metastable_common::{ModuleClient, get_current_timestamp};
 use metastable_database::{OrderDirection, SqlxObject, Vector};
+use metastable_clients::DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD;
 
-pub use batch::{BatchUpdateSummary, MemoryUpdateEntry, MemoryEvent};
+pub use batch::{MemoryUpdateEntry, MemoryEvent};
 
-use crate::{Mem0Engine, Mem0Filter, DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD};
+use crate::{Mem0Engine, Mem0Filter};
 
 #[derive(Debug, Clone, Serialize, Deserialize, SqlxObject)]
 #[table_name = "embeddings"]
@@ -34,7 +35,7 @@ impl EmbeddingMessage {
             return Ok(vec![]);
         }
 
-        let embeddings = mem0_engine.embed(raw_messages.to_vec()).await?;
+        let embeddings = mem0_engine.embeder.embed(raw_messages.to_vec()).await?;
         let embedding_messages = embeddings
             .iter()
             .zip(raw_messages)
@@ -54,7 +55,7 @@ impl EmbeddingMessage {
     }
 
     pub async fn batch_search(mem0_engine: &Mem0Engine, filter: &Mem0Filter, embeddings: &[Self], limit: i64) -> Result<Vec<Vec<Self>>> {
-        let mut tx = mem0_engine.get_vector_db().begin().await?;
+        let mut tx = mem0_engine.vector_db.get_client().begin().await?;
     
         let mut all_results = Vec::new();
         for embedding in embeddings {

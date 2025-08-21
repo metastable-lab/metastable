@@ -156,6 +156,37 @@ pub fn generate_sqlx_crud_impl(struct_name: &Ident, table_name_str: &str, fields
                     .await
                     .map(|done| done.rows_affected())
             }
+
+            async fn toggle_trigger<'e, E>(executor: E, status: bool) -> Result<(), ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
+            {
+                let action = if status { "ENABLE" } else { "DISABLE" };
+                let sql = format!(
+                    "ALTER TABLE \"{}\" {} TRIGGER ALL",
+                    #table_name_str, action
+                );
+                ::sqlx::query(&sql).execute(executor).await.map(|_| ())
+            }
+
+            async fn force_set_timestamp<'e, E>(self, executor: E, created_at: i64, updated_at: i64) -> Result<Self, ::sqlx::Error>
+            where
+                E: ::sqlx::Executor<'e, Database = ::sqlx::Postgres> + Send,
+                Self: Send
+            {
+                let sql = format!(
+                    "UPDATE \"{}\" SET \"created_at\" = $1, \"updated_at\" = $2 WHERE \"id\" = $3 RETURNING *",
+                    <Self as ::metastable_database::SqlxSchema>::TABLE_NAME
+                );
+
+                ::sqlx::query_as::<_, <Self as ::metastable_database::SqlxSchema>::Row>(&sql)
+                    .bind(created_at)
+                    .bind(updated_at)
+                    .bind(self.id)
+                    .fetch_one(executor)
+                    .await
+                    .map(<Self as ::metastable_database::SqlxSchema>::from_row)
+            }
         }
     }
 }

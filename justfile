@@ -36,8 +36,10 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 @sandbox-run:
     cargo run --package metastable-sandbox --bin run --release
 
-@sandbox-buy-referral:
-    cargo run --package metastable-sandbox --bin buy_referral --release
+@sandbox-migrate:
+    cargo run --package metastable-sandbox --bin migrate --release
 
+@test:
+    cargo test --package metastable-runtime-mem0 --test e2e -- tests::test_e2e --exact --show-output 
 # @sandbox-reset-db:
 #     cargo run --package metastable-sandbox --bin reset_db --release

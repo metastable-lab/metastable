@@ -7,7 +7,7 @@ edition = "2021"
 metastable-runtime = { path = "../../runtime" }
 metastable-common = { path = "../../common" }
 metastable-database = { path = "../../database" }
-metastable-db-macros = { path = "../../db-macros" }
+metastable-clients = { path = "../../clients" }
 
 serde.workspace = true
 serde_json.workspace = true
@@ -21,5 +21,11 @@ sqlx.workspace = true
 chrono.workspace = true
 futures.workspace = true
 
-# we might be able to remove this dependency
-neo4rs = "0.8.0"
+neo4rs = { version = "0.8.0", optional = true }
+
+[dev-dependencies]
+metastable-runtime-roleplay = { path = "../roleplay" }
+
+[features]
+default = ["graph"]
+graph = ["dep:neo4rs"]

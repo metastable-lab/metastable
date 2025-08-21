@@ -9,9 +9,8 @@ metastable-database = { path = "../../crates/database" }
 metastable-runtime = { path = "../../crates/runtime" }
 metastable-service-api = { path = "../../crates/api" }
 
+metastable-clients = { path = "../../crates/clients" }
 metastable-runtime-roleplay = { path = "../../crates/runtime-mods/roleplay" }
-metastable-runtime-character-creation = { path = "../../crates/runtime-mods/character-creation" }
-metastable-runtime-mem0 = { path = "../../crates/runtime-mods/mem0" }
 
 axum.workspace = true
 tokio.workspace = true

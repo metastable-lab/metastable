@@ -7,8 +7,8 @@ edition = "2021"
 metastable-common = { path = "../common" }
 metastable-database = { path = "../database" }
 metastable-runtime = { path = "../runtime" }
+metastable-clients = { path = "../clients" }
 metastable-runtime-roleplay = { path = "../runtime-mods/roleplay" }
-metastable-runtime-character-creation = { path = "../runtime-mods/character-creation" }
 
 axum.workspace = true
 tokio.workspace = true

@@ -4,11 +4,11 @@ use axum::{
     http::StatusCode, middleware, response::IntoResponse, routing::post, Json, Router
 };
 use sqlx::types::Uuid;
-use metastable_runtime::RuntimeClient;
 
 use serde_json::Value;
+use metastable_common::ModuleClient;
 use metastable_database::{QueryCriteria, SqlxFilterQuery};
-use metastable_runtime_roleplay::{Character, CharacterFeature};
+use metastable_runtime::{Character, CharacterFeature};
 
 use crate::{
     ensure_account, 
@@ -32,13 +32,15 @@ async fn tts(
     Path(character_id): Path<Uuid>,
     Json(value): Json<Value>,
 ) -> Result<impl IntoResponse, AppError> {
-    let (maybe_user, _) = ensure_account(&state.roleplay_client, &user_id_str, 5).await?;
-    let _ = maybe_user.ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
+    let _ = ensure_account(&state.db, &user_id_str).await?
+        .ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
 
     let message = value["message"].as_str().ok_or(anyhow!("[/tts] message is required"))?.to_string();
+
+    let mut tx = state.db.get_client().begin().await?;
     let character = Character::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("id", "=", character_id),
-        &*state.roleplay_client.get_db().clone()
+        &mut *tx
     ).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[/tts] Character not found")))?;
 
@@ -52,6 +54,8 @@ async fn tts(
             }
         })
         .ok_or(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[/tts] Character does not have a voice")))?;
+
+    tx.commit().await?;
 
     TTSRequest::send_request(&message, voice_model_id.to_owned()).await
 }

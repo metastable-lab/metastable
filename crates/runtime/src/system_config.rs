@@ -21,6 +21,7 @@ pub struct SystemConfig {
     pub openai_max_tokens: i32,
 
     pub functions: Json<Vec<FunctionObject>>,
+
     pub updated_at: i64,
     pub created_at: i64,
 }

@@ -1,8 +1,8 @@
 mod badge;
-mod usage;
 mod url;
 mod referral;
 mod follow;
+mod log;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -13,13 +13,18 @@ use serde_json::json;
 use metastable_common::{encrypt, decrypt, get_current_timestamp};
 use metastable_database::SqlxObject;
 
-pub use usage::{UserUsage, UserUsagePoints};
 pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
 pub use follow::UserFollow;
+pub use log::UserPointsLog;
 
-pub const BALANCE_CAP: i64 = 500;
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct UserUsagePoints {
+    pub points_consumed_claimed: i64,
+    pub points_consumed_purchased: i64,
+    pub points_consumed_misc: i64,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
 #[text_codec(format = "paren", storage_lang = "en")]
@@ -34,6 +39,7 @@ pub enum UserRole {
 pub struct User {
     pub id: Uuid,
     #[unique]
+    #[indexed]
     pub user_id: String,
     pub user_aka: String,
 
@@ -101,11 +107,8 @@ impl User {
 
 impl User {
     /* BALANCE ADDITION */
-    // Rate limit: ONE Claim per day
-    // running balance sum should be <= BALANCE_CAP
-    // if over BALANCE_CAP, reduce free balance first
-    // don't reduce paid balance
-    pub fn try_claim_free_balance(&mut self, amount: i64) -> Result<()> {
+    // Rate limit: ONE Claim per 24 hours
+    pub fn try_claim_free_balance(&mut self, amount: i64) -> Result<UserPointsLog> {
         let current_timestamp = get_current_timestamp();
         // ONE Claim per day
         if current_timestamp - self.free_balance_claimed_at < 24 * 60 * 60 {
@@ -115,32 +118,43 @@ impl User {
         self.running_claimed_balance += amount;
         self.free_balance_claimed_at = current_timestamp;
 
-        // capping logic - no errors
-            if amount + 
-            self.running_claimed_balance + 
-            self.running_purchased_balance + 
-            self.running_misc_balance > BALANCE_CAP 
-        {
-            if self.running_purchased_balance + self.running_misc_balance < BALANCE_CAP {
-                self.running_claimed_balance = BALANCE_CAP - self.running_purchased_balance - self.running_misc_balance;
-            } else {
-                // noop
-            }
-        }
+        // add log
 
-        Ok(())
+        Ok(UserPointsLog::from_daily_checkin(&self.id, amount))
     }
 
-    pub fn purchase_balance(&mut self, amount: i64) {
-        self.running_purchased_balance += amount;
-    }
-
-    pub fn add_misc_balance(&mut self, amount: i64) {
+    pub fn invitation_reward(&mut self, others_id: &Uuid, amount: i64, others_amount: i64) -> UserPointsLog {
         self.running_misc_balance += amount;
+        UserPointsLog::from_invitation(&self.id, others_id, amount, others_amount)
+    }
+
+    pub fn system_reward(&mut self, amount: i64) -> UserPointsLog {
+        self.running_misc_balance += amount;
+        UserPointsLog::from_system_reward(&self.id, amount)
+    }
+
+    pub fn creator_reward(&mut self, amount: i64) -> UserPointsLog {
+        self.running_misc_balance += amount;
+        UserPointsLog::from_creator_reward(&self.id, amount)
     }
 
     /* BALANCE SUBTRACTION */
-    pub fn pay(&mut self, amount: i64) -> Result<UserUsagePoints> {
+    pub fn pay_for_character_creation(&mut self, amount: i64, message: Uuid) -> Result<UserPointsLog> {
+        let usage = self.pay(amount)?;
+        Ok(UserPointsLog::from_character_creation(&self.id, usage, message))
+    }
+
+    pub fn pay_for_chat_message_regenerate(&mut self, amount: i64, message: Uuid) -> Result<UserPointsLog> {
+        let usage = self.pay(amount)?;
+        Ok(UserPointsLog::from_chat_message_regenerate(&self.id, usage, message))
+    }
+
+    pub fn pay_for_chat_message(&mut self, amount: i64, message: Uuid, character_creator: Uuid, reward_amount: i64) -> Result<UserPointsLog> {
+        let usage = self.pay(amount)?;
+        Ok(UserPointsLog::from_chat_message(&self.id, usage, message, character_creator, reward_amount))
+    }
+
+    fn pay(&mut self, amount: i64) -> Result<UserUsagePoints> {
         let mut remaining = amount;
         let self_clone = self.clone();
         let current_timestamp = get_current_timestamp();
@@ -190,7 +204,11 @@ impl User {
         }
     }
 
-    pub fn get_available_balance(&self) -> i64 {
-        self.running_purchased_balance + self.running_claimed_balance + self.running_misc_balance
+    pub fn try_pay(&self, amount: i64) -> Result<i64> {
+        if self.running_purchased_balance + self.running_claimed_balance + self.running_misc_balance < amount {
+            Err(anyhow!("[User::try_pay] Insufficient balance"))
+        } else {
+            Ok(amount)
+        }
     }
 }
