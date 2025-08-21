@@ -8,7 +8,7 @@ mod character;
 mod session;
 mod agents;
 
-pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow, UserUsagePoints, UserPointsConsumption, UserPointsConsumptionType};
+pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow, UserUsagePoints, UserPointsLog};
 pub use system_config::SystemConfig;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use message::{MessageRole, MessageType, Message};

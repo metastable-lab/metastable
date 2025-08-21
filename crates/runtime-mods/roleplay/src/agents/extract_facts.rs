@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 use metastable_common::{get_current_timestamp, get_time_in_utc8, ModuleClient};
-use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig, UserPointsConsumption, UserPointsConsumptionType};
+use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prompt, SystemConfig};
 use metastable_clients::{LlmClient, Mem0Filter, PostgresClient};
 use metastable_database::SqlxCrud;
 use serde_json::{json, Value};
@@ -76,19 +76,6 @@ impl Agent for ExtractFactsAgent {
         message.summary = Some(summary_text);
         let mut tx = self.db.get_client().begin().await?;
         message.create(&mut *tx).await?;
-        let consumption = UserPointsConsumption {
-            id: Uuid::new_v4(),
-            user: input.filter.user_id,
-            consumption_type: UserPointsConsumptionType::MemoryUpdate(input.filter.character_id.unwrap_or_default()),
-            from_claimed: 0,
-            from_purchased: 0,
-            from_misc: 0,
-            rewarded_to: None,
-            rewarded_points: 0,
-            created_at: 0,
-            updated_at: 0,
-        };
-        consumption.create(&mut *tx).await?;
         tx.commit().await?;
 
         Ok( None )

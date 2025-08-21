@@ -96,17 +96,20 @@ async fn register(
     user.user_id = payload.user_id.clone();
     user.user_aka = "nono".to_string();
     user.provider = payload.provider.clone();
-    let _ = user.try_claim_free_balance(50); // infallable
 
-    user.running_misc_balance += 50;
-    let user = user.create(&mut *tx).await?;
+    let mut user = user.create(&mut *tx).await?;
+    let claimed_log = user.try_claim_free_balance(50).expect("user MUST be able to claim on account creation"); // infallable
+    let invitaion_log = user.invitation_reward(&referer.id, 100, 50);
+    let invitation_reward_log = referer.invitation_reward(&user.id, 50, 100);
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
-
-    referer.running_misc_balance += 100;
     referer.update(&mut *tx).await?;
+
+    claimed_log.create(&mut *tx).await?;
+    invitaion_log.create(&mut *tx).await?;
+    invitation_reward_log.create(&mut *tx).await?;
 
     tx.commit().await?;
 
@@ -312,7 +315,6 @@ async fn update_character(
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
     
 }
-
 
 async fn create_character_sub(
     State(state): State<GlobalState>,

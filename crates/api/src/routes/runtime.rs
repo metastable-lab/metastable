@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use metastable_common::get_current_timestamp;
-use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, ChatSession, DrawHistory, DrawType, Prompt, User, UserPointsConsumption, UserPointsConsumptionType};
+use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, ChatSession, DrawHistory, DrawType, Prompt, User};
 use metastable_runtime_roleplay::RoleplayInput;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -54,14 +54,11 @@ async fn call_agent(
     let mut user = ensure_account(&state.db, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] User not found")))?;
 
-    let price = match payload.call_type {
-        RuntimeCallType::CharacterCreation => 3,
-        RuntimeCallType::RoleplayV1 => 3,
-        RuntimeCallType::RoleplayV1Regenerate => 1,
-    };
-
-    let usage = user.pay(price)
-        .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow!("[call_agent] {}", e)))?;
+    let _ = match payload.call_type {
+        RuntimeCallType::CharacterCreation => user.try_pay(3),
+        RuntimeCallType::RoleplayV1 => user.try_pay(3),
+        RuntimeCallType::RoleplayV1Regenerate => user.try_pay(1),
+    }?;
 
     let mut tx = state.db.get_client().begin().await?;    
     let result = (async || match payload.call_type {
@@ -76,11 +73,8 @@ async fn call_agent(
                 let value = val
                     .ok_or_else(|| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::CharacterCreation] Value is required")))?;
 
-                let usage = UserPointsConsumption::from_points_consumed(
-                    UserPointsConsumptionType::LlmCharacterCreation(m.id),
-                    &user.id, usage, None, 0
-                );
-                usage.create(&mut *tx).await?;
+                let log = user.pay_for_character_creation(3, m.id.clone())?;
+                log.create(&mut *tx).await?;
                 user.update(&mut *tx).await?;
 
                 Ok(value)
@@ -139,9 +133,10 @@ async fn call_agent(
                 false => AgentRouterInput::RoleplayCharacterCreationV1(roleplay_input),
             };
 
-            let consumtpion_type = match state.agents_router.route(&user.id, input).await? {
-                AgentRouterOutput::RoleplayV1(m, _, _) => UserPointsConsumptionType::LlmCall(m.id),
-                AgentRouterOutput::RoleplayCharacterCreationV1(m, _, _) => UserPointsConsumptionType::LlmCharacterCreation(m.id),
+            let response = state.agents_router.route(&user.id, input).await?;
+            let message_id = match response {
+                AgentRouterOutput::RoleplayV1(m, _, _) => m.id,
+                AgentRouterOutput::RoleplayCharacterCreationV1(m, _, _) => m.id,
                 _ => {
                     return Err(AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::RoleplayV1] Unexpected response")));
                 }
@@ -153,16 +148,24 @@ async fn call_agent(
             ).await?
                 .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] Creator not found")))?;
 
-            creator.running_misc_balance += 1;
-            let creator = creator.update(&mut *tx).await?;
-            
-            let usage = UserPointsConsumption::from_points_consumed(
-                consumtpion_type, &user.id,
-                usage,
-                Some(creator.id), 1
-            );
-            usage.create(&mut *tx).await?;
-            user.update(&mut *tx).await?;
+            match payload.call_type {
+                RuntimeCallType::RoleplayV1 => {
+                    let log = user.pay_for_chat_message(3, message_id, character_creator, 1)?;
+                    if log.reward_to.is_some() {
+                        let creator_log = creator.creator_reward(1);
+                        creator_log.create(&mut *tx).await?;
+                        creator.update(&mut *tx).await?;
+                    }
+                    log.create(&mut *tx).await?;
+                    user.update(&mut *tx).await?;
+                },
+                RuntimeCallType::RoleplayV1Regenerate => {
+                    let log = user.pay_for_chat_message_regenerate(1, message_id)?;
+                    log.create(&mut *tx).await?;
+                    user.update(&mut *tx).await?;
+                },
+                _ => unreachable!(),
+            }
 
             state.memory_update_tx.send(session_id).await?;
 
@@ -190,7 +193,7 @@ async fn draw_card(
     Path(card_pool_id): Path<Uuid>,
     Json(payload): Json<DrawCardRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -223,21 +226,21 @@ async fn draw_card(
         draw
     };
 
-    let draw_cost = match payload.draw_type {
+    let _draw_cost = match payload.draw_type {
         DrawType::Single => 10,
         DrawType::Ten => 100,
     };
 
-    if let Ok(usage) = user.pay(draw_cost) {
-        let user_usage = UserPointsConsumption::from_points_consumed(
-            UserPointsConsumptionType::Others(String::new()),
-            &user.id, usage, None, 0
-        );
-        user_usage.create(&mut *tx).await?;
-        user.update(&mut *tx).await?;
-    } else {
-        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[draw_card] Insufficient balance")));
-    }
+    // if let Ok(usage) = user.pay(draw_cost) {
+    //     let user_usage = UserPointsConsumption::from_points_consumed(
+    //         UserPointsConsumptionType::Others(String::new()),
+    //         &user.id, usage, None, 0
+    //     );
+    //     user_usage.create(&mut *tx).await?;
+    //     user.update(&mut *tx).await?;
+    // } else {
+    //     return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[draw_card] Insufficient balance")));
+    // }
 
     // begin draw cards
     let results = match payload.draw_type {

@@ -6,7 +6,7 @@ use sqlx::types::Uuid;
 use metastable_clients::{EmbeddingMessage, EmbederClient, LlmClient, Mem0Filter, MemoryEvent, MemoryUpdateEntry, PgvectorClient, PostgresClient};
 use metastable_common::ModuleClient;
 use metastable_database::{TextCodecEnum, SqlxCrud};
-use metastable_runtime::{Agent, LlmTool, Message, Prompt, SystemConfig, UserPointsConsumption, UserPointsConsumptionType};
+use metastable_runtime::{Agent, LlmTool, Message, Prompt, SystemConfig};
 
 use crate::agents::extract_facts::ExtractFactsOutput;
 
@@ -124,19 +124,6 @@ impl Agent for MemoryExtractorAgent {
         message.summary = Some(summary_text);
         let mut tx = self.db.get_client().begin().await?;
         message.create(&mut *tx).await?;
-        let consumption = UserPointsConsumption {
-            id: Uuid::new_v4(),
-            user: input.filter.user_id,
-            consumption_type: UserPointsConsumptionType::MemoryUpdate(input.filter.character_id.unwrap_or_default()),
-            from_claimed: 0,
-            from_purchased: 0,
-            from_misc: 0,
-            rewarded_to: None,
-            rewarded_points: 0,
-            created_at: 0,
-            updated_at: 0,
-        };
-        consumption.create(&mut *tx).await?;
         tx.commit().await?;
 
         Ok( Some(serde_json::to_value(summary)? ) )
