@@ -54,7 +54,7 @@ async fn call_agent(
     let mut user = ensure_account(&state.db, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] User not found")))?;
 
-    let _ = match payload.call_type {
+    let price = match payload.call_type {
         RuntimeCallType::CharacterCreation => user.try_pay(3),
         RuntimeCallType::RoleplayV1 => user.try_pay(3),
         RuntimeCallType::RoleplayV1Regenerate => user.try_pay(1),
@@ -73,7 +73,7 @@ async fn call_agent(
                 let value = val
                     .ok_or_else(|| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("[call_agent::CharacterCreation] Value is required")))?;
 
-                let log = user.pay_for_character_creation(3, m.id.clone())?;
+                let log = user.pay_for_character_creation(price, m.id.clone())?;
                 log.create(&mut *tx).await?;
                 user.update(&mut *tx).await?;
 
@@ -150,7 +150,7 @@ async fn call_agent(
 
             match payload.call_type {
                 RuntimeCallType::RoleplayV1 => {
-                    let log = user.pay_for_chat_message(3, message_id, character_creator, 1)?;
+                    let log = user.pay_for_chat_message(price, message_id, character_creator, 1)?;
                     if log.reward_to.is_some() {
                         let creator_log = creator.creator_reward(1);
                         creator_log.create(&mut *tx).await?;
@@ -160,7 +160,7 @@ async fn call_agent(
                     user.update(&mut *tx).await?;
                 },
                 RuntimeCallType::RoleplayV1Regenerate => {
-                    let log = user.pay_for_chat_message_regenerate(1, message_id)?;
+                    let log = user.pay_for_chat_message_regenerate(price, message_id)?;
                     log.create(&mut *tx).await?;
                     user.update(&mut *tx).await?;
                 },

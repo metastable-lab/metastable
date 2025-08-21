@@ -13,8 +13,6 @@ use metastable_sandbox::legacy::{
 
 init_databases!(
     default: [
-        metastable_runtime::ChatSession,
-
         metastable_runtime::User,
         metastable_runtime::UserUrl,
         metastable_runtime::UserReferral,
@@ -28,6 +26,8 @@ init_databases!(
         metastable_runtime::DrawHistory,
 
         metastable_runtime::Message,
+        metastable_runtime::ChatSession,
+        metastable_runtime::UserPointsLog,
 
         metastable_runtime::Character,
         metastable_runtime::CharacterHistory,
@@ -52,7 +52,7 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
 
     let sessions = LegacyRoleplaySession::find_by_criteria(
         QueryCriteria::new()
-            // .add_valued_filter("is_migrated", "=", false)
+            .add_valued_filter("is_migrated", "=", false)
             ,
         &mut *tx
     ).await?;
@@ -120,7 +120,7 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
 
         s.is_migrated = true;
         s.update(&mut *tx).await?;
-        tx.rollback().await?;
+        tx.commit().await?;
     }
 
     let mut tx = db.begin().await?;

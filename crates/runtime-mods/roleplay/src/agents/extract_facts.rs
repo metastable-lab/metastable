@@ -6,7 +6,6 @@ use metastable_runtime::{Agent, LlmTool, Message, MessageRole, MessageType, Prom
 use metastable_clients::{LlmClient, Mem0Filter, PostgresClient};
 use metastable_database::SqlxCrud;
 use serde_json::{json, Value};
-use sqlx::types::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 #[llm_tool(name="extract_facts", description="从用户输入中提取事实。")]

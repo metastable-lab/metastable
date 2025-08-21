@@ -1,5 +1,5 @@
 {
-  "resource_version": 45,
+  "resource_version": 60,
   "metadata": {
     "version": 3,
     "sources": [
@@ -146,6 +146,81 @@
                   }
                 }
               }
+            ],
+            "insert_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "check": {
+                    "_or": [
+                      {
+                        "owner": {
+                          "_eq": "X-Hasura-User-Id"
+                        }
+                      },
+                      {
+                        "roleplay_character": {
+                          "status": {
+                            "_eq": "Published"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "set": {
+                    "owner": "X-Hasura-User-Id"
+                  },
+                  "columns": [
+                    "character",
+                    "public",
+                    "use_character_memory"
+                  ]
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": "*",
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "allow_aggregations": true
+                }
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "public",
+                    "hidden",
+                    "use_character_memory"
+                  ],
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                }
+              }
+            ],
+            "delete_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
+                }
+              }
             ]
           },
           {
@@ -196,6 +271,79 @@
                 "name": "user",
                 "using": {
                   "foreign_key_constraint_on": "owner"
+                }
+              }
+            ],
+            "insert_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "check": {
+                    "chat_session": {
+                      "owner": {
+                        "_eq": "X-Hasura-User-Id"
+                      }
+                    }
+                  },
+                  "set": {
+                    "owner": "X-Hasura-User-Id"
+                  },
+                  "columns": [
+                    "session",
+                    "system_config",
+                    "user_message_content",
+                    "user_message_content_type",
+                    "input_toolcall"
+                  ]
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": "*",
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "allow_aggregations": true
+                }
+              }
+            ],
+            "update_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "assistant_message_content",
+                    "assistant_message_content_type",
+                    "assistant_message_tool_call",
+                    "input_toolcall",
+                    "is_stale",
+                    "summary",
+                    "user_message_content",
+                    "user_message_content_type"
+                  ],
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                }
+              }
+            ],
+            "delete_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  }
                 }
               }
             ]
@@ -368,15 +516,20 @@
                     "description",
                     "version",
                     "gender",
+                    "orientation",
                     "language",
                     "features",
                     "prompts_scenario",
                     "prompts_personality",
                     "prompts_example_dialogue",
+                    "prompts_additional_example_dialogue",
                     "prompts_first_message",
                     "tags",
                     "prompts_background_stories",
                     "prompts_behavior_traits",
+                    "prompts_relationships",
+                    "prompts_skills_and_interests",
+                    "prompts_additional_info",
                     "creator_notes"
                   ]
                 }
@@ -440,11 +593,16 @@
                     "description",
                     "features",
                     "gender",
+                    "orientation",
                     "language",
                     "name",
                     "prompts_background_stories",
                     "prompts_behavior_traits",
+                    "prompts_relationships",
+                    "prompts_skills_and_interests",
+                    "prompts_additional_info",
                     "prompts_example_dialogue",
+                    "prompts_additional_example_dialogue",
                     "prompts_first_message",
                     "prompts_personality",
                     "prompts_scenario",
@@ -870,6 +1028,26 @@
           },
           {
             "table": {
+              "name": "user_points_logs",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "userByRewardTo",
+                "using": {
+                  "foreign_key_constraint_on": "reward_to"
+                }
+              },
+              {
+                "name": "userByUser",
+                "using": {
+                  "foreign_key_constraint_on": "user"
+                }
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "user_referrals",
               "schema": "public"
             },
@@ -1232,6 +1410,18 @@
                 }
               },
               {
+                "name": "userPointsLogsByUser",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user",
+                    "table": {
+                      "name": "user_points_logs",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
                 "name": "userReferralsByUserId",
                 "using": {
                   "foreign_key_constraint_on": {
@@ -1262,6 +1452,18 @@
                     "column": "follower_id",
                     "table": {
                       "name": "user_follows",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "user_points_logs",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "reward_to",
+                    "table": {
+                      "name": "user_points_logs",
                       "schema": "public"
                     }
                   }

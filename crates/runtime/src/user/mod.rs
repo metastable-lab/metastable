@@ -208,7 +208,7 @@ impl User {
         if self.running_purchased_balance + self.running_claimed_balance + self.running_misc_balance < amount {
             Err(anyhow!("[User::try_pay] Insufficient balance"))
         } else {
-            Ok(())
+            Ok(amount)
         }
     }
 }

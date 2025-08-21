@@ -37,7 +37,7 @@ pub struct RoleplayMessage {
 
 impl RoleplayMessage {
     fn build_toolcall(content_v1: Vec<RoleplayMessageType>, options: Vec<String>) -> Option<FunctionCall> {
-        tracing::info!("getting toolcall for {:?} {:?}", content_v1, options);
+        tracing::debug!("getting toolcall for {:?} {:?}", content_v1, options);
         if content_v1.is_empty() && options.is_empty() {
             return None;
         }
@@ -47,8 +47,6 @@ impl RoleplayMessage {
             options,
             summary: String::new(),
         }.into_tool_call();
-
-        println!("toolcall: {:?}", toolcall);
 
         if toolcall.is_err() {
             tracing::error!("Failed to build toolcall: {:?}", toolcall.err());
