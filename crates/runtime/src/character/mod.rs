@@ -130,13 +130,25 @@ impl Character {
         let p = self.prompts_first_message
             .replace("{{user}}", user_name)
             .replace("{{char}}", &self.name);
-
-        Prompt {
-            role: MessageRole::Assistant,
-            content_type: MessageType::Text,
-            content: p,
-            toolcall: None,
-            created_at: 1,
+        match serde_json::from_str(&p) {
+            Ok(toolcall) => {
+                Prompt {
+                    role: MessageRole::Assistant,
+                    content_type: MessageType::Text,
+                    content: "".to_string(),
+                    toolcall: Some(toolcall),
+                    created_at: 1,
+                }
+            }
+            Err(_) => {
+                Prompt {
+                    role: MessageRole::Assistant,
+                    content_type: MessageType::Text,
+                    content: p,
+                    toolcall: None,
+                    created_at: 1,
+                }
+            }
         }
     }
 }

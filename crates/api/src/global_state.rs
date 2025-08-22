@@ -1,13 +1,15 @@
 use anyhow::Result;
 use metastable_clients::PostgresClient;
 use metastable_common::ModuleClient;
+use metastable_database::{QueryCriteria, SqlxFilterQuery};
 use reqwest::Client;
-use metastable_runtime::{define_agent_router, AgentRouter};
+use metastable_runtime::{define_agent_router, AgentRouter, User};
 use metastable_runtime_roleplay::agents::{
     RoleplayV1Agent,
     RoleplayCharacterCreationV1Agent,
     CharacterCreationAgent,
 };
+use metastable_runtime_roleplay::preload_characters;
 use sqlx::types::Uuid;
 use tokio::sync::mpsc;
 
@@ -31,6 +33,17 @@ impl GlobalState {
         let agents_router = AgentsRouter::new().await?;
         let http_client = Client::new();
         let (memory_update_tx, memory_update_rx) = mpsc::channel(50);
+
+        let mut tx = db.get_client().begin().await?;
+        let admin_user = User::find_one_by_criteria(
+            QueryCriteria::new()
+                .add_valued_filter("role", "=", "Admin"),
+            &mut *tx
+        ).await?.expect("admin users in the database");
+
+        preload_characters(&db, admin_user.id).await?;
+        tx.commit().await?;
+
         Ok((Self { db, agents_router, http_client, memory_update_tx }, memory_update_rx))
     }
 }
