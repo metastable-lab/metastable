@@ -55,6 +55,11 @@ pub fn user_routes() -> Router<GlobalState> {
             post(create_character_sub)
             .route_layer(middleware::from_fn(authenticate))
         )
+
+        .route("/user/id_to_email", 
+            post(id_to_email)
+            .route_layer(middleware::from_fn(authenticate))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -363,4 +368,30 @@ async fn create_character_sub(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character sub created successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct IdToEmailRequest {
+    pub raw_id: String,
+}
+async fn id_to_email(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<IdToEmailRequest>,
+) -> Result<AppSuccess, AppError> {
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[id_to_email] User not found")))?;
+    
+    // Quick validation if raw_id is a valid email address
+    let raw_id = payload.raw_id.trim();
+    if !raw_id.contains('@') || raw_id.starts_with('@') || raw_id.ends_with('@') {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[id_to_email] Invalid email address")));
+    }
+
+    let mut tx = state.db.get_client().begin().await?;
+    user.user_id = format!("email_{}", raw_id);
+    user.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Email found successfully", json!(())))
 }
