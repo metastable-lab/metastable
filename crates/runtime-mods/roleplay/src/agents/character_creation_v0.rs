@@ -121,13 +121,14 @@ impl Agent for CharacterCreationAgent {
                 content_type: MessageType::Text,
                 content: format!("请根据以下对话，总结并创建一个完整的角色档案。\n\n{}", messages),
                 toolcall: None,
-                created_at: 0,
+                created_at: 1,
             },
         ])
     }
 
     async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
         let mut tx = self.db.get_client().begin().await?;
+        let message = message.clone().create(&mut *tx).await?;
         let character = Character {
             id: Uuid::new_v4(),
             name: tool.name.clone(),

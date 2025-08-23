@@ -43,8 +43,7 @@ impl Prompt {
         Ok(messages)
     }
 
-    pub fn validate_and_sort(mut messages: Vec<Self>) -> Result<Vec<Self>> {
-        Self::validate_messages(messages.clone())?;
+    pub fn sort(mut messages: Vec<Self>) -> Result<Vec<Self>> {
         // Order by created_at ascending, and for equal created_at, User first, then Assistant, then others
         messages.sort_by(|a, b| {
             match a.created_at.cmp(&b.created_at) {
@@ -64,14 +63,18 @@ impl Prompt {
     }
 
     pub fn pack_flat_messages(messages: Vec<Self>) -> Result<String> {
-        let messages = Self::validate_and_sort(messages)?;
-        Ok(messages.iter().map(|m| {
-            format!("{}: {}", m.role, m.content)
-        }).collect::<Vec<String>>().join("\n"))
+        let messages = Self::sort(messages)?;
+        let mut built_message = Vec::new();
+        for message in messages {
+            let content = format!("{}: {}, toolcall: {:?}", message.role, message.content, serde_json::to_string(&message.toolcall));
+            built_message.push(content);
+        }
+        Ok(built_message.join("\n"))
     }
 
     pub fn pack(messages: Vec<Self>) -> Result<Vec<ChatCompletionRequestMessage>> {
-        let messages = Self::validate_and_sort(messages)?;
+        let messages = Self::sort(messages)?;
+        let messages = Self::validate_messages(messages)?;
         messages.iter().map(|m| {
             let maybe_toolcall = m.toolcall.as_ref().map(|toolcall| vec![ChatCompletionMessageToolCall {
                 id: Uuid::new_v4().to_string(),

@@ -105,8 +105,12 @@ pub trait Agent: Clone + Send + Sync + Sized {
     ) -> Result<(Message, Self::Tool, Option<Value>)> {
         tracing::debug!("[Agent::call] Calling Agent: {}", Self::SYSTEM_CONFIG_NAME);
         let messages = self.build_input(input).await?;
-        let messages = Prompt::validate_and_sort(messages)?;
+        let messages = Prompt::sort(messages)?;
+        let messages = Prompt::validate_messages(messages)?;
+        println!("messages: {:?}", messages);
+
         let user_message = messages.last().expect("already validated");
+        println!("user_message: {:?}", user_message);
 
         let llm_messages = Prompt::pack(messages.clone())?;
 
