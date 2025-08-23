@@ -198,18 +198,16 @@ impl Agent for CharacterCreationAgent {
     -   **示例**:
         ```json
         {
-            "tool_calls": [{
-                "name": "send_message",
-                "arguments": {
-                    "messages": [
-                        {"type": "动作", "content": "*他抬起眼，目光锐利。*"},
-                        {"type": "内心独白", "content": "*又一个迷途的羔羊！*"},
-                        {"type": "对话", "content": "**坐。**"}
-                    ],
-                    "options": [],
-                    "summary": "初次与用户相遇的场景。"
-                }
-            }]
+            "name": "send_message",
+            "arguments": {
+                "messages": [
+                    {"type": "动作", "content": "*他抬起眼，目光锐利。*"},
+                    {"type": "内心独白", "content": "*又一个迷途的羔羊！*"},
+                    {"type": "对话", "content": "**坐。**"}
+                ],
+                "options": [],
+                "summary": "初次与用户相遇的场景。"
+            }
         }
         ```
 

@@ -14,8 +14,8 @@ use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
     UserReferral, UserUrl, User, UserFollow, 
-    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, 
-    CharacterHistory, CharacterLanguage, Relationships, SkillsAndInterests, CharacterStatus, CharacterSub
+    Character, CharacterFeature, 
+    CharacterHistory, CharacterStatus, CharacterSub
 };
 use crate::{
     ensure_account, 
@@ -220,17 +220,17 @@ pub struct UpdateCharacterRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     
-    pub gender: Option<CharacterGender>,
-    pub language: Option<CharacterLanguage>,
+    pub gender: Option<String>,
+    pub language: Option<String>,
     
     pub prompts_scenario: Option<String>,
     pub prompts_personality: Option<String>,
     pub prompts_example_dialogue: Option<String>,
     pub prompts_first_message: Option<String>,
-    pub prompts_background_stories: Option<Vec<BackgroundStories>>,
-    pub prompts_behavior_traits: Option<Vec<BehaviorTraits>>,
-    pub prompts_relationships: Option<Vec<Relationships>>,
-    pub prompts_skills_and_interests: Option<Vec<SkillsAndInterests>>,
+    pub prompts_background_stories: Option<Vec<String>>,
+    pub prompts_behavior_traits: Option<Vec<String>>,
+    pub prompts_relationships: Option<Vec<String>>,
+    pub prompts_skills_and_interests: Option<Vec<String>>,
     pub prompts_additional_info: Option<Vec<String>>,
 
     pub creator_notes: Option<String>,
@@ -263,16 +263,28 @@ async fn update_character(
 
     old_character.name = payload.name.unwrap_or(old_character.name);
     old_character.description = payload.description.unwrap_or(old_character.description);
-    old_character.gender = payload.gender.unwrap_or(old_character.gender);
-    old_character.language = payload.language.unwrap_or(old_character.language);
+    if let Some(gender_str) = payload.gender {
+        old_character.gender = gender_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
+    if let Some(language_str) = payload.language {
+        old_character.language = language_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
     old_character.prompts_scenario = payload.prompts_scenario.unwrap_or(old_character.prompts_scenario);
     old_character.prompts_personality = payload.prompts_personality.unwrap_or(old_character.prompts_personality);
     old_character.prompts_example_dialogue = payload.prompts_example_dialogue.unwrap_or(old_character.prompts_example_dialogue);
     old_character.prompts_first_message = payload.prompts_first_message.unwrap_or(old_character.prompts_first_message);
-    old_character.prompts_background_stories = payload.prompts_background_stories.unwrap_or(old_character.prompts_background_stories);
-    old_character.prompts_behavior_traits = payload.prompts_behavior_traits.unwrap_or(old_character.prompts_behavior_traits);
-    old_character.prompts_relationships = payload.prompts_relationships.unwrap_or(old_character.prompts_relationships);
-    old_character.prompts_skills_and_interests = payload.prompts_skills_and_interests.unwrap_or(old_character.prompts_skills_and_interests);
+    if let Some(background_stories_str) = payload.prompts_background_stories {
+        old_character.prompts_background_stories = background_stories_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
+    if let Some(behavior_traits_str) = payload.prompts_behavior_traits {
+        old_character.prompts_behavior_traits = behavior_traits_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
+    if let Some(relationships_str) = payload.prompts_relationships {
+        old_character.prompts_relationships = relationships_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
+    if let Some(skills_and_interests_str) = payload.prompts_skills_and_interests {
+        old_character.prompts_skills_and_interests = skills_and_interests_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+    }
     old_character.prompts_additional_info = payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info);
     old_character.creator_notes = payload.creator_notes;
     old_character.tags = payload.tags.unwrap_or(old_character.tags);

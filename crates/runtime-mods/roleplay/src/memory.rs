@@ -35,37 +35,21 @@ impl RoleplayMemory {
 impl RoleplayMemory {
     pub async fn build_inputs(&self, input: &RoleplayInput, system_config: &SystemConfig) -> Result<Vec<Prompt>> {
         let mut tx = self.db.get_client().begin().await?;
-
-        let (session, character, user, user_message) = match &input {
-            RoleplayInput::ContinueSession(session_id, user_message) => {
-                let session = ChatSession::find_one_by_criteria(
-                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
-                    &mut *tx 
-                ).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] Session not found"))?;
-
-                let user = session.fetch_owner(&mut *tx).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] User not found"))?;
-                let character = session.fetch_character(&mut *tx).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] Character not found"))?;
-
-                (session, character, user, user_message.clone())
-            },
-            RoleplayInput::RegenerateSession(session_id) => {
-                let session = ChatSession::find_one_by_criteria(
-                    QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
-                    &mut *tx
-                ).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] Session not found"))?;
-
-                let user = session.fetch_owner(&mut *tx).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] User not found"))?;
-                let character = session.fetch_character(&mut *tx).await?
-                    .ok_or(anyhow!("[RoleplayInput::build_input] Character not found"))?;
-
-                (session, character, user, Prompt::empty())
-            }
+        let (session_id, user_message) = match &input {
+            RoleplayInput::ContinueSession(session_id, user_message) => (session_id.clone(), user_message.clone()),
+            RoleplayInput::RegenerateSession(session_id) => (session_id.clone(), Prompt::empty())
         };
+
+        let session = ChatSession::find_one_by_criteria(
+            QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
+            &mut *tx 
+        ).await?
+            .ok_or(anyhow!("[RoleplayInput::build_input] Session not found"))?;
+
+        let user = session.fetch_owner(&mut *tx).await?
+            .ok_or(anyhow!("[RoleplayInput::build_input] User not found"))?;
+        let character = session.fetch_character(&mut *tx).await?
+            .ok_or(anyhow!("[RoleplayInput::build_input] Character not found"))?;
 
         let history = Message::find_by_criteria(
             QueryCriteria::new()
@@ -87,20 +71,26 @@ impl RoleplayMemory {
             .map(|s| s.unwrap())
             .collect::<Vec<_>>();
 
-        // build historical memories
-        let session_id_filter = if session.use_character_memory && !character.features.contains(&CharacterFeature::CharacterCreation) {
-            None
-        } else {
-            Some(session.id)
-        };
-        let filter = Mem0Filter {
-            user_id: user.id,
-            character_id: Some(character.id),
-            session_id: session_id_filter,
-        };
-        let query = EmbeddingMessage::batch_create(&self.embeder, &[user_message.content.clone()], &filter).await?;
-        let vector_db_memories = EmbeddingMessage::batch_search(&self.pgvector, &filter, &query, 20).await?
-            .iter().flatten().map(|r| r.content.clone()).collect::<Vec<_>>();
+       let vector_db_memories = {
+            if user_message.content.is_empty() {
+                vec![]
+            } else {
+                // build historical memories
+                let session_id_filter = if session.use_character_memory && !character.features.contains(&CharacterFeature::CharacterCreation) {
+                    None
+                } else {
+                    Some(session.id)
+                };
+                let filter = Mem0Filter {
+                    user_id: user.id,
+                    character_id: Some(character.id),
+                    session_id: session_id_filter,
+                };
+                let query = EmbeddingMessage::batch_create(&self.embeder, &[user_message.content.clone()], &filter).await?;
+                EmbeddingMessage::batch_search(&self.pgvector, &filter, &query, 20).await?
+                    .iter().flatten().map(|r| r.content.clone()).collect::<Vec<_>>()   
+            }
+       };
 
         let mut system_prompt = character.build_system_prompt(&system_config.system_prompt, &user.user_aka);
         system_prompt.inject_system_memory(follwing_unmemorized_messages, vector_db_memories);
@@ -109,6 +99,7 @@ impl RoleplayMemory {
         let mut prompts = vec![system_prompt, first_message];
 
         prompts.extend(latest_3_messages);
+        prompts = Prompt::sort(prompts)?;
         prompts.push(user_message.clone());
 
         if let RoleplayInput::RegenerateSession(_) = &input {
@@ -125,14 +116,30 @@ impl RoleplayMemory {
 
     pub async fn handle_outputs(&self, input: &RoleplayInput, message: &Message, tool: &SendMessage) -> Result<()> {
         let mut tx = self.db.get_client().begin().await?;
-        let session_id = match &input {
-            RoleplayInput::ContinueSession(session_id, _) => session_id.clone(),
-            RoleplayInput::RegenerateSession(session_id) => session_id.clone(),
+        match &input {
+            RoleplayInput::ContinueSession(session_id, _) => {
+                let mut message = message.clone();
+                message.session = Some(session_id.clone());
+                message.summary = Some(tool.summary.clone());
+                message.create(&mut *tx).await?;
+            },
+            RoleplayInput::RegenerateSession(session_id) => {
+                let latest_message = Message::find_one_by_criteria(
+                    QueryCriteria::new()
+                        .add_valued_filter("session", "=", session_id.clone())
+                        .order_by("created_at", OrderDirection::Desc),
+                    &mut *tx
+                ).await?;
+                let latest_message = latest_message.ok_or(anyhow!("Unexpected [RoleplayInput::handle_outputs] Latest message not found"))?;
+                let mut message = message.clone();
+                message.id = latest_message.id;
+                message.session = Some(session_id.clone());
+                message.summary = Some(tool.summary.clone());
+                message.update(&mut *tx).await?;
+            },
         };
-        let mut message = message.clone();
-        message.session = Some(session_id);
-        message.summary = Some(tool.summary.clone());
-        message.create(&mut *tx).await?;
+
+        tx.commit().await?;
         Ok(())
     }
 }

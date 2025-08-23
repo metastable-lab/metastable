@@ -89,8 +89,14 @@ impl EmbeddingMessage {
                 .find_similarity(embedding.embedding.clone(), "similarity")
                 .with_similarity_threshold(DEFAULT_GRAPH_DB_VECTOR_SEARCH_THRESHOLD)
                 .add_filter("user_id", "=", Some(filter.user_id))
-                .add_filter("character_id", "=", filter.character_id)
-                .add_filter("session_id", "=", filter.session_id)
+                .add_filter("character_id", "=", filter.character_id);
+
+            let criteria = match filter.session_id {
+                Some(session_id) => criteria.add_filter("session_id", "=", Some(session_id)),
+                None => criteria,
+            };
+
+            let criteria = criteria
                 .order_by("similarity", OrderDirection::Desc)
                 .limit(limit);
             all_results.push(EmbeddingMessage::find_by_criteria(criteria, &mut *tx).await?);

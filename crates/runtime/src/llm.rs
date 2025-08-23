@@ -107,10 +107,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
         let messages = self.build_input(input).await?;
         let messages = Prompt::sort(messages)?;
         let messages = Prompt::validate_messages(messages)?;
-        println!("messages: {:?}", messages);
-
         let user_message = messages.last().expect("already validated");
-        println!("user_message: {:?}", user_message);
 
         let llm_messages = Prompt::pack(messages.clone())?;
 
@@ -185,10 +182,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             updated_at: 0,
         };
 
-        println!("msg: {:?}", resulting_message);
-
         let tool = Self::Tool::try_from_tool_call(&tool_calls[0].function)?;
-        println!("{:?}", tool);
         let misc_value = self.handle_output(input, &resulting_message, &tool).await?;
 
         Ok((resulting_message, tool, misc_value))
