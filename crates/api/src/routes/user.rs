@@ -38,7 +38,7 @@ pub fn user_routes() -> Router<GlobalState> {
             post(create_url)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/user/follow",
+        .route("/user/follow/{following_id}",
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
@@ -165,21 +165,32 @@ async fn create_url(
     })))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FollowRequest {
-    pub following_id: Uuid,
-}
-
 async fn follow(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
-    Json(payload): Json<FollowRequest>,
+    Path(following_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
     let follower = ensure_account(&state.db, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
-    let follow = UserFollow::new(follower.id, payload.following_id);
+    let following = User::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", following_id),
+        &mut *tx
+    ).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
+
+    let maybe_follow = UserFollow::find_one_by_criteria(
+        QueryCriteria::new()
+            .add_valued_filter("follower_id", "=", follower.id)
+            .add_valued_filter("following_id", "=", following.id),
+        &mut *tx
+    ).await?;
+    if maybe_follow.is_some() {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[follow] Already followed")));
+    }
+
+    let follow = UserFollow::new(follower.id, following.id);
     follow.create(&mut *tx).await?;
     tx.commit().await?;
 
@@ -337,6 +348,16 @@ async fn create_character_sub(
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
+    let maybe_sub = CharacterSub::find_one_by_criteria(
+        QueryCriteria::new()
+            .add_valued_filter("user", "=", user.id)
+            .add_valued_filter("character", "=", character_id),
+        &mut *tx
+    ).await?;
+    if maybe_sub.is_some() {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[create_character_sub] Already subscribed")));
+    }
+
     let character_sub = CharacterSub::new(user.id, character_id, vec![]);
     character_sub.create(&mut *tx).await?;
     tx.commit().await?;
