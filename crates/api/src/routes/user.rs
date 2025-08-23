@@ -389,7 +389,10 @@ async fn id_to_email(
     }
 
     let mut tx = state.db.get_client().begin().await?;
+    user.phone = Some(user.user_id.clone());
     user.user_id = format!("email_{}", raw_id);
+    user.provider = "email".to_string();
+
     user.update(&mut *tx).await?;
     tx.commit().await?;
 
