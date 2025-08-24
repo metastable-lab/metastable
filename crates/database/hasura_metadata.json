@@ -1,5 +1,5 @@
 {
-  "resource_version": 60,
+  "resource_version": 61,
   "metadata": {
     "version": 3,
     "sources": [
@@ -408,6 +408,28 @@
                 "using": {
                   "foreign_key_constraint_on": "user"
                 }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "sub_type",
+                    "created_at",
+                    "updated_at",
+                    "character",
+                    "id",
+                    "user"
+                  ],
+                  "filter": {
+                    "user": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "allow_aggregations": true
+                },
+                "comment": ""
               }
             ]
           },

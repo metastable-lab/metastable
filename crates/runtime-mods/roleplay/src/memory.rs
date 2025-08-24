@@ -116,6 +116,11 @@ impl RoleplayMemory {
 
     pub async fn handle_outputs(&self, input: &RoleplayInput, message: &Message, tool: &SendMessage) -> Result<()> {
         let mut tx = self.db.get_client().begin().await?;
+
+        if tool.messages.is_empty() && message.assistant_message_content.is_empty() {
+            return Err(anyhow!("[RoleplayInput::handle_outputs] No messages returned"));
+        }
+
         match &input {
             RoleplayInput::ContinueSession(session_id, _) => {
                 let mut message = message.clone();
