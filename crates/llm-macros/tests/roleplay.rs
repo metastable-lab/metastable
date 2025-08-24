@@ -1,5 +1,5 @@
 use metastable_runtime::LlmTool;
-use metastable_database::{TextCodecEnum, TextPromptCodec};
+use metastable_database::TextCodecEnum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextCodecEnum)]

@@ -13,7 +13,7 @@ use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{User, UserRole};
 
 use crate::{
-    middleware::authenticate, response::{AppError, AppSuccess}, utils::{generate_otp, generate_timebased_counter, verify_otp}, ApiServerEnv, GlobalState
+    ensure_account, middleware::authenticate, response::{AppError, AppSuccess}, utils::{generate_otp, generate_timebased_counter, verify_otp}, ApiServerEnv, GlobalState
 };
 
 pub fn auth_routes() -> Router<GlobalState> {
@@ -27,6 +27,11 @@ pub fn auth_routes() -> Router<GlobalState> {
 
         .route("/auth/session",
             get(session)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/auth/bind_email", 
+            post(bind_email)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -127,6 +132,10 @@ async fn session(
     ).await?;
 
     let (is_registered, is_admin) = if let Some(mut user) = user {
+        if user.banned {
+            return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[session] user id banned")));
+        }
+
         let _ = user.try_claim_free_balance(100); // whatever, we don't care about the error
         let is_admin = user.role == UserRole::Admin;
         user.update(&mut *tx).await?;
@@ -141,4 +150,43 @@ async fn session(
         "is_admin": is_admin,
         "is_registered": is_registered,
     })))
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BindEmailRequest {
+    pub raw_id: String,
+    pub otp: String,
+}
+async fn bind_email(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<BindEmailRequest>,
+) -> Result<AppSuccess, AppError> {
+    let env = ApiServerEnv::load();
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[bind_email] User not found")))?;
+    
+    // Quick validation if raw_id is a valid email address
+    let raw_id = payload.raw_id.trim();
+    if !raw_id.contains('@') || raw_id.starts_with('@') || raw_id.ends_with('@') {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[id_to_email] Invalid email address")));
+    }
+
+    if verify_otp(
+        &format!("email_{}", raw_id), &payload.otp,
+        &env.get_env_var("OTP_SECRET_KEY")
+    ) {
+        let mut tx = state.db.get_client().begin().await?;
+        user.phone = Some(user.user_id.clone());
+        user.user_id = format!("email_{}", raw_id);
+        user.provider = "email".to_string();
+
+        user.update(&mut *tx).await?;
+        tx.commit().await?;
+    } else {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[bind_email] Invalid OTP")));
+    }
+
+    Ok(AppSuccess::new(StatusCode::OK, "Email bound successfully", json!(())))
 }
