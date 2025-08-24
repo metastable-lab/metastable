@@ -43,9 +43,9 @@ impl Agent for RoleplayCharacterCreationV1Agent {
       self.memory.build_inputs(&input, &self.system_config).await
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
-      	self.memory.handle_outputs(&input, message, tool).await?;
-        Ok(None)
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
+      	let msg = self.memory.handle_outputs(&input, message, tool).await?;
+        Ok((msg, None))
     }
 
     fn system_prompt() ->  &'static str {

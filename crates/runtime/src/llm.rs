@@ -35,7 +35,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
     fn db_client(&self) -> &PostgresClient;
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>>;
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>>;
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)>;
 
     fn to_system_config() -> SystemConfig {
         SystemConfig {
@@ -183,8 +183,8 @@ pub trait Agent: Clone + Send + Sync + Sized {
         };
 
         let tool = Self::Tool::try_from_tool_call(&tool_calls[0].function)?;
-        let misc_value = self.handle_output(input, &resulting_message, &tool).await?;
+        let (msg, misc_value) = self.handle_output(input, &resulting_message, &tool).await?;
 
-        Ok((resulting_message, tool, misc_value))
+        Ok((msg, tool, misc_value))
     }
 }

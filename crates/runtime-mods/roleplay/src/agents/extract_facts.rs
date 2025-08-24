@@ -64,7 +64,7 @@ impl Agent for ExtractFactsAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, _tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, input: &Self::Input, message: &Message, _tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
         let mut message = message.clone();
         let summary_text = serde_json::to_string_pretty(&json!({
             "operation": "fact_extractor",
@@ -74,10 +74,10 @@ impl Agent for ExtractFactsAgent {
 
         message.summary = Some(summary_text);
         let mut tx = self.db.get_client().begin().await?;
-        message.create(&mut *tx).await?;
+        let message = message.create(&mut *tx).await?;
         tx.commit().await?;
 
-        Ok( None )
+        Ok((message, None))
     }
 
     fn system_prompt() ->  &'static str {

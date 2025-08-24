@@ -126,7 +126,7 @@ impl Agent for CharacterCreationAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
         let mut tx = self.db.get_client().begin().await?;
         let message = message.clone().create(&mut *tx).await?;
         let character = Character {
@@ -160,7 +160,7 @@ impl Agent for CharacterCreationAgent {
         let character = character.create(&mut *tx).await?;
         tx.commit().await?;
 
-        Ok(Some(serde_json::json!({ "character_id": character.id })))
+        Ok((message, Some(serde_json::json!({ "character_id": character.id }))))
     }
 
     fn system_prompt() -> &'static str {
