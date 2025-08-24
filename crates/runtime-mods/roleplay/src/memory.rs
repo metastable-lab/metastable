@@ -114,19 +114,19 @@ impl RoleplayMemory {
         Ok(prompts)
     }
 
-    pub async fn handle_outputs(&self, input: &RoleplayInput, message: &Message, tool: &SendMessage) -> Result<()> {
+    pub async fn handle_outputs(&self, input: &RoleplayInput, message: &Message, tool: &SendMessage) -> Result<Message> {
         let mut tx = self.db.get_client().begin().await?;
 
         if tool.messages.is_empty() && message.assistant_message_content.is_empty() {
             return Err(anyhow!("[RoleplayInput::handle_outputs] No messages returned"));
         }
 
-        match &input {
+        let msg = match &input {
             RoleplayInput::ContinueSession(session_id, _) => {
                 let mut message = message.clone();
                 message.session = Some(session_id.clone());
                 message.summary = Some(tool.summary.clone());
-                message.create(&mut *tx).await?;
+                message.create(&mut *tx).await?
             },
             RoleplayInput::RegenerateSession(session_id) => {
                 let latest_message = Message::find_one_by_criteria(
@@ -140,11 +140,11 @@ impl RoleplayMemory {
                 message.id = latest_message.id;
                 message.session = Some(session_id.clone());
                 message.summary = Some(tool.summary.clone());
-                message.update(&mut *tx).await?;
+                message.update(&mut *tx).await?
             },
         };
 
         tx.commit().await?;
-        Ok(())
+        Ok(msg)
     }
 }

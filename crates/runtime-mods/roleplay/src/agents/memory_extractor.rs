@@ -99,7 +99,7 @@ impl Agent for MemoryExtractorAgent {
         ])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<Option<Value>> {
+    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
         let memory_updates = tool.operations.iter().map(|entry| {
             MemoryUpdateEntry {
                 id: entry.id,
@@ -123,10 +123,10 @@ impl Agent for MemoryExtractorAgent {
 
         message.summary = Some(summary_text);
         let mut tx = self.db.get_client().begin().await?;
-        message.create(&mut *tx).await?;
+        let message = message.create(&mut *tx).await?;
         tx.commit().await?;
 
-        Ok( Some(serde_json::to_value(summary)? ) )
+        Ok((message, Some(serde_json::to_value(summary)?)))
     }
 
     fn system_prompt() -> &'static str {
