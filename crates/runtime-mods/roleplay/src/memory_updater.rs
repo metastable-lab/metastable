@@ -5,7 +5,6 @@ use metastable_database::{OrderDirection, QueryCriteria, SqlxFilterQuery};
 use metastable_runtime::{Agent, CharacterFeature, ChatSession, Message};
 use metastable_clients::{Mem0Filter, PostgresClient};
 use sqlx::types::Uuid;
-use tokio::sync::mpsc;
 
 use crate::agents::{ExtractFactsAgent, ExtractFactsInput, MemoryExtractorAgent, MemoryExtractorInput};
 
@@ -23,13 +22,6 @@ impl MemoryUpdater {
         let extract_fact_agent = ExtractFactsAgent::new().await?;
         let memory_extractor_agent = MemoryExtractorAgent::new().await?;
         Ok(Self { db, extract_fact_agent, memory_extractor_agent })
-    }
-
-    pub async fn run(self, mut memory_update_rx: mpsc::Receiver<Uuid>) -> Result<()> {
-        while let Some(session_id) = memory_update_rx.recv().await {
-            self.update_memory(&session_id).await?;
-        }
-        Ok(())
     }
 
     pub async fn update_memory(&self, session_id: &Uuid) -> Result<()> {

@@ -44,11 +44,13 @@ async fn main() -> Result<()> {
     let cors = CorsLayer::very_permissive();
     let trace = TraceLayer::new_for_http();
 
-    let (global_state, memory_updater_rx) = GlobalState::new().await?;
+    let (global_state, mut memory_updater_rx) = GlobalState::new().await?;
 
     tokio::spawn(async move {
         let memory_updater = MemoryUpdater::new().await.unwrap();
-        memory_updater.run(memory_updater_rx).await.unwrap();
+        while let Some(session_id) = memory_updater_rx.recv().await {
+            let _ = memory_updater.update_memory(&session_id).await;
+        }
     });
 
     let app = Router::new()
