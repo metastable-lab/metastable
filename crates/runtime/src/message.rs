@@ -24,8 +24,7 @@ pub enum MessageType {
     #[default]
     Text,
 
-    Image(String),
-    Audio(String),
+    Image,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]

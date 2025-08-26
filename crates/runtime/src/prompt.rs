@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_openai::types::{
-    ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessageArgs, ChatCompletionToolType, FunctionCall
+    ChatCompletionMessageToolCall, ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage, ChatCompletionRequestMessageContentPartImageArgs, ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestToolMessageArgs, ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageArgs, ChatCompletionRequestUserMessageContentPart, ChatCompletionToolType, FunctionCall, ImageUrl
 };
 use metastable_common::get_current_timestamp;
 use serde::{Deserialize, Serialize};
@@ -81,7 +81,35 @@ impl Prompt {
                 r#type: ChatCompletionToolType::Function,
                 function: toolcall.clone(),
             }]);
+
             let content = m.content.clone();
+
+            let build_user_message = |m: &Prompt| -> Result<ChatCompletionRequestUserMessage> {
+                match m.content_type {
+                    MessageType::Text => {
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(m.content.clone())
+                            .build()
+                            .map_err(|e| anyhow!("[Prompt::pack] Failed to pack message: {}", e))
+                    },
+                    MessageType::Image => {
+                        let image_url = m.content.clone();
+
+                        ChatCompletionRequestUserMessageArgs::default()
+                            .content(vec![ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                                ChatCompletionRequestMessageContentPartImageArgs::default()  
+                                    .image_url(ImageUrl {
+                                        url: image_url,
+                                        detail: None,
+                                    })
+                                    .build()
+                                    .map_err(|e| anyhow!("[Prompt::pack] Failed to pack message: {}", e))?
+                            )])
+                            .build()
+                            .map_err(|e| anyhow!("[Prompt::pack] Failed to pack message: {}", e))
+                    }
+                }
+            };
 
             Ok(match m.role {
                 MessageRole::System => ChatCompletionRequestMessage::System(
@@ -91,10 +119,7 @@ impl Prompt {
                         .map_err(|e| anyhow!("[Prompt::pack] Failed to pack message: {}", e))?
                 ),
                 MessageRole::User => ChatCompletionRequestMessage::User(
-                    ChatCompletionRequestUserMessageArgs::default()
-                        .content(content)
-                        .build()
-                        .map_err(|e| anyhow!("[Prompt::pack] Failed to pack message: {}", e))?
+                    build_user_message(&m)?
                 ),
                 MessageRole::Assistant => {
                     let content = if let Some(toolcalls) = maybe_toolcall {
