@@ -20,6 +20,9 @@ pub struct ChatSession {
     pub use_character_memory: bool,
     pub hidden: bool,
 
+    pub nonce: i64, // only used for refresh the updated_at
+    pub user_mask: Option<String>,
+
     pub updated_at: i64,
     pub created_at: i64,
 }
@@ -33,6 +36,8 @@ impl ChatSession {
             character: character_id,
             use_character_memory,
             hidden: false,
+            nonce: 0,
+            user_mask: None,
             updated_at: 0,
             created_at: 0,
         }

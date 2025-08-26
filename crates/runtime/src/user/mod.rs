@@ -70,6 +70,8 @@ pub struct User {
     pub avatar: Option<String>,
     pub bio: Option<String>,
     
+    pub mask: Vec<String>,
+
     pub extra: Option<Json<Value>>, // array of user profiles to be injected into prompts
 
     pub created_at: i64,

@@ -73,6 +73,8 @@ async fn migrate_messages(db: &Arc<PgPool>) -> Result<()> {
             character: session.character,
             use_character_memory: session.use_character_memory,
             hidden: session.hidden,
+            nonce: 0,
+            user_mask: None,
             updated_at: session.updated_at,
             created_at: session.created_at,
         };
