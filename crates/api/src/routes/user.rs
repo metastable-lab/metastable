@@ -30,6 +30,11 @@ pub fn user_routes() -> Router<GlobalState> {
             post(register)
         )
 
+        .route("/user/checkin",
+            post(daily_checkin)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
         .route("/user/referral/buy",
             post(buy_referral)
             .route_layer(middleware::from_fn(authenticate))
@@ -98,9 +103,9 @@ async fn register(
     user.provider = payload.provider.clone();
 
     let mut user = user.create(&mut *tx).await?;
-    let claimed_log = user.try_claim_free_balance(50).expect("user MUST be able to claim on account creation"); // infallable
-    let invitaion_log = user.invitation_reward(&referer.id, 100, 50);
-    let invitation_reward_log = referer.invitation_reward(&user.id, 50, 100);
+    let claimed_log = user.daily_checkin(100).expect("user MUST be able to claim on account creation"); // infallable
+    let invitaion_log = user.invitation_reward(&referer.id, 200, 100);
+    let invitation_reward_log = referer.invitation_reward(&user.id, 100, 200);
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
@@ -363,4 +368,39 @@ async fn create_character_sub(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character sub created successfully", json!(())))
+}
+
+// Daily checkin request structure
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DailyCheckinRequest {
+    // Can be empty, or add some parameters if needed
+}
+
+// Daily checkin handler function
+async fn daily_checkin(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(_payload): Json<DailyCheckinRequest>,
+) -> Result<AppSuccess, AppError> {
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[daily_checkin] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    
+    // Call daily checkin method
+    let checkin_log = user.daily_checkin(100)?;  // 100 points per checkin
+    
+    // Calculate total balance before updating user
+    let total_balance = user.running_claimed_balance + user.running_misc_balance + user.running_purchased_balance;
+    
+    // Save log and update user
+    checkin_log.create(&mut *tx).await?;
+    user.update(&mut *tx).await?;
+    
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Daily checkin successful", json!({
+        "points_earned": 100,
+        "total_balance": total_balance
+    })))
 }

@@ -109,18 +109,20 @@ impl User {
 
 impl User {
     /* BALANCE ADDITION */
-    // Rate limit: ONE Claim per 24 hours
-    pub fn try_claim_free_balance(&mut self, amount: i64) -> Result<UserPointsLog> {
+    // Daily checkin: ONE claim per day (resets at 00:00)
+    pub fn daily_checkin(&mut self, amount: i64) -> Result<UserPointsLog> {
         let current_timestamp = get_current_timestamp();
-        // ONE Claim per day
-        if current_timestamp - self.free_balance_claimed_at < 24 * 60 * 60 {
-            return Err(anyhow!("[User::try_claim_free_balance] Too frequent to claim free balance"));
+        
+        // Calculate today's start time (00:00:00)
+        let current_date_start = current_timestamp - (current_timestamp % (24 * 60 * 60));
+        
+        // Check if already checked in today
+        if self.free_balance_claimed_at >= current_date_start {
+            return Err(anyhow!("[User::daily_checkin] Already checked in today"));
         }
 
         self.running_claimed_balance += amount;
         self.free_balance_claimed_at = current_timestamp;
-
-        // add log
 
         Ok(UserPointsLog::from_daily_checkin(&self.id, amount))
     }
