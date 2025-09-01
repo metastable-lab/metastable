@@ -10,7 +10,7 @@ use serde_json::Value;
 use metastable_database::TextCodecEnum;
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
-use metastable_common::{encrypt, decrypt, get_current_timestamp};
+use metastable_common::{encrypt, decrypt, get_current_timestamp, get_today_start_timestamp_utc8};
 use metastable_database::SqlxObject;
 
 pub use url::UserUrl;
@@ -109,12 +109,12 @@ impl User {
 
 impl User {
     /* BALANCE ADDITION */
-    // Daily checkin: ONE claim per day (resets at 00:00)
+    // Daily checkin: ONE claim per day (resets at 00:00 UTC+8)
     pub fn daily_checkin(&mut self, amount: i64) -> Result<UserPointsLog> {
         let current_timestamp = get_current_timestamp();
         
-        // Calculate today's start time (00:00:00)
-        let current_date_start = current_timestamp - (current_timestamp % (24 * 60 * 60));
+        // Calculate today's start time in UTC+8 timezone (00:00:00)
+        let current_date_start = get_today_start_timestamp_utc8();
         
         // Check if already checked in today
         if self.free_balance_claimed_at >= current_date_start {
