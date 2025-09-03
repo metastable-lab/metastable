@@ -1,5 +1,5 @@
 {
-  "resource_version": 61,
+  "resource_version": 66,
   "metadata": {
     "version": 3,
     "sources": [
@@ -393,6 +393,48 @@
           },
           {
             "table": {
+              "name": "roleplay_character_mask",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "roleplay_character",
+                "using": {
+                  "foreign_key_constraint_on": "character"
+                }
+              },
+              {
+                "name": "userByUser",
+                "using": {
+                  "foreign_key_constraint_on": "user"
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "mask",
+                    "character",
+                    "id",
+                    "user"
+                  ],
+                  "filter": {
+                    "user": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "roleplay_character_sub",
               "schema": "public"
             },
@@ -478,6 +520,18 @@
                     "column": "character",
                     "table": {
                       "name": "roleplay_character_audit_logs",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "roleplay_character_masks",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character",
+                    "table": {
+                      "name": "roleplay_character_mask",
                       "schema": "public"
                     }
                   }
@@ -1354,6 +1408,18 @@
                     "column": "author",
                     "table": {
                       "name": "roleplay_character_audit_logs",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "roleplay_character_masks",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user",
+                    "table": {
+                      "name": "roleplay_character_mask",
                       "schema": "public"
                     }
                   }

@@ -13,7 +13,7 @@ pub use system_config::SystemConfig;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use message::{MessageRole, MessageType, Message};
 pub use prompt::Prompt;
-pub use character::{Character, CharacterSub, CharacterHistory, 
+pub use character::{Character, CharacterSub, CharacterHistory, CharacterMask,
     CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
     AuditLog,

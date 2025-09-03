@@ -2,6 +2,7 @@ mod audit;
 mod character_detail;
 mod character_history;
 mod character_sub;
+mod character_mask;
 
 use anyhow::Result;
 use metastable_common::get_time_in_utc8;
@@ -19,6 +20,7 @@ pub use character_detail::{
 pub use audit::AuditLog;
 pub use character_history::CharacterHistory;
 pub use character_sub::CharacterSub;
+pub use character_mask::CharacterMask;
 
 use crate::ChatSession;
 

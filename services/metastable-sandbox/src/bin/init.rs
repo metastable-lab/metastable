@@ -32,6 +32,7 @@ init_databases!(
         metastable_runtime::Character,
         metastable_runtime::CharacterHistory,
         metastable_runtime::CharacterSub,
+        metastable_runtime::CharacterMask,
         metastable_runtime::AuditLog,
     ],
     pgvector: [ 
