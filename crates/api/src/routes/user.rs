@@ -111,6 +111,7 @@ async fn register(
     referral_code.used_at = Some(get_current_timestamp());
     referral_code.update(&mut *tx).await?;
     referer.update(&mut *tx).await?;
+    user.update(&mut *tx).await?;
 
     claimed_log.create(&mut *tx).await?;
     invitaion_log.create(&mut *tx).await?;
