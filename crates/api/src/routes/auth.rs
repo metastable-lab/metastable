@@ -136,7 +136,7 @@ async fn session(
             return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[session] user id banned")));
         }
 
-        let _ = user.daily_checkin(100); // try daily checkin
+        // let _ = user.daily_checkin(100); // try daily checkin - DISABLED
         let is_admin = user.role == UserRole::Admin;
         user.update(&mut *tx).await?;
         (true, is_admin)
