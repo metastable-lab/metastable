@@ -50,7 +50,7 @@ impl Agent for PrettierV0Agent {
     fn model() -> &'static str { "google/gemini-2.5-flash-lite" }
     fn system_config(&self) -> &SystemConfig { &self.system_config }
 
-    async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
+    async fn build_input(&self, _input: &Self::Input) -> Result<Vec<Prompt>> {
         
         let sys_msg = Prompt::new_system(Self::system_prompt());
 
@@ -83,7 +83,7 @@ impl Agent for PrettierV0Agent {
         Ok(vec![sys_msg, first_msg, message_0, message_1])
     }
 
-    async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
+    async fn handle_output(&self, _input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
 
         println!("message: {:?}", message);
 

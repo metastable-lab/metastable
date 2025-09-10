@@ -1,6 +1,4 @@
 use anyhow::Result;
-
-use metastable_database::TextPromptCodec;
 use metastable_runtime_roleplay::agents::RoleplayMessageType;
 
 #[test]
@@ -21,8 +19,8 @@ fn test_roleplay_message_type_text_codec() -> Result<()> {
 
     let mut output = Vec::new();
     for line in raw_text {
-        let msg = RoleplayMessageType::parse_any_lang(line)?;
-        output.push(msg);
+        let msg = RoleplayMessageType::from_legacy_message(line);
+        output.extend(msg);
     }
 
     assert_eq!(expected_messages, output);

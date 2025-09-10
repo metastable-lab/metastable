@@ -2,88 +2,111 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
-use super::parse::{TextCodecEnum, TextCodecVariant, VariantKind, FormatKind};
+use super::parse::{TextEnumCodec, TextEnumVariant, VariantKind};
 
-pub fn generate_text_codec_impl(parsed_enum: &TextCodecEnum) -> TokenStream {
+pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
     let enum_ident = &parsed_enum.ident;
 
-    let display_impl = generate_display_impl(enum_ident, &parsed_enum.storage_lang, &parsed_enum.format, &parsed_enum.variants);
-    let from_str_impl = generate_from_str_impl(enum_ident, &parsed_enum.storage_lang, &parsed_enum.format, &parsed_enum.variants);
-    let text_prompt_codec_impl = generate_text_prompt_codec_impl(parsed_enum);
+    let text_enum_codec_impl = generate_text_enum_codec_trait_impl(parsed_enum);
     let default_impl = generate_default_impl(enum_ident, &parsed_enum.variants);
-    
+    let display_impl = generate_display_impl(enum_ident);
+    let from_str_impl = generate_from_str_impl(enum_ident);
+
     quote! {
+        #text_enum_codec_impl
         #display_impl
         #from_str_impl
-        #text_prompt_codec_impl
         #default_impl
     }
 }
 
-fn generate_text_prompt_codec_impl(parsed_enum: &TextCodecEnum) -> TokenStream {
+fn generate_text_enum_codec_trait_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
     let enum_ident = &parsed_enum.ident;
-    let to_lang_impl = generate_to_lang_impl(enum_ident, &parsed_enum.storage_lang, &parsed_enum.format, &parsed_enum.variants);
-    let to_lang_parts_impl = generate_to_lang_parts_impl(enum_ident, &parsed_enum.storage_lang, &parsed_enum.format, &parsed_enum.variants);
-    let parse_any_lang_impl = generate_parse_any_lang_impl(enum_ident, &parsed_enum.format, &parsed_enum.variants);
-    let parse_with_type_and_content_impl = generate_parse_with_type_and_content_impl(enum_ident, &parsed_enum.variants);
+    let type_lang = &parsed_enum.type_lang;
+    let schema_lang = &parsed_enum.schema_lang;
+
+    let to_text_impl = generate_to_text_impl(type_lang, &parsed_enum.variants);
+    let from_text_impl = generate_from_text_impl(enum_ident, type_lang, &parsed_enum.variants);
     let schema_impl = generate_schema_impl(parsed_enum);
 
     quote! {
-        impl ::metastable_database::TextPromptCodec for #enum_ident {
-            fn to_lang(&self, lang: &str) -> String {
-                #to_lang_impl
-            }
-            
-            fn to_lang_parts(&self, lang: &str) -> (String, String) {
-                #to_lang_parts_impl
+        impl ::metastable_database::TextEnumCodec for #enum_ident {
+            fn to_text(&self, lang: &str) -> String {
+                #to_text_impl
             }
 
-            fn parse_any_lang(s: &str) -> anyhow::Result<Self> {
-                #parse_any_lang_impl
+            fn from_text(s: &str) -> anyhow::Result<Self> {
+                #from_text_impl
             }
 
-            fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self> {
-                #parse_with_type_and_content_impl
-            }
-            
             fn schema(lang: Option<&str>) -> serde_json::Value {
                 #schema_impl
+            }
+
+            fn type_lang() -> &'static str {
+                #type_lang
+            }
+
+            fn schema_lang() -> &'static str {
+                #schema_lang
             }
         }
     }
 }
 
-fn generate_to_lang_parts_impl(_enum_ident: &Ident, _storage_lang: &str, _format: &FormatKind, variants: &[TextCodecVariant]) -> TokenStream {
+fn generate_to_text_impl(type_lang: &str, variants: &[TextEnumVariant]) -> TokenStream {
     let arms = variants.iter().map(|v| {
         let variant_ident = &v.ident;
-        let default_prefix = v.ident.to_string();
+        let default_type = v.ident.to_string();
 
-        let prefix_map: Vec<_> = v.prefixes.iter().map(|(lang, prefix)| {
-            quote! { #lang => #prefix, }
-        }).collect();
-
-        let prefix_logic = quote! {
-            let prefix = match lang {
-                #(#prefix_map)*
-                _ => #default_prefix,
-            };
-        };
+        // Get the type name for this language, fallback to default
+        let type_name = v.prefixes.get(type_lang).cloned().unwrap_or(default_type);
 
         match v.kind {
-            VariantKind::Unit => quote! { Self::#variant_ident => { #prefix_logic; (prefix.to_string(), "".to_string()) } },
+            VariantKind::Unit => {
+                // Unit variants return pure string
+                quote! { Self::#variant_ident => #type_name.to_string() }
+            },
             VariantKind::String => {
-                quote! { Self::#variant_ident(inner) => { #prefix_logic; (prefix.to_string(), inner.clone()) } }
+                if v.is_catch_all && !v.catch_all_include_prefix {
+                    // Catch-all variants return pure string (even though they have content)
+                    quote! { Self::#variant_ident(content) => content.clone() }
+                } else {
+                    // Content variants return structured JSON
+                    quote! {
+                        Self::#variant_ident(content) => {
+                            serde_json::json!({
+                                "content": content,
+                                "type": #type_name
+                            }).to_string()
+                        }
+                    }
+                }
             },
             VariantKind::VecString => {
-                 quote! { Self::#variant_ident(vec) => { #prefix_logic; (prefix.to_string(), vec.join(",")) } }
+                quote! {
+                    Self::#variant_ident(items) => {
+                        serde_json::json!({
+                            "content": items.join(","),
+                            "type": #type_name
+                        }).to_string()
+                    }
+                }
             },
             VariantKind::Uuid => {
-                quote! { Self::#variant_ident(inner) => { #prefix_logic; (prefix.to_string(), inner.to_string()) } }
+                quote! {
+                    Self::#variant_ident(id) => {
+                        serde_json::json!({
+                            "content": id.to_string(),
+                            "type": #type_name
+                        }).to_string()
+                    }
+                }
             },
-            _ => quote! {},
+            VariantKind::Unsupported => quote! { Self::#variant_ident => unreachable!() },
         }
     });
-    
+
     quote! {
         match self {
             #(#arms,)*
@@ -91,277 +114,103 @@ fn generate_to_lang_parts_impl(_enum_ident: &Ident, _storage_lang: &str, _format
     }
 }
 
-fn generate_display_impl(enum_ident: &Ident, storage_lang: &str, format: &FormatKind, variants: &[TextCodecVariant]) -> TokenStream {
-    let arms = variants.iter().map(|v| {
-        let variant_ident = &v.ident;
-        let prefix = v.prefixes.get(storage_lang).cloned().unwrap_or_else(|| v.ident.to_string());
-        
-        match v.kind {
-            VariantKind::Unit => quote! { Self::#variant_ident => write!(f, "{}", #prefix) },
+fn generate_from_text_impl(enum_ident: &Ident, type_lang: &str, variants: &[TextEnumVariant]) -> TokenStream {
+    let mut type_to_variant = std::collections::HashMap::new();
+
+    // Build mapping from type names to variants
+    for variant in variants {
+        if !variant.is_catch_all || variant.catch_all_include_prefix {
+            // Add default type name
+            type_to_variant.insert(variant.ident.to_string(), variant);
+
+            // Add language-specific type names
+            for (lang, type_name) in &variant.prefixes {
+                if lang == type_lang {
+                    type_to_variant.insert(type_name.clone(), variant);
+                }
+            }
+        }
+    }
+
+    let parse_arms = type_to_variant.iter().map(|(type_name, variant)| {
+        let variant_ident = &variant.ident;
+        match variant.kind {
+            VariantKind::Unit => {
+                quote! {
+                    if s.trim() == #type_name {
+                        return Ok(Self::#variant_ident);
+                    }
+                }
+            },
             VariantKind::String => {
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => write!(f, "{}({})", #prefix, inner) },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => write!(f, "{}{} {}", #prefix, #c, inner) },
+                quote! {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
+                        if let (Some(content), Some(typ)) = (
+                            json.get("content").and_then(|v| v.as_str()),
+                            json.get("type").and_then(|v| v.as_str())
+                        ) {
+                            if typ == #type_name {
+                                return Ok(Self::#variant_ident(content.to_string()));
+                            }
+                        }
+                    }
                 }
             },
             VariantKind::VecString => {
-                let open = "[";
-                let sep = ",";
-                let close = "]";
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(vec) => write!(f, "{}({}{}{})", #prefix, #open, vec.join(#sep), #close) },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(vec) => write!(f, "{}{} {}{}{}", #prefix, #c, #open, vec.join(#sep), #close) },
+                quote! {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
+                        if let (Some(content), Some(typ)) = (
+                            json.get("content").and_then(|v| v.as_str()),
+                            json.get("type").and_then(|v| v.as_str())
+                        ) {
+                            if typ == #type_name {
+                                let items = if content.trim().is_empty() {
+                                    Vec::new()
+                                } else {
+                                    content.split(',').map(|s| s.trim().to_string()).collect()
+                                };
+                                return Ok(Self::#variant_ident(items));
+                            }
+                        }
+                    }
                 }
             },
             VariantKind::Uuid => {
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => write!(f, "{}({})", #prefix, inner) },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => write!(f, "{}{} {}", #prefix, #c, inner) },
+                quote! {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
+                        if let (Some(content), Some(typ)) = (
+                            json.get("content").and_then(|v| v.as_str()),
+                            json.get("type").and_then(|v| v.as_str())
+                        ) {
+                            if typ == #type_name {
+                                if let Ok(uuid) = content.parse() {
+                                    return Ok(Self::#variant_ident(uuid));
+                                }
+                            }
+                        }
+                    }
                 }
             },
             VariantKind::Unsupported => quote! {},
         }
     });
 
-    quote! {
-        impl ::std::fmt::Display for #enum_ident {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                match self {
-                    #(#arms,)*
-                }
-            }
-        }
-    }
-}
-
-fn generate_from_str_impl(enum_ident: &Ident, storage_lang: &str, format: &FormatKind, variants: &[TextCodecVariant]) -> TokenStream {
-    let catch_all_variant = variants.iter().find(|v| v.is_catch_all);
-
-    let parse_arms = variants.iter().filter(|v|!v.is_catch_all).map(|v| {
-        let variant_ident = &v.ident;
-        let prefix = v.prefixes.get(storage_lang).cloned().unwrap_or_else(|| v.ident.to_string());
-
-        match v.kind {
-            VariantKind::Unit => quote! { if s == #prefix { return Ok(Self::#variant_ident); } },
-            VariantKind::String => {
-                match format {
-                    FormatKind::Paren => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                            return Ok(Self::#variant_ident(inner.to_string()));
-                        }
-                    },
-                    FormatKind::Colon(c) => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                            return Ok(Self::#variant_ident(inner.trim().to_string()));
-                        }
-                    },
-                }
+    // Handle catch-all variant - try pure string parsing first for catch-all
+    let catch_all_logic = if let Some(catch_all) = variants.iter().find(|v| v.is_catch_all) {
+        let variant_ident = &catch_all.ident;
+        match catch_all.kind {
+            VariantKind::String => quote! {
+                // If no other match, treat as catch-all with the original string
+                return Ok(Self::#variant_ident(s.to_string()));
             },
-            VariantKind::VecString => {
-                 let open = "[";
-                let sep = ",";
-                let close = "]";
-                match format {
-                    FormatKind::Paren => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                            if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
-                                let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
-                                return Ok(Self::#variant_ident(vec));
-                            }
-                        }
-                    },
-                    FormatKind::Colon(c) => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                            if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
-                                let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
-                                return Ok(Self::#variant_ident(vec));
-                            }
-                        }
-                    },
-                }
+            _ => quote! {
+                anyhow::bail!("Catch-all variant must be of type String");
             },
-            VariantKind::Uuid => {
-                match format {
-                    FormatKind::Paren => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                            if let Ok(uuid) = inner.parse() {
-                                return Ok(Self::#variant_ident(uuid));
-                            }
-                        }
-                    },
-                    FormatKind::Colon(c) => quote! {
-                        if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                            if let Ok(uuid) = inner.trim().parse() {
-                                return Ok(Self::#variant_ident(uuid));
-                            }
-                        }
-                    },
-                }
-            },
-            VariantKind::Unsupported => quote!{},
-        }
-    });
-
-    let catch_all_logic = if let Some(variant) = catch_all_variant {
-        let variant_ident = &variant.ident;
-        match variant.kind {
-            VariantKind::String => quote! { return Ok(Self::#variant_ident(s.to_string())); },
-            _ => quote! { anyhow::bail!("Catch-all variant is not of type String"); }
         }
     } else {
-        quote! { anyhow::bail!("Failed to parse string into {}", stringify!(#enum_ident)); }
-    };
-    
-    quote! {
-        impl ::std::str::FromStr for #enum_ident {
-            type Err = anyhow::Error;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                let s = s.trim();
-                #(#parse_arms)*
-                #catch_all_logic
-            }
+        quote! {
+            anyhow::bail!("Failed to parse '{}' into {}", s, stringify!(#enum_ident));
         }
-    }
-}
-
-fn generate_to_lang_impl(_enum_ident: &Ident, _storage_lang: &str, format: &FormatKind, variants: &[TextCodecVariant]) -> TokenStream {
-    let arms = variants.iter().map(|v| {
-        let variant_ident = &v.ident;
-        let default_prefix = v.ident.to_string();
-
-        let prefix_map: Vec<_> = v.prefixes.iter().map(|(lang, prefix)| {
-            quote! { #lang => #prefix, }
-        }).collect();
-
-        let prefix_logic = quote! {
-            let prefix = match lang {
-                #(#prefix_map)*
-                _ => #default_prefix,
-            };
-        };
-
-        match v.kind {
-            VariantKind::Unit => quote! { Self::#variant_ident => { #prefix_logic; prefix.to_string() } },
-            VariantKind::String => {
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}({})", prefix, inner) } },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}{} {}", prefix, #c, inner) } },
-                }
-            },
-            VariantKind::VecString => {
-                let open = "[";
-                let sep = ",";
-                let close = "]";
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(vec) => { #prefix_logic; format!("{}({}{}{})", prefix, #open, vec.join(#sep), #close) } },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(vec) => { #prefix_logic; format!("{}{} {}{}{}", prefix, #c, #open, vec.join(#sep), #close) } },
-                }
-            },
-            VariantKind::Uuid => {
-                match format {
-                    FormatKind::Paren => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}({})", prefix, inner) } },
-                    FormatKind::Colon(c) => quote! { Self::#variant_ident(inner) => { #prefix_logic; format!("{}{} {}", prefix, #c, inner) } },
-                }
-            },
-            _ => quote! {},
-        }
-    });
-    
-    quote! {
-        match self {
-            #(#arms,)*
-        }
-    }
-}
-
-
-fn generate_parse_any_lang_impl(enum_ident: &Ident, format: &FormatKind, variants: &[TextCodecVariant]) -> TokenStream {
-    let mut all_prefixes = std::collections::HashMap::<String, &Ident>::new();
-    for v in variants.iter() {
-        if !v.is_catch_all {
-            for prefix in v.prefixes.values() {
-                all_prefixes.insert(prefix.clone(), &v.ident);
-            }
-        }
-    }
-    
-    let parse_arms = variants.iter().flat_map(|v| {
-        if v.is_catch_all {
-            return vec![];
-        }
-        v.prefixes.values().map(|prefix| {
-            let variant_ident = &v.ident;
-            match v.kind {
-                VariantKind::Unit => quote! { if s == #prefix { return Ok(Self::#variant_ident); } },
-                VariantKind::String => {
-                    match format {
-                        FormatKind::Paren => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                                return Ok(Self::#variant_ident(inner.to_string()));
-                            }
-                        },
-                        FormatKind::Colon(c) => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                                return Ok(Self::#variant_ident(inner.trim().to_string()));
-                            }
-                        },
-                    }
-                },
-                VariantKind::VecString => {
-                    let open = "[";
-                    let sep = ",";
-                    let close = "]";
-                    match format {
-                        FormatKind::Paren => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                                if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
-                                    let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
-                                    return Ok(Self::#variant_ident(vec));
-                                }
-                            }
-                        },
-                        FormatKind::Colon(c) => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                                if let Some(inner) = inner.strip_prefix(#open).and_then(|t| t.strip_suffix(#close)) {
-                                    let vec = if inner.trim().is_empty() { Vec::new() } else { inner.split(#sep).map(|s| s.trim().to_string()).collect() };
-                                    return Ok(Self::#variant_ident(vec));
-                                }
-                            }
-                        },
-                    }
-                },
-                VariantKind::Uuid => {
-                    match format {
-                        FormatKind::Paren => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}(", #prefix)).and_then(|t| t.strip_suffix(")")) {
-                                if let Ok(uuid) = inner.parse() {
-                                    return Ok(Self::#variant_ident(uuid));
-                                }
-                            }
-                        },
-                        FormatKind::Colon(c) => quote! {
-                            if let Some(inner) = s.strip_prefix(&format!("{}{}", #prefix, #c)) {
-                                if let Ok(uuid) = inner.trim().parse() {
-                                    return Ok(Self::#variant_ident(uuid));
-                                }
-                            }
-                        },
-                    }
-                },
-                VariantKind::Unsupported => quote! {},
-            }
-        }).collect::<Vec<_>>()
-    });
-
-    let catch_all_variant = variants.iter().find(|v| v.is_catch_all);
-    let catch_all_logic = if let Some(variant) = catch_all_variant {
-        let variant_ident = &variant.ident;
-        match variant.kind {
-            VariantKind::String => quote! { return Ok(Self::#variant_ident(s.to_string())); },
-            _ => quote! { anyhow::bail!("Catch-all variant is not of type String"); }
-        }
-    } else {
-        quote! { anyhow::bail!("Failed to parse string into {}: {}", stringify!(#enum_ident), s); }
     };
 
     quote! {
@@ -371,109 +220,122 @@ fn generate_parse_any_lang_impl(enum_ident: &Ident, format: &FormatKind, variant
     }
 }
 
-fn generate_parse_with_type_and_content_impl(enum_ident: &Ident, variants: &[TextCodecVariant]) -> TokenStream {
-    let mut type_map = std::collections::HashMap::<String, &TextCodecVariant>::new();
-    for v in variants {
-        for prefix in v.prefixes.values() {
-            type_map.insert(prefix.clone(), v);
+fn generate_schema_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
+    // Determine schema structure at compile time
+    let has_structured_variants = parsed_enum.variants.iter()
+        .any(|v| matches!(v.kind, VariantKind::String | VariantKind::VecString | VariantKind::Uuid) && !v.is_catch_all);
+    let has_unit_variants = parsed_enum.variants.iter()
+        .any(|v| v.kind == VariantKind::Unit);
+
+    // Pre-compute unique, sorted variant names for all available languages at compile time
+    let mut lang_to_variants = std::collections::BTreeMap::<String, Vec<String>>::new();
+    for v in &parsed_enum.variants {        
+        // Add variant's default name to the default schema language
+        let default_lang_variants = lang_to_variants.entry(parsed_enum.schema_lang.clone()).or_default();
+        if !default_lang_variants.contains(&v.ident.to_string()) {
+            default_lang_variants.push(v.ident.to_string());
+        }
+
+        // Add prefixed names for each language
+        for (lang, prefix) in &v.prefixes {
+            let lang_variants = lang_to_variants.entry(lang.clone()).or_default();
+            if !lang_variants.contains(prefix) {
+                lang_variants.push(prefix.clone());
+            }
         }
     }
-    
-    let arms = type_map.iter().map(|(prefix, variant)| {
-        let variant_ident = &variant.ident;
-        match variant.kind {
-            VariantKind::Unit => quote! {
-                if type_str == #prefix {
-                    return Ok(Self::#variant_ident);
-                }
-            },
-            VariantKind::String => quote! {
-                if type_str == #prefix {
-                    return Ok(Self::#variant_ident(content_str.to_string()));
-                }
-            },
-            VariantKind::VecString => quote! {
-                if type_str == #prefix {
-                    let vec = if content_str.trim().is_empty() { Vec::new() } else { content_str.split(',').map(|s| s.trim().to_string()).collect() };
-                    return Ok(Self::#variant_ident(vec));
-                }
-            },
-            VariantKind::Uuid => quote! {
-                if type_str == #prefix {
-                    if let Ok(uuid) = content_str.parse() {
-                        return Ok(Self::#variant_ident(uuid));
-                    }
-                }
-            },
-            VariantKind::Unsupported => quote!{},
-        }
+
+    // Generate a match arm for each language
+    let lang_arms = lang_to_variants.iter().map(|(lang, variants)| {
+        let schema = generate_enum_schema(has_structured_variants, has_unit_variants, variants);
+        quote! { #lang => #schema }
     });
 
-    let catch_all_variant = variants.iter().find(|v| v.is_catch_all);
-    let catch_all_logic = if let Some(variant) = catch_all_variant {
-        let variant_ident = &variant.ident;
-        quote! { return Ok(Self::#variant_ident(format!("{}: {}", type_str, content_str))); }
-    } else {
-        quote! { anyhow::bail!("Invalid type or content for {}", stringify!(#enum_ident)); }
-    };
-    
+    // Generate the schema for the default language to use in the fallback arm
+    let default_lang = &parsed_enum.schema_lang;
+    let default_variants = lang_to_variants.get(default_lang).cloned().unwrap_or_default();
+    let default_schema = generate_enum_schema(has_structured_variants, has_unit_variants, &default_variants);
+
+    // Generate the final function body
     quote! {
-        #(#arms)*
-        #catch_all_logic
-    }
-}
-
-fn generate_schema_impl(parsed_enum: &TextCodecEnum) -> TokenStream {
-    let mut all_langs = parsed_enum.variants.iter()
-        .flat_map(|v| v.prefixes.keys())
-        .collect::<std::collections::HashSet<_>>();
-    all_langs.insert(&parsed_enum.storage_lang);
-
-    let arms = all_langs.iter().map(|lang| {
-        let variant_names: Vec<String> = parsed_enum.variants.iter()
-            .map(|v| {
-                v.prefixes.get(*lang).cloned().unwrap_or_else(|| v.ident.to_string())
-            })
-            .collect();
-        quote! {
-            Some(#lang) => serde_json::json!({
-                "type": "string",
-                "enum": [#(#variant_names),*]
-            }),
-        }
-    });
-    
-    let default_variant_names: Vec<String> = parsed_enum.variants.iter()
-        .map(|v| v.ident.to_string())
-        .collect();
-
-    quote! {
+        let lang = lang.unwrap_or(#default_lang);
         match lang {
-            #(#arms)*
-            _ => serde_json::json!({
-                "type": "string",
-                "enum": [#(#default_variant_names),*]
-            }),
+            #(#lang_arms),*,
+            _ => #default_schema,
         }
     }
 }
 
-fn generate_default_impl(enum_ident: &Ident, variants: &[TextCodecVariant]) -> TokenStream {
+fn generate_enum_schema(has_structured_variants: bool, has_unit_variants: bool, variants: &[String]) -> TokenStream {
+    if has_structured_variants && has_unit_variants {
+        quote! {
+            serde_json::json!({"type": "string", "enum": [#(#variants),*]})
+        }
+    } else if has_structured_variants {
+        quote! {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "type": {"type": "string", "enum": [#(#variants),*]}
+                },
+                "required": ["type", "content"]
+            })
+        }
+    } else {
+        quote! {
+            serde_json::json!({
+                "type": "string",
+                "enum": [#(#variants),*]
+            })
+        }
+    }
+}
+
+fn generate_display_impl(enum_ident: &Ident) -> TokenStream {
+    quote! {
+        impl ::std::fmt::Display for #enum_ident {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                let text = self.to_text(Self::type_lang());
+                write!(f, "{}", text)
+            }
+        }
+    }
+}
+
+fn generate_from_str_impl(enum_ident: &Ident) -> TokenStream {
+    quote! {
+        impl ::std::str::FromStr for #enum_ident {
+            type Err = anyhow::Error;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Self::from_text(s)
+            }
+        }
+    }
+}
+
+fn generate_default_impl(enum_ident: &Ident, variants: &[TextEnumVariant]) -> TokenStream {
+    // Find the first catch-all variant for Default implementation
     if let Some(catch_all) = variants.iter().find(|v| v.is_catch_all) {
         let variant_ident = &catch_all.ident;
         match catch_all.kind {
             VariantKind::String => {
-                quote! {
-                    impl Default for #enum_ident {
+                return quote! {
+                    impl ::std::default::Default for #enum_ident {
                         fn default() -> Self {
                             Self::#variant_ident(String::new())
                         }
                     }
-                }
+                };
             },
-            _ => quote!{},
+            _ => {
+                // Catch-all must be String type, this should be caught during parsing
+                return quote! {};
+            }
         }
-    } else {
-        quote! {}
     }
+    
+    // If no suitable default variant found, don't implement Default
+    quote! {}
 }

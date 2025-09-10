@@ -90,6 +90,8 @@ impl RoleplayMessage {
             is_memorizeable: true,
             is_in_memory: user_message.is_saved_in_memory || assistant_message.is_saved_in_memory,
 
+            is_migrated: false,
+
             created_at: user_message.created_at,
             updated_at: user_message.updated_at,
         }

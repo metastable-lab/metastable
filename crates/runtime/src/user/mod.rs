@@ -7,11 +7,11 @@ mod log;
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use metastable_database::TextCodecEnum;
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
+
+use metastable_database::{SqlxObject, TextEnum, TextEnumCodec};
 use metastable_common::{encrypt, decrypt, get_current_timestamp, get_today_start_timestamp_utc8};
-use metastable_database::SqlxObject;
 
 pub use url::UserUrl;
 pub use referral::UserReferral;
@@ -26,8 +26,7 @@ pub struct UserUsagePoints {
     pub points_consumed_misc: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum UserRole {
     Admin,
     #[default]

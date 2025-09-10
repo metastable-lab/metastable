@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use x25519_dalek::{PublicKey, StaticSecret};
 use xsalsa20poly1305::{
     aead::{Aead, KeyInit, OsRng},
     XSalsa20Poly1305, 
@@ -55,6 +56,28 @@ pub fn decrypt(encrypted: &str, key: &str) -> Result<String> {
     // Convert back to string
     String::from_utf8(plaintext)
         .map_err(|e| anyhow!("invalid utf8: {}", e))
+}
+
+pub fn generate_shared_key(base_secret: CryptoHash, user_pubkey: CryptoHash) -> CryptoHash {
+    let s = StaticSecret::from(*base_secret.hash());
+    let p = PublicKey::from(*user_pubkey.hash());
+    let shared_secret = s.diffie_hellman(&p);
+    CryptoHash::new(shared_secret.to_bytes().clone())
+}
+
+pub fn ecdh_encrypt(text: &str, base_secret: &str, user_salt: &str) -> Result<String> {
+    let user_salt = blake3_hash(format!("{}{}", base_secret, user_salt).as_bytes());
+    let base_secret = blake3_hash(base_secret.as_bytes());
+    
+    let shared_key = generate_shared_key(base_secret, user_salt);
+    encrypt(text, &shared_key.to_hex_string())
+}
+pub fn ecdh_decrypt(encrypted: &str, base_secret: &str, user_salt: &str) -> Result<String> {
+    let user_salt = blake3_hash(format!("{}{}", base_secret, user_salt).as_bytes());
+    let base_secret = blake3_hash(base_secret.as_bytes());
+
+    let shared_key = generate_shared_key(base_secret, user_salt);
+    decrypt(encrypted, &shared_key.to_hex_string())
 }
 
 #[cfg(test)]

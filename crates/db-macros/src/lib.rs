@@ -74,15 +74,15 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-#[proc_macro_derive(TextCodecEnum, attributes(text_codec, prefix, catch_all, collection))]
-pub fn text_codec_enum_derive(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(TextEnum, attributes(text_enum, prefix, catch_all))]
+pub fn text_enum_derive(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
-    
-    let parsed_enum = match text_codec_internals::parse::parse_text_codec_enum(&input_ast) {
+
+    let parsed_enum = match text_codec_internals::parse::parse_text_enum(&input_ast) {
         Ok(data) => data,
         Err(e) => return e.to_compile_error().into(),
     };
 
-    let expanded = text_codec_internals::codegen::generate_text_codec_impl(&parsed_enum);
+    let expanded = text_codec_internals::codegen::generate_text_enum_impl(&parsed_enum);
     TokenStream::from(expanded)
 }

@@ -178,6 +178,8 @@ pub trait Agent: Clone + Send + Sync + Sized {
             is_memorizeable: false,
             is_in_memory: false,
 
+            is_migrated: false,
+
             created_at: 0,
             updated_at: 0,
         };

@@ -1,48 +1,40 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use metastable_database::{SqlxObject, TextCodecEnum};
+use metastable_database::{SqlxObject, TextEnum, TextEnumCodec};
 
 use crate::{Message, User, UserUsagePoints};
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
 pub enum UserPointsLogAddReason {
+    #[default]
     NA,
 
     DailyCheckin,
     Inviation,
     SystemReward,
     CreatorReward,
-
-    #[catch_all(no_prefix = true)]
-    Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
 pub enum UserPointsLogDeductReason {
+    #[default]
     NA,
 
     ChatMessage,
     ChatRegeneration,
     CharacterCreation,
-
-    #[catch_all(no_prefix = true)]
-    Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
 pub enum UserPointsLogRewardReason {
+    #[default]
     NA,
     CreatorReward,
     Inviation,
-    #[catch_all(no_prefix = true)]
-    Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
+#[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
 #[table_name = "user_points_logs"]
 pub struct UserPointsLog {
     pub id: Uuid,

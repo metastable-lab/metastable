@@ -35,5 +35,8 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 @sandbox-migrate:
     cargo run --package metastable-sandbox --bin migrate --release
 
+@sandbox-migrate-messages:
+    cargo run --package metastable-sandbox --bin messages --release
+
 @test:
     cargo test --package metastable-runtime-roleplay --test sandbox -- test::test_prettier_v0 --exact --show-output

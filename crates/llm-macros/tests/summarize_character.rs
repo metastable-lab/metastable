@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
 #[llm_tool(
     name = "summarize_character",
-    description = "根据与用户的对话，总结并创建一个完整的角色档案。"
+    description = "根据与用户的对话，总结并创建一个完整的角色档案。",
+    enum_lang = "zh"
 )]
 pub struct SummarizeCharacter {
     #[llm_tool(description = "角色的名字")]
@@ -32,22 +33,22 @@ pub struct SummarizeCharacter {
     pub prompts_first_message: String,
     #[llm_tool(
         description = "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub background_stories: Vec<BackgroundStories>,
     #[llm_tool(
         description = "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub behavior_traits: Vec<BehaviorTraits>,
     #[llm_tool(
         description = "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub relationships: Vec<Relationships>,
     #[llm_tool(
         description = "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub skills_and_interests: Vec<SkillsAndInterests>,
     #[llm_tool(description = "追加对话风格示例（多条）。")]
@@ -90,7 +91,7 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "职业", "童年经历", "成长环境", "重大经历", "价值观", "过去的遗憾或创伤，无法释怀的事", "梦想，渴望的事情，追求的事情", "Others"
+                                    "职业", "童年经历", "成长环境", "重大经历", "价值观", "过去的遗憾或创伤，无法释怀的事", "梦想，渴望的事情，追求的事情"
                                 ]},
                                 "content": { "type": "string" }
                             },
@@ -104,7 +105,7 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "行为举止", "外貌特征", "穿搭风格", "情绪表达方式", "个人沟通习惯", "与用户的沟通习惯", "个人行为特征", "与用户的沟通特征", "Others"
+                                    "行为举止", "外貌特征", "穿搭风格", "情绪表达方式", "个人沟通习惯", "与用户的沟通习惯", "个人行为特征", "与用户的沟通特征"
                                 ]},
                                 "content": { "type": "string" }
                             },
@@ -118,7 +119,7 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "亲密伴侣", "家庭", "朋友", "敌人", "社交圈", "Others"
+                                    "亲密伴侣", "家庭", "朋友", "敌人", "社交圈"
                                 ]},
                                 "content": { "type": "string" }
                             },
@@ -132,7 +133,7 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "职业技能", "生活技能", "兴趣爱好", "弱点，不擅长的领域", "优点，擅长的事情", "内心矛盾冲突", "性癖", "Others"
+                                    "职业技能", "生活技能", "兴趣爱好", "弱点，不擅长的领域", "优点，擅长的事情", "内心矛盾冲突", "性癖"
                                 ]},
                                 "content": { "type": "string" }
                             },

@@ -23,5 +23,4 @@ metastable-database = { path = "../database" }
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
-metastable-runtime-roleplay = { path = "../runtime-mods/roleplay" }
 metastable-runtime = { path = "../runtime" }
