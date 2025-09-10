@@ -131,14 +131,13 @@ async fn session(
         &mut *tx
     ).await?;
 
-    let (is_registered, is_admin) = if let Some(mut user) = user {
+    let (is_registered, is_admin) = if let Some(user) = user {
         if user.banned {
             return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[session] user id banned")));
         }
 
         // let _ = user.daily_checkin(100); // try daily checkin - DISABLED
         let is_admin = user.role == UserRole::Admin;
-        user.update(&mut *tx).await?;
         (true, is_admin)
     } else {
         (false, false)
