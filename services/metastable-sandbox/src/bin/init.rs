@@ -26,6 +26,8 @@ init_databases!(
         metastable_runtime::CharacterHistory,
         metastable_runtime::CharacterSub,
         metastable_runtime::CharacterMask,
+        metastable_runtime::CharacterPost,
+        metastable_runtime::CharacterPostComments,
         metastable_runtime::AuditLog,
     ],
     pgvector: [ 
@@ -41,7 +43,7 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
     
     let run_migrations = true;
-    let _db = Arc::new(connect(false, false, run_migrations).await.clone());
+    let _db = Arc::new(connect(false, true, run_migrations).await.clone());
     let _pgvector_db = Arc::new(connect_pgvector(false, false, run_migrations).await.clone());
 
     // let mut tx = db.begin().await?;

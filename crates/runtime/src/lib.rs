@@ -16,7 +16,7 @@ pub use prompt::Prompt;
 pub use character::{Character, CharacterSub, CharacterHistory, CharacterMask,
     CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
-    AuditLog,
+    AuditLog, CharacterPost, CharacterPostComments,
 };
 pub use session::ChatSession;
 

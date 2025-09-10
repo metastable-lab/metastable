@@ -13,9 +13,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    UserReferral, UserUrl, User, UserFollow, 
-    Character, CharacterFeature, 
-    CharacterHistory, CharacterStatus, CharacterSub
+    Character, CharacterFeature, CharacterHistory, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, User, UserFollow, UserReferral, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -58,6 +56,16 @@ pub fn user_routes() -> Router<GlobalState> {
 
         .route("/user/character/sub/{character_id}",
             post(create_character_sub)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/post",
+            post(create_post)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/post/comment/{post_id}",
+            post(create_post_comment)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -386,4 +394,87 @@ async fn daily_checkin(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Daily checkin successful", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePostRequest {
+    pub characters: Vec<Uuid>,
+    pub content: String,
+}
+async fn create_post(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreatePostRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    if payload.characters.len() < 1 || payload.characters.len() > 3 {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[create_post] Invalid characters length")));
+    }
+
+    let mut post = CharacterPost::default();
+    let mut character_ids = vec![];
+    for character_id in payload.characters {
+        let character = Character::find_one_by_criteria(
+            QueryCriteria::new().add_valued_filter("id", "=", character_id),
+            &mut *tx
+        ).await?
+            .ok_or(anyhow::anyhow!("[create_post] Character not found"))?;
+
+        if character.creator != user.id {
+            return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_post] Character not found")));
+        }
+
+        character_ids.push(character_id);
+    }
+
+    for i in 0..3 {
+        if i < character_ids.len() {
+            match i {
+                0 => post.character_0 = Some(character_ids[i]),
+                1 => post.character_1 = Some(character_ids[i]),
+                2 => post.character_2 = Some(character_ids[i]),
+                _ => {}
+            }
+        }
+    }
+
+    post.user = user.id;
+    post.content = payload.content;
+    post.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Post created successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePostCommentRequest {
+    pub content: String,
+}
+async fn create_post_comment(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(post_id): Path<Uuid>,
+    Json(payload): Json<CreatePostCommentRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post_comment] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let post = CharacterPost::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", post_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[create_post_comment] Post not found"))?;
+
+    let mut post_comment = CharacterPostComments::default();
+    post_comment.post = post.id;
+    post_comment.user = user.id;
+    post_comment.content = payload.content;
+    post_comment.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Post comment created successfully", json!(())))
 }

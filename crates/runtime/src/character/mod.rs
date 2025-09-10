@@ -3,6 +3,8 @@ mod character_detail;
 mod character_history;
 mod character_sub;
 mod character_mask;
+mod character_post;
+mod post_comments;
 
 use anyhow::Result;
 use metastable_common::get_time_in_utc8;
@@ -21,6 +23,8 @@ pub use audit::AuditLog;
 pub use character_history::CharacterHistory;
 pub use character_sub::CharacterSub;
 pub use character_mask::CharacterMask;
+pub use character_post::CharacterPost;
+pub use post_comments::CharacterPostComments;
 
 use crate::ChatSession;
 
