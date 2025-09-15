@@ -101,31 +101,20 @@ fn generate_from_tool_call_impl(
         let field_name_str = field_name.to_string();
 
         let (is_option, base_ty) = unwrap_option(&f.ty);
-        let (is_vec, inner_ty) = unwrap_vec(&base_ty);
+        let (is_vec, _inner_ty) = unwrap_vec(&base_ty);
 
         let parser = if f.is_enum {
             // TextEnumCodec enum
             let parsing_logic = quote! {
-                let text_to_parse = if let Some(s) = value.as_str() {
-                    s.to_string()
-                } else {
-                    serde_json::to_string(value).unwrap_or_default()
-                };
-                <#base_ty as ::metastable_database::TextEnumCodec>::from_text(&text_to_parse)
+                serde_json::from_value(value.clone())
                     .map_err(|e| Error::custom(e.to_string()))?
             };
 
             if is_vec {
-                let inner_ty = inner_ty.as_ref().unwrap_or(&base_ty);
                 quote! {
                     let arr = value.as_array().ok_or_else(|| Error::custom(format!("Field {} is not an array", #field_name_str)))?;
                     arr.iter().map(|value| {
-                        let text_to_parse = if let Some(s) = value.as_str() {
-                            s.to_string()
-                        } else {
-                            serde_json::to_string(value).unwrap_or_default()
-                        };
-                        <#inner_ty as ::metastable_database::TextEnumCodec>::from_text(&text_to_parse)
+                        serde_json::from_value(value.clone())
                             .map_err(|e| Error::custom(e.to_string()))
                     }).collect::<Result<Vec<_>, _>>()?
                 }
@@ -183,7 +172,7 @@ fn generate_from_tool_call_impl(
 fn generate_into_tool_call_impl(
     tool_name: &str,
     fields: &[&LlmToolField],
-    enum_lang: Option<&str>,
+    _enum_lang: Option<&str>,
 ) -> TokenStream {
     let field_serializers = fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
@@ -193,21 +182,18 @@ fn generate_into_tool_call_impl(
         let (is_vec, _) = unwrap_vec(&base_ty);
 
         let serializer = if f.is_enum {
-            let enum_lang = enum_lang.unwrap_or("en");
             if is_vec {
                 quote! {
                     let mut items = Vec::new();
                     for item in value {
-                        let text_val = ::metastable_database::TextEnumCodec::to_text(item, #enum_lang);
-                        let json_val = serde_json::from_str(&text_val).unwrap_or_else(|_| serde_json::Value::String(text_val));
+                        let json_val = serde_json::to_value(item)?;
                         items.push(json_val);
                     }
                     args.insert(#field_name_str.to_string(), serde_json::Value::Array(items));
                 }
             } else {
                 quote! {
-                    let text_val = ::metastable_database::TextEnumCodec::to_text(value, #enum_lang);
-                    let json_val = serde_json::from_str(&text_val).unwrap_or_else(|_| serde_json::Value::String(text_val));
+                    let json_val = serde_json::to_value(value)?;
                     args.insert(#field_name_str.to_string(), json_val);
                 }
             }

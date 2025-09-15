@@ -250,13 +250,8 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
 /// TextEnumCodec provides serialization/deserialization for enums to/from text formats.
 /// Implementations typically come from a derive macro.
 pub trait TextEnumCodec: Sized {
-    /// Convert enum to text representation.
-    /// Unit variants return pure strings, content variants return structured JSON.
-    fn to_text(&self, lang: &str) -> String;
-
-    /// Parse from text representation.
-    /// Handles both pure strings (for unit/catch-all) and structured JSON (for content variants).
-    fn from_text(s: &str) -> anyhow::Result<Self>;
+    /// Generates a string representation of the enum suitable for including in a prompt.
+    fn to_prompt_text(&self, lang: &str) -> String;
 
     /// Generate JSON schema for tool calls.
     fn schema(lang: Option<&str>) -> serde_json::Value;

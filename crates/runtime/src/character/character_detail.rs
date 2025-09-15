@@ -1,8 +1,7 @@
-use serde::{Deserialize, Serialize};
-use metastable_database::{TextEnum, TextEnumCodec};
+use metastable_database::TextEnum;
 
 // Core character enums moved from character.rs
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterStatus {
     #[default]
     Draft,
@@ -13,7 +12,7 @@ pub enum CharacterStatus {
     Archived(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum CharacterGender {
     Male,
     Female,
@@ -22,7 +21,7 @@ pub enum CharacterGender {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterLanguage {
     #[default]
     English,
@@ -32,7 +31,7 @@ pub enum CharacterLanguage {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterFeature {
     #[default]
     Roleplay,
@@ -47,7 +46,7 @@ pub enum CharacterFeature {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterOrientation {
     #[default]
     Female,
@@ -55,7 +54,7 @@ pub enum CharacterOrientation {
     Full,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum BackgroundStories {
     #[prefix(lang = "en", content = "Professions")]
     #[prefix(lang = "zh", content = "职业")]
@@ -89,7 +88,7 @@ pub enum BackgroundStories {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum Relationships {
     #[prefix(lang = "en", content = "IntimatePartner")]
     #[prefix(lang = "zh", content = "亲密伴侣")]
@@ -114,7 +113,7 @@ pub enum Relationships {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum SkillsAndInterests {
     #[prefix(lang = "en", content = "ProfessionalSkills")]
     #[prefix(lang = "zh", content = "职业技能")]
@@ -148,7 +147,7 @@ pub enum SkillsAndInterests {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum BehaviorTraits {
     #[prefix(lang = "en", content = "PhysicalBehavior")]
     #[prefix(lang = "zh", content = "行为举止")]

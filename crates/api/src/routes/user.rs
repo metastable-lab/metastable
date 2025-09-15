@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use axum::extract::Path;
+use metastable_runtime_roleplay::agents::SendMessage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -13,7 +14,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    Character, CharacterFeature, CharacterHistory, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, User, UserFollow, UserReferral, UserUrl
+    Character, CharacterFeature, CharacterHistory, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, ToolCall, User, UserFollow, UserReferral, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -247,7 +248,7 @@ pub struct UpdateCharacterRequest {
     
     pub gender: Option<String>,
     pub language: Option<String>,
-    
+ 
     pub prompts_scenario: Option<String>,
     pub prompts_personality: Option<String>,
     pub prompts_example_dialogue: Option<String>,
@@ -286,6 +287,7 @@ async fn update_character(
     let character_history = CharacterHistory::new(old_character.clone());
     character_history.create(&mut *tx).await?;
 
+
     old_character.name = payload.name.unwrap_or(old_character.name);
     old_character.description = payload.description.unwrap_or(old_character.description);
     if let Some(gender_str) = payload.gender {
@@ -297,26 +299,35 @@ async fn update_character(
     old_character.prompts_scenario = payload.prompts_scenario.unwrap_or(old_character.prompts_scenario);
     old_character.prompts_personality = payload.prompts_personality.unwrap_or(old_character.prompts_personality);
     old_character.prompts_example_dialogue = payload.prompts_example_dialogue.unwrap_or(old_character.prompts_example_dialogue);
-    old_character.prompts_first_message = payload.prompts_first_message.unwrap_or(old_character.prompts_first_message);
+    if let Some(first_message_str) = payload.prompts_first_message {
+        let function_call = serde_json::from_str(&first_message_str)
+            .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Invalid JSON format for first_message: {}", e)))?;
+
+        let tc = SendMessage::try_from_tool_call(&function_call)
+            .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Invalid tool call for first_message: {}", e)))?;
+        old_character.prompts_first_message = sqlx::types::Json(Some(tc.into_tool_call()?));
+    }
     if let Some(background_stories_str) = payload.prompts_background_stories {
-        old_character.prompts_background_stories = background_stories_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+        old_character.prompts_background_stories = sqlx::types::Json(background_stories_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
     }
     if let Some(behavior_traits_str) = payload.prompts_behavior_traits {
-        old_character.prompts_behavior_traits = behavior_traits_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+        old_character.prompts_behavior_traits = sqlx::types::Json(behavior_traits_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
     }
     if let Some(relationships_str) = payload.prompts_relationships {
-        old_character.prompts_relationships = relationships_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+        old_character.prompts_relationships = sqlx::types::Json(relationships_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
     }
     if let Some(skills_and_interests_str) = payload.prompts_skills_and_interests {
-        old_character.prompts_skills_and_interests = skills_and_interests_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
+        old_character.prompts_skills_and_interests = sqlx::types::Json(skills_and_interests_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
     }
-    old_character.prompts_additional_info = payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info);
+    if let Some(additional_info_str) = payload.prompts_additional_info {
+        old_character.prompts_additional_info = sqlx::types::Json(additional_info_str);
+    }
     old_character.creator_notes = payload.creator_notes;
     old_character.tags = payload.tags.unwrap_or(old_character.tags);
 
     if let Some(avatar_url) = payload.avatar_url {
         let mut found = false;
-        for feature in &mut old_character.features {
+        for feature in &mut old_character.features.0 {
             if let CharacterFeature::AvatarImage(ref mut url) = feature {
                 *url = avatar_url.clone();
                 found = true;
@@ -329,7 +340,7 @@ async fn update_character(
     }
     if let Some(background_url) = payload.background_url {
         let mut found = false;
-        for feature in &mut old_character.features {
+        for feature in &mut old_character.features.0 {
             if let CharacterFeature::BackgroundImage(ref mut url) = feature {
                 *url = background_url.clone();
                 found = true;
@@ -441,7 +452,7 @@ async fn create_post(
         }
     }
 
-    post.user = user.id;
+    post.user_id = user.id;
     post.content = payload.content;
     post.create(&mut *tx).await?;
     tx.commit().await?;
@@ -471,7 +482,7 @@ async fn create_post_comment(
 
     let mut post_comment = CharacterPostComments::default();
     post_comment.post = post.id;
-    post_comment.user = user.id;
+    post_comment.user_id = user.id;
     post_comment.content = payload.content;
     post_comment.create(&mut *tx).await?;
     tx.commit().await?;

@@ -10,7 +10,7 @@ use serde_json::Value;
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
 
-use metastable_database::{SqlxObject, TextEnum, TextEnumCodec};
+use metastable_database::{SqlxObject, TextEnum};
 use metastable_common::{encrypt, decrypt, get_current_timestamp, get_today_start_timestamp_utc8};
 
 pub use url::UserUrl;
@@ -26,7 +26,7 @@ pub struct UserUsagePoints {
     pub points_consumed_misc: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum UserRole {
     Admin,
     #[default]

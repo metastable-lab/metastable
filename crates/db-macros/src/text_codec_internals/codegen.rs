@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::Ident;
 
 use super::parse::{TextEnumCodec, TextEnumVariant, VariantKind};
@@ -11,12 +11,18 @@ pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
     let default_impl = generate_default_impl(enum_ident, &parsed_enum.variants);
     let display_impl = generate_display_impl(enum_ident);
     let from_str_impl = generate_from_str_impl(enum_ident);
+    let serialize_impl = generate_serialize_impl(enum_ident, &parsed_enum.variants);
+    let deserialize_impl = generate_deserialize_impl(enum_ident, &parsed_enum.variants);
+    let sqlx_impls = generate_sqlx_impls(enum_ident);
 
     quote! {
         #text_enum_codec_impl
         #display_impl
         #from_str_impl
         #default_impl
+        #serialize_impl
+        #deserialize_impl
+        #sqlx_impls
     }
 }
 
@@ -25,18 +31,13 @@ fn generate_text_enum_codec_trait_impl(parsed_enum: &TextEnumCodec) -> TokenStre
     let type_lang = &parsed_enum.type_lang;
     let schema_lang = &parsed_enum.schema_lang;
 
-    let to_text_impl = generate_to_text_impl(type_lang, &parsed_enum.variants);
-    let from_text_impl = generate_from_text_impl(enum_ident, type_lang, &parsed_enum.variants);
+    let to_prompt_text_impl = generate_to_prompt_text_impl(type_lang, &parsed_enum.variants);
     let schema_impl = generate_schema_impl(parsed_enum);
 
     quote! {
         impl ::metastable_database::TextEnumCodec for #enum_ident {
-            fn to_text(&self, lang: &str) -> String {
-                #to_text_impl
-            }
-
-            fn from_text(s: &str) -> anyhow::Result<Self> {
-                #from_text_impl
+            fn to_prompt_text(&self, lang: &str) -> String {
+                #to_prompt_text_impl
             }
 
             fn schema(lang: Option<&str>) -> serde_json::Value {
@@ -54,7 +55,36 @@ fn generate_text_enum_codec_trait_impl(parsed_enum: &TextEnumCodec) -> TokenStre
     }
 }
 
-fn generate_to_text_impl(type_lang: &str, variants: &[TextEnumVariant]) -> TokenStream {
+fn generate_sqlx_impls(enum_ident: &Ident) -> TokenStream {
+    quote! {
+        impl ::sqlx::Type<::sqlx::Postgres> for #enum_ident {
+            fn type_info() -> ::sqlx::postgres::PgTypeInfo {
+                ::sqlx::postgres::PgTypeInfo::with_name("JSONB")
+            }
+        }
+
+        impl<'q> ::sqlx::Encode<'q, ::sqlx::Postgres> for #enum_ident {
+            fn encode_by_ref(
+                &self,
+                buf: &mut ::sqlx::postgres::PgArgumentBuffer,
+            ) -> Result<::sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
+                let json_value = serde_json::to_value(self)?;
+                <serde_json::Value as ::sqlx::Encode<::sqlx::Postgres>>::encode_by_ref(&json_value, buf)
+            }
+        }
+
+        impl<'r> ::sqlx::Decode<'r, ::sqlx::Postgres> for #enum_ident {
+            fn decode(
+                value: ::sqlx::postgres::PgValueRef<'r>,
+            ) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+                let json_value = <serde_json::Value as ::sqlx::Decode<::sqlx::Postgres>>::decode(value)?;
+                serde_json::from_value(json_value).map_err(Into::into)
+            }
+        }
+    }
+}
+
+fn generate_to_prompt_text_impl(type_lang: &str, variants: &[TextEnumVariant]) -> TokenStream {
     let arms = variants.iter().map(|v| {
         let variant_ident = &v.ident;
         let default_type = v.ident.to_string();
@@ -64,44 +94,20 @@ fn generate_to_text_impl(type_lang: &str, variants: &[TextEnumVariant]) -> Token
 
         match v.kind {
             VariantKind::Unit => {
-                // Unit variants return pure string
                 quote! { Self::#variant_ident => #type_name.to_string() }
             },
             VariantKind::String => {
-                if v.is_catch_all && !v.catch_all_include_prefix {
-                    // Catch-all variants return pure string (even though they have content)
+                if v.is_catch_all {
                     quote! { Self::#variant_ident(content) => content.clone() }
                 } else {
-                    // Content variants return structured JSON
-                    quote! {
-                        Self::#variant_ident(content) => {
-                            serde_json::json!({
-                                "content": content,
-                                "type": #type_name
-                            }).to_string()
-                        }
-                    }
+                    quote! { Self::#variant_ident(content) => format!("{}: {}", #type_name, content) }
                 }
             },
             VariantKind::VecString => {
-                quote! {
-                    Self::#variant_ident(items) => {
-                        serde_json::json!({
-                            "content": items.join(","),
-                            "type": #type_name
-                        }).to_string()
-                    }
-                }
+                quote! { Self::#variant_ident(items) => format!("{}: {}", #type_name, items.join(",")) }
             },
             VariantKind::Uuid => {
-                quote! {
-                    Self::#variant_ident(id) => {
-                        serde_json::json!({
-                            "content": id.to_string(),
-                            "type": #type_name
-                        }).to_string()
-                    }
-                }
+                quote! { Self::#variant_ident(id) => format!("{}: {}", #type_name, id) }
             },
             VariantKind::Unsupported => quote! { Self::#variant_ident => unreachable!() },
         }
@@ -114,109 +120,170 @@ fn generate_to_text_impl(type_lang: &str, variants: &[TextEnumVariant]) -> Token
     }
 }
 
-fn generate_from_text_impl(enum_ident: &Ident, type_lang: &str, variants: &[TextEnumVariant]) -> TokenStream {
-    let mut type_to_variant = std::collections::HashMap::new();
+fn generate_serialize_impl(enum_ident: &Ident, variants: &[TextEnumVariant]) -> TokenStream {
+    let ser_repr_ident = format_ident!("{}SerRepr", enum_ident);
+    let ser_struct_ident = format_ident!("{}SerStruct", enum_ident);
 
-    // Build mapping from type names to variants
-    for variant in variants {
-        if !variant.is_catch_all || variant.catch_all_include_prefix {
-            // Add default type name
-            type_to_variant.insert(variant.ident.to_string(), variant);
+    let from_arms = variants.iter().map(|v| {
+        let variant_ident = &v.ident;
+        let default_type = v.ident.to_string();
 
-            // Add language-specific type names
-            for (lang, type_name) in &variant.prefixes {
-                if lang == type_lang {
-                    type_to_variant.insert(type_name.clone(), variant);
-                }
-            }
-        }
-    }
+        // For serialization, we'll just use the default type name.
+        // The multi-language support was primarily for prompt generation.
+        let type_name = default_type;
 
-    let parse_arms = type_to_variant.iter().map(|(type_name, variant)| {
-        let variant_ident = &variant.ident;
-        match variant.kind {
+        match v.kind {
             VariantKind::Unit => {
-                quote! {
-                    if s.trim() == #type_name {
-                        return Ok(Self::#variant_ident);
-                    }
-                }
+                quote! { Self::#variant_ident => #ser_repr_ident::Unit(#type_name.into()) }
             },
             VariantKind::String => {
-                quote! {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
-                        if let (Some(content), Some(typ)) = (
-                            json.get("content").and_then(|v| v.as_str()),
-                            json.get("type").and_then(|v| v.as_str())
-                        ) {
-                            if typ == #type_name {
-                                return Ok(Self::#variant_ident(content.to_string()));
-                            }
-                        }
+                if v.is_catch_all && !v.catch_all_include_prefix {
+                    quote! { Self::#variant_ident(content) => #ser_repr_ident::Unit(content.clone()) }
+                } else {
+                    quote! {
+                        Self::#variant_ident(content) => #ser_repr_ident::Content(#ser_struct_ident {
+                            typ: #type_name.into(),
+                            content: serde_json::json!(content),
+                        })
                     }
                 }
             },
             VariantKind::VecString => {
                 quote! {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
-                        if let (Some(content), Some(typ)) = (
-                            json.get("content").and_then(|v| v.as_str()),
-                            json.get("type").and_then(|v| v.as_str())
-                        ) {
-                            if typ == #type_name {
-                                let items = if content.trim().is_empty() {
-                                    Vec::new()
-                                } else {
-                                    content.split(',').map(|s| s.trim().to_string()).collect()
-                                };
-                                return Ok(Self::#variant_ident(items));
-                            }
-                        }
-                    }
+                    Self::#variant_ident(items) => #ser_repr_ident::Content(#ser_struct_ident {
+                        typ: #type_name.into(),
+                        content: serde_json::json!(items.join(",")),
+                    })
                 }
             },
             VariantKind::Uuid => {
                 quote! {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(s) {
-                        if let (Some(content), Some(typ)) = (
-                            json.get("content").and_then(|v| v.as_str()),
-                            json.get("type").and_then(|v| v.as_str())
-                        ) {
-                            if typ == #type_name {
-                                if let Ok(uuid) = content.parse() {
-                                    return Ok(Self::#variant_ident(uuid));
-                                }
-                            }
-                        }
-                    }
+                    Self::#variant_ident(id) => #ser_repr_ident::Content(#ser_struct_ident {
+                        typ: #type_name.into(),
+                        content: serde_json::json!(id.to_string()),
+                    })
                 }
             },
-            VariantKind::Unsupported => quote! {},
+            VariantKind::Unsupported => quote! { Self::#variant_ident => unreachable!() },
         }
     });
 
-    // Handle catch-all variant - try pure string parsing first for catch-all
-    let catch_all_logic = if let Some(catch_all) = variants.iter().find(|v| v.is_catch_all) {
+    quote! {
+        impl serde::Serialize for #enum_ident {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: serde::Serializer,
+            {
+                #[derive(serde::Serialize)]
+                #[serde(untagged)]
+                enum #ser_repr_ident {
+                    Unit(String),
+                    Content(#ser_struct_ident),
+                }
+
+                #[derive(serde::Serialize)]
+                struct #ser_struct_ident {
+                    #[serde(rename = "type")]
+                    typ: String,
+                    content: serde_json::Value,
+                }
+
+                let repr = match self {
+                    #(#from_arms,)*
+                };
+                repr.serialize(serializer)
+            }
+        }
+    }
+}
+
+fn generate_deserialize_impl(enum_ident: &Ident, variants: &[TextEnumVariant]) -> TokenStream {
+    let de_repr_ident = format_ident!("{}DeRepr", enum_ident);
+    let de_struct_ident = format_ident!("{}DeStruct", enum_ident);
+
+    let unit_arms = variants.iter().filter(|v| v.kind == VariantKind::Unit).map(|v| {
+        let variant_ident = &v.ident;
+        let mut type_names = vec![v.ident.to_string()];
+        type_names.extend(v.prefixes.values().cloned());
+        quote! {
+            #( #type_names => Ok(Self::#variant_ident), )*
+        }
+    });
+
+    let content_arms = variants.iter().filter(|v| v.kind != VariantKind::Unit && (!v.is_catch_all || v.catch_all_include_prefix)).map(|v| {
+        let variant_ident = &v.ident;
+        let mut type_names = vec![v.ident.to_string()];
+        type_names.extend(v.prefixes.values().cloned());
+
+        let content_parsing = match v.kind {
+            VariantKind::String => quote! { content.as_str().map(|s| Self::#variant_ident(s.to_string())) },
+            VariantKind::VecString => quote! {
+                content.as_str().map(|s| {
+                    let items = if s.trim().is_empty() { vec![] } else { s.split(',').map(|i| i.trim().to_string()).collect() };
+                    Self::#variant_ident(items)
+                })
+            },
+            VariantKind::Uuid => quote! {
+                content.as_str().and_then(|s| s.parse().ok()).map(Self::#variant_ident)
+            },
+            _ => quote! { None },
+        };
+
+        quote! {
+            #( #type_names => #content_parsing.ok_or_else(|| anyhow::anyhow!("Failed to parse content for type '{}'", typ)), )*
+        }
+    });
+
+    let catch_all_arm = if let Some(catch_all) = variants.iter().find(|v| v.is_catch_all) {
         let variant_ident = &catch_all.ident;
-        match catch_all.kind {
-            VariantKind::String => quote! {
-                // If no other match, treat as catch-all with the original string
-                return Ok(Self::#variant_ident(s.to_string()));
-            },
-            _ => quote! {
-                anyhow::bail!("Catch-all variant must be of type String");
-            },
+        quote! {
+            _ => Ok(Self::#variant_ident(s.to_string())),
         }
     } else {
         quote! {
-            anyhow::bail!("Failed to parse '{}' into {}", s, stringify!(#enum_ident));
+            _ => Err(anyhow::anyhow!("Unknown unit variant string: {}", s)),
         }
     };
 
     quote! {
-        let s = s.trim();
-        #(#parse_arms)*
-        #catch_all_logic
+        impl<'de> serde::Deserialize<'de> for #enum_ident {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                #[derive(serde::Deserialize)]
+                #[serde(untagged)]
+                enum #de_repr_ident {
+                    Unit(String),
+                    Content(#de_struct_ident),
+                }
+
+                #[derive(serde::Deserialize)]
+                struct #de_struct_ident {
+                    #[serde(rename = "type")]
+                    typ: String,
+                    content: serde_json::Value,
+                }
+
+                let repr = #de_repr_ident::deserialize(deserializer)?;
+                let result: anyhow::Result<Self> = match repr {
+                    #de_repr_ident::Unit(s) => {
+                        match s.as_str() {
+                            #(#unit_arms)*
+                            #catch_all_arm
+                        }
+                    },
+                    #de_repr_ident::Content(#de_struct_ident { typ, content }) => {
+                        match typ.as_str() {
+                            #(#content_arms)*
+                            _ => Err(anyhow::anyhow!("Unknown content variant type: {}", typ)),
+                        }
+                    },
+                };
+
+                result.map_err(serde::de::Error::custom)
+            }
+        }
     }
 }
 
@@ -296,8 +363,8 @@ fn generate_display_impl(enum_ident: &Ident) -> TokenStream {
     quote! {
         impl ::std::fmt::Display for #enum_ident {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                let text = self.to_text(Self::type_lang());
-                write!(f, "{}", text)
+                let s = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+                write!(f, "{}", s)
             }
         }
     }
@@ -309,7 +376,9 @@ fn generate_from_str_impl(enum_ident: &Ident) -> TokenStream {
             type Err = anyhow::Error;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Self::from_text(s)
+                let json_value = serde_json::from_str(s)
+                    .unwrap_or_else(|_| serde_json::Value::String(s.to_string()));
+                serde_json::from_value(json_value).map_err(anyhow::Error::from)
             }
         }
     }

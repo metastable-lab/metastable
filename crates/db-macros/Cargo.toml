@@ -16,3 +16,4 @@ anyhow = "1.0"
 
 [dev-dependencies]
 metastable-database = { path = "../database" }
+sqlx.workspace = true

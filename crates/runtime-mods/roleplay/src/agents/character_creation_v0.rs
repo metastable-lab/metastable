@@ -1,9 +1,9 @@
 use anyhow::Result;
 use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
-use metastable_runtime::{Agent, Message, MessageRole, MessageType, Prompt, SystemConfig};
+use metastable_runtime::{Agent, Message, MessageRole, MessageType, Prompt, SystemConfig, ToolCall};
 use serde_json::Value;
-use sqlx::types::Uuid;
+use sqlx::types::{Json, Uuid};
 use metastable_runtime::LlmTool;
 
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ use metastable_runtime::{
     Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, ChatSession,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
 };
+
+use crate::agents::SendMessage;
 
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
 #[llm_tool(
@@ -130,24 +132,29 @@ impl Agent for CharacterCreationAgent {
     async fn handle_output(&self, input: &Self::Input, message: &Message, tool: &Self::Tool) -> Result<(Message, Option<Value>)> {
         let mut tx = self.db.get_client().begin().await?;
         let message = message.clone().create(&mut *tx).await?;
+
+        let first_message = serde_json::from_str(&tool.prompts_first_message)?;
+        let first_message = SendMessage::try_from_tool_call(&first_message)?;
+        let first_message = SendMessage::from_legacy_inputs(&"", &first_message);
+
         let character = Character {
             id: Uuid::new_v4(),
             name: tool.name.clone(),
             description: tool.description.clone(),
             gender: tool.gender.clone(),
             language: tool.language.clone(),
-            features: vec![CharacterFeature::Roleplay],
+            features: Json(vec![CharacterFeature::Roleplay]),
             orientation: tool.orientation.clone(),
             prompts_scenario: tool.prompts_scenario.clone(),
             prompts_personality: tool.prompts_personality.clone(),
             prompts_example_dialogue: tool.prompts_example_dialogue.clone(),
-            prompts_first_message: tool.prompts_first_message.clone(),
-            prompts_background_stories: tool.background_stories.clone(),
-            prompts_behavior_traits: tool.behavior_traits.clone(),
-            prompts_additional_example_dialogue: tool.additional_example_dialogue.clone(),
-            prompts_relationships: tool.relationships.clone(),
-            prompts_skills_and_interests: tool.skills_and_interests.clone(),
-            prompts_additional_info: tool.additional_info.clone(),
+            prompts_first_message: Json(Some(first_message.into_tool_call()?)),
+            prompts_background_stories: Json(tool.background_stories.clone()),
+            prompts_behavior_traits: Json(tool.behavior_traits.clone()),
+            prompts_additional_example_dialogue: Json(tool.additional_example_dialogue.clone()),
+            prompts_relationships: Json(tool.relationships.clone()),
+            prompts_skills_and_interests: Json(tool.skills_and_interests.clone()),
+            prompts_additional_info: Json(tool.additional_info.clone()),
             tags: tool.tags.clone(),
             creator: message.owner.clone(),
             creation_message: Some(message.id.clone()),
@@ -195,7 +202,7 @@ impl Agent for CharacterCreationAgent {
 
 -   **杜绝占位符，发挥创造力**: **绝对禁止** 在除 `name` 之外的任何字段中使用"未定"、"暂无"或类似的占位符。如果对话中缺少某些信息，你 **必须** 基于已有的对话内容和角色设定进行**合理的、有创意的推断和补充**，以确保生成一个**完整、生动、可信**的角色档案。你的任务是创造一个完整的角色，而不是一个不完整的模板。
 
--   **`first_message` 格式化**: 为新角色生成的 `prompts_first_message` 字段 **必须** 是一个 `send_message` 的 tool call call 格式。
+-   **`first_message` 格式化**: 为新角色生成的 `prompts_first_message` 字段 **必须** 是一个 `send_message` 的 toolcall 格式。
     -   **示例**:
         ```json
         {

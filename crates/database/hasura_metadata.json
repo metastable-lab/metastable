@@ -1,5 +1,5 @@
 {
-  "resource_version": 66,
+  "resource_version": 75,
   "metadata": {
     "version": 3,
     "sources": [
@@ -435,6 +435,99 @@
           },
           {
             "table": {
+              "name": "roleplay_character_post_comments",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "roleplay_character_post",
+                "using": {
+                  "foreign_key_constraint_on": "post"
+                }
+              },
+              {
+                "name": "userByUser",
+                "using": {
+                  "foreign_key_constraint_on": "user"
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "content",
+                    "reaction",
+                    "id",
+                    "post",
+                    "user"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "roleplay_character_posts",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "roleplay_character",
+                "using": {
+                  "foreign_key_constraint_on": "character_0"
+                }
+              },
+              {
+                "name": "userByUser",
+                "using": {
+                  "foreign_key_constraint_on": "user"
+                }
+              }
+            ],
+            "array_relationships": [
+              {
+                "name": "roleplay_character_post_comments",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "post",
+                    "table": {
+                      "name": "roleplay_character_post_comments",
+                      "schema": "public"
+                    }
+                  }
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "content",
+                    "character_0",
+                    "character_1",
+                    "character_2",
+                    "id",
+                    "user"
+                  ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ]
+          },
+          {
+            "table": {
               "name": "roleplay_character_sub",
               "schema": "public"
             },
@@ -464,12 +557,21 @@
                     "id",
                     "user"
                   ],
+                  "filter": {},
+                  "allow_aggregations": true
+                },
+                "comment": ""
+              }
+            ],
+            "delete_permissions": [
+              {
+                "role": "user",
+                "permission": {
                   "filter": {
                     "user": {
                       "_eq": "X-Hasura-User-Id"
                     }
-                  },
-                  "allow_aggregations": true
+                  }
                 },
                 "comment": ""
               }
@@ -532,6 +634,18 @@
                     "column": "character",
                     "table": {
                       "name": "roleplay_character_mask",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "roleplay_character_posts",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character_0",
+                    "table": {
+                      "name": "roleplay_character_posts",
                       "schema": "public"
                     }
                   }
@@ -1420,6 +1534,30 @@
                     "column": "user",
                     "table": {
                       "name": "roleplay_character_mask",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "roleplay_character_post_comments",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user",
+                    "table": {
+                      "name": "roleplay_character_post_comments",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "roleplay_character_posts",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "user",
+                    "table": {
+                      "name": "roleplay_character_posts",
                       "schema": "public"
                     }
                   }

@@ -1,11 +1,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use metastable_database::{SqlxObject, TextEnum, TextEnumCodec};
+use metastable_database::{SqlxObject, TextEnum};
 
 use crate::{Message, User, UserUsagePoints};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogAddReason {
     #[default]
     NA,
@@ -16,7 +16,7 @@ pub enum UserPointsLogAddReason {
     CreatorReward,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogDeductReason {
     #[default]
     NA,
@@ -26,7 +26,7 @@ pub enum UserPointsLogDeductReason {
     CharacterCreation,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum)]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogRewardReason {
     #[default]
     NA,

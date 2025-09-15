@@ -9,7 +9,7 @@ use internals::{
     parse::get_fields_data,
 };
 
-#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column, unique, vector_dimension, indexed, allow_column_dropping))]
+#[proc_macro_derive(SqlxObject, attributes(table_name, foreign_key, foreign_key_many, sqlx_skip_column, unique, vector_dimension, indexed, allow_column_dropping, allow_type_change))]
 pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let input_ast = parse_macro_input!(input as DeriveInput);
     let struct_name = &input_ast.ident;
@@ -46,6 +46,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     // --- Code Generation ---
     let row_struct_name = format_ident!("{}RowSqlx", struct_name);
     let allow_column_dropping = input_ast.attrs.iter().any(|attr| attr.path.is_ident("allow_column_dropping"));
+    let allow_type_change = input_ast.attrs.iter().any(|attr| attr.path.is_ident("allow_type_change"));
     
     let row_struct_def = generate_row_struct(&row_struct_name, &fields_data);
     let sqlx_schema_impl = generate_sqlx_schema_impl(struct_name, &row_struct_name, &table_name_str, &fields_data);
@@ -53,7 +54,7 @@ pub fn sqlx_object_derive(input: TokenStream) -> TokenStream {
     let sqlx_filter_query_impl = generate_sqlx_filter_query_impl(struct_name, &row_struct_name);
     
     let fetch_helpers = generate_fetch_helpers(&fields_data);
-    let migrate_impl = generate_migrate_fn(struct_name, &table_name_str, &fields_data, allow_column_dropping);
+    let migrate_impl = generate_migrate_fn(struct_name, &table_name_str, &fields_data, allow_column_dropping, allow_type_change);
 
     let expanded = quote! {
         use ::metastable_database::{SqlxSchema, SqlxCrud, SqlxFilterQuery, QueryCriteria};

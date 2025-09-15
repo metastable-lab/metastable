@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use metastable_database::{TextEnum, TextEnumCodec};
+use metastable_database::{TextEnum};
 
 mod card;
 mod draw_history;
@@ -9,7 +9,7 @@ pub use card::Card;
 pub use draw_history::DrawHistory;
 pub use card_pool::CardPool;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum DrawType {
     #[default]
     Single,

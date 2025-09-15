@@ -1,5 +1,5 @@
 use metastable_runtime::LlmTool;
-use metastable_database::{TextEnum, TextEnumCodec};
+use metastable_database::{TextEnum};
 use serde::{Deserialize, Serialize};
 
 type MessageConstructor = fn(String) -> RoleplayMessageType;
@@ -24,7 +24,7 @@ pub struct ShowStoryOptions {
     pub options: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum RoleplayMessageType {
     #[prefix(lang = "zh", content = "动作")]
     Action(String),
@@ -56,17 +56,19 @@ impl SendMessage {
         let (content_without_options, mut new_options) = Self::parse_options_from_legacy(content);
 
         let mut messages = RoleplayMessageType::from_legacy_message(&content_without_options);
-        
+
         for message in function_call.messages.iter() {
             let mut parsed_messages = Vec::new();
             match message {
                 RoleplayMessageType::Chat(text) => {
-                    let (text_without_options, options_from_text) = Self::parse_options_from_legacy(text);
+                    let (text_without_options, options_from_text) =
+                        Self::parse_options_from_legacy(text);
                     new_options.extend(options_from_text);
                     if !text_without_options.is_empty() {
-                        parsed_messages.extend(RoleplayMessageType::from_legacy_message(&text_without_options));
+                        parsed_messages
+                            .extend(RoleplayMessageType::from_legacy_message(&text_without_options));
                     }
-                },
+                }
                 _ => {
                     parsed_messages.push(message.clone());
                 }
@@ -103,7 +105,7 @@ impl SendMessage {
                 })
                 .filter(|s| !s.is_empty())
                 .collect();
-            
+
             return (message_part.trim().to_string(), options);
         }
 
@@ -132,7 +134,7 @@ impl RoleplayMessageType {
                     return vec![message];
                 }
             }
-            
+
             // Case 3: content is a send_message function call.
             if let Some(messages) = Self::extract_messages_from_json(&json_value) {
                 return messages; // Return directly as it's recursively parsed
@@ -144,7 +146,7 @@ impl RoleplayMessageType {
             return Self::parse_multiple_text_prefixes(content);
         }
 
-        // Case 5: Handle colon-style prefixes (recursive)
+        // Case 5: Handle colon-style prefixes (动作：, 内心独白：, 对话：, 场景：)
         let mut content_mut = content;
         while let Some(stripped) = content_mut.strip_prefix("Text：") {
             content_mut = stripped.trim();
@@ -167,7 +169,9 @@ impl RoleplayMessageType {
             if name == "send_message" {
                 if let Some(args_str) = json.get("arguments").and_then(|v| v.as_str()) {
                     if let Ok(args_json) = serde_json::from_str::<serde_json::Value>(args_str) {
-                        if let Some(messages_array) = args_json.get("messages").and_then(|v| v.as_array()) {
+                        if let Some(messages_array) =
+                            args_json.get("messages").and_then(|v| v.as_array())
+                        {
                             let mut results = Vec::new();
                             for msg in messages_array {
                                 if let Some(msg_str) = msg.as_str() {
@@ -262,23 +266,23 @@ impl RoleplayMessageType {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(content) {
             if let (Some(type_val), Some(content_val)) = (
                 json.get("type").and_then(|v| v.as_str()),
-                json.get("content").and_then(|v| v.as_str())
+                json.get("content").and_then(|v| v.as_str()),
             ) {
                 let content_val = Self::strip_prefixes(content_val);
                 // Handle various type name formats
                 match type_val.to_lowercase().as_str() {
                     "动作" | "action" | "动作：" | "action:" => {
                         return Some(RoleplayMessageType::Action(content_val));
-                    },
+                    }
                     "内心独白" | "innerthoughts" | "inner_thoughts" | "内心独白：" | "innerthoughts:" => {
                         return Some(RoleplayMessageType::InnerThoughts(content_val));
-                    },
+                    }
                     "对话" | "chat" | "对话：" | "chat:" => {
                         return Some(RoleplayMessageType::Chat(content_val));
-                    },
+                    }
                     "场景" | "scenario" | "场景：" | "scenario:" => {
                         return Some(RoleplayMessageType::Scenario(content_val));
-                    },
+                    }
                     _ => {
                         // Unknown type, treat as text
                         return Some(RoleplayMessageType::Chat(content_val));
@@ -293,7 +297,9 @@ impl RoleplayMessageType {
         for msg in messages.iter_mut() {
             if let RoleplayMessageType::Chat(content) = msg {
                 let trimmed = content.trim();
-                if (trimmed.starts_with('“') && trimmed.ends_with('”')) || (trimmed.starts_with('"') && trimmed.ends_with('"')) {
+                if (trimmed.starts_with('“') && trimmed.ends_with('”'))
+                    || (trimmed.starts_with('"') && trimmed.ends_with('"'))
+                {
                     *msg = RoleplayMessageType::Chat(Self::trim_quotes(trimmed).to_string());
                 }
             } else if let RoleplayMessageType::Chat(content) = msg {

@@ -13,7 +13,7 @@ pub struct CharacterPostComments {
     pub post: Uuid,
 
     #[foreign_key(referenced_table = "users", related_rust_type = "User")]
-    pub user: Uuid,
+    pub user_id: Uuid,
 
     pub content: String,
     pub reaction: String,

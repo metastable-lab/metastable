@@ -1,12 +1,12 @@
 use anyhow::Result;
 use async_openai::types::{CompletionUsage, FunctionCall};
+use metastable_database::{SqlxObject, TextEnum};
 use serde::{Deserialize, Serialize};
-use metastable_database::{SqlxObject, TextEnum, TextEnumCodec};
 
 use sqlx::types::{Json, Uuid};
 use crate::{ChatSession, SystemConfig, User};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, TextEnum, PartialEq, Eq)]
 pub enum MessageRole {
     System,
     #[default]
@@ -15,7 +15,7 @@ pub enum MessageRole {
     ToolCall,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextEnum, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, TextEnum, PartialEq, Eq)]
 pub enum MessageType {
     #[default]
     Text,

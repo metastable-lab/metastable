@@ -1,8 +1,8 @@
 use metastable_runtime::LlmTool;
-use metastable_database::{TextEnum, TextEnumCodec};
-use serde::{Deserialize, Serialize};
+use metastable_database::TextEnum;
+use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum RoleplayMessageType {
     #[prefix(lang = "zh", content = "动作")]
     Action(String),

@@ -26,58 +26,74 @@ pub enum SimpleEnum {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
 
     #[test]
-    fn test_unit_variant_to_text() {
+    fn test_unit_variant_to_json() {
         let scenario = TestMessageType::Scenario;
-        let result = scenario.to_text("zh");
-        assert_eq!(result, "Scenario");
+        let result = serde_json::to_value(&scenario).unwrap();
+        assert_eq!(result, serde_json::json!("Scenario"));
     }
 
     #[test]
-    fn test_content_variant_to_text() {
+    fn test_content_variant_to_json() {
         let action = TestMessageType::Action("test action".to_string());
-        let result = action.to_text("zh");
-        // Should be JSON with Chinese type name
-        assert!(result.contains("\"content\":\"test action\""));
-        assert!(result.contains("\"type\":\"动作\""));
+        let result = serde_json::to_value(&action).unwrap();
+        
+        let expected_type = if TestMessageType::type_lang() == "zh" { "动作" } else { "Action" };
+        assert_eq!(result, serde_json::json!({"content": "test action", "type": expected_type}));
     }
 
     #[test]
-    fn test_catch_all_variant_to_text() {
+    fn test_catch_all_variant_to_json() {
         let text = TestMessageType::Text("some content".to_string());
-        let result = text.to_text("zh");
+        let result = serde_json::to_value(&text).unwrap();
+        assert_eq!(result, serde_json::json!("some content"));
+    }
+
+    #[test]
+    fn test_to_prompt_text() {
+        let action = TestMessageType::Action("test action".to_string());
+        let result = action.to_prompt_text("zh");
+        assert_eq!(result, "动作: test action");
+
+        let scenario = TestMessageType::Scenario;
+        let result = scenario.to_prompt_text("zh");
+        assert_eq!(result, "Scenario");
+
+        let text = TestMessageType::Text("some content".to_string());
+        let result = text.to_prompt_text("zh");
         assert_eq!(result, "some content");
     }
 
     #[test]
     fn test_round_trip_unit_variant() {
         let original = TestMessageType::Scenario;
-        let text = original.to_text("zh");
-        let parsed = TestMessageType::from_text(&text).unwrap();
+        let value = serde_json::to_value(&original).unwrap();
+        let parsed: TestMessageType = serde_json::from_value(value).unwrap();
         assert_eq!(original, parsed);
     }
 
     #[test]
     fn test_round_trip_content_variant() {
         let original = TestMessageType::Action("hello world".to_string());
-        let text = original.to_text("zh");
-        let parsed = TestMessageType::from_text(&text).unwrap();
+        let value = serde_json::to_value(&original).unwrap();
+        let parsed: TestMessageType = serde_json::from_value(value).unwrap();
         assert_eq!(original, parsed);
     }
 
     #[test]
     fn test_round_trip_catch_all_variant() {
         let original = TestMessageType::Text("catch all content".to_string());
-        let text = original.to_text("zh");
-        let parsed = TestMessageType::from_text(&text).unwrap();
+        let value = serde_json::to_value(&original).unwrap();
+        let parsed: TestMessageType = serde_json::from_value(value).unwrap();
         assert_eq!(original, parsed);
     }
 
     #[test]
     fn test_parse_pure_string_as_catch_all() {
         let input = "some random text";
-        let parsed = TestMessageType::from_text(input).unwrap();
+        let parsed: TestMessageType = serde_json::from_value(serde_json::json!(input)).unwrap();
         match parsed {
             TestMessageType::Text(content) => assert_eq!(content, input),
             _ => panic!("Should parse as catch-all Text variant"),
@@ -86,8 +102,8 @@ mod tests {
 
     #[test]
     fn test_parse_structured_json() {
-        let input = r#"{"content": "test content", "type": "动作"}"#;
-        let parsed = TestMessageType::from_text(input).unwrap();
+        let input = serde_json::json!({"content": "test content", "type": "动作"});
+        let parsed: TestMessageType = serde_json::from_value(input).unwrap();
         match parsed {
             TestMessageType::Action(content) => assert_eq!(content, "test content"),
             _ => panic!("Should parse as Action variant"),
@@ -97,10 +113,10 @@ mod tests {
     #[test]
     fn test_simple_enum_unit_variants() {
         let option_a = SimpleEnum::OptionA;
-        let text = option_a.to_text("en");
-        assert_eq!(text, "OptionA");
+        let value = serde_json::to_value(&option_a).unwrap();
+        assert_eq!(value, serde_json::json!("OptionA"));
 
-        let parsed = SimpleEnum::from_text(&text).unwrap();
+        let parsed: SimpleEnum = serde_json::from_value(value).unwrap();
         assert_eq!(parsed, SimpleEnum::OptionA);
     }
 
@@ -126,19 +142,21 @@ mod tests {
     fn test_display_trait() {
         let action = TestMessageType::Action("test content".to_string());
         let display_str = format!("{}", action);
-        // Should be the same as to_text with default language
-        let text_str = action.to_text("zh");
-        assert_eq!(display_str, text_str);
+        // Display should now produce a valid JSON string.
+        let parsed: TestMessageType = serde_json::from_str(&display_str).unwrap();
+        assert_eq!(action, parsed);
 
         let scenario = TestMessageType::Scenario;
         let display_str = format!("{}", scenario);
-        assert_eq!(display_str, "Scenario");
+        assert_eq!(display_str, r#""Scenario""#);
+        let parsed: TestMessageType = serde_json::from_str(&display_str).unwrap();
+        assert_eq!(scenario, parsed);
     }
 
     #[test]
     fn test_from_str_trait() {
         // Test parsing unit variant
-        let result: TestMessageType = "Scenario".parse().unwrap();
+        let result: TestMessageType = r#""Scenario""#.parse().unwrap();
         assert!(matches!(result, TestMessageType::Scenario));
 
         // Test parsing structured JSON
@@ -149,8 +167,8 @@ mod tests {
             _ => panic!("Expected Action variant"),
         }
 
-        // Test parsing catch-all
-        let result: TestMessageType = "some random text".parse().unwrap();
+        // Test parsing catch-all. Note: a raw string for a catch-all needs to be valid JSON string syntax.
+        let result: TestMessageType = r#""some random text""#.parse().unwrap();
         match result {
             TestMessageType::Text(content) => assert_eq!(content, "some random text"),
             _ => panic!("Expected Text variant"),

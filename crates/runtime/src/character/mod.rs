@@ -7,9 +7,11 @@ mod character_post;
 mod post_comments;
 
 use anyhow::Result;
+use async_openai::types::FunctionCall;
 use metastable_common::get_time_in_utc8;
 use serde::{Deserialize, Serialize};
 use metastable_database::SqlxObject;
+use sqlx::types::Json;
 use sqlx::types::Uuid;
 
 use crate::{Message, MessageRole, MessageType, Prompt, User};
@@ -30,6 +32,7 @@ use crate::ChatSession;
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, SqlxObject)]
 #[table_name = "roleplay_characters"]
+#[allow_type_change]
 pub struct Character {
     pub id: Uuid,
 
@@ -51,22 +54,22 @@ pub struct Character {
     pub gender: CharacterGender,
     pub orientation: CharacterOrientation,
     pub language: CharacterLanguage,
-    pub features: Vec<CharacterFeature>,
+    pub features: Json<Vec<CharacterFeature>>,
 
     pub prompts_scenario: String,
     pub prompts_personality: String,
-    pub prompts_first_message: String,
+    pub prompts_first_message: Json<Option<FunctionCall>>,
 
     // v0
     pub prompts_example_dialogue: String,
-    pub prompts_background_stories: Vec<BackgroundStories>,
-    pub prompts_behavior_traits: Vec<BehaviorTraits>,
+    pub prompts_background_stories: Json<Vec<BackgroundStories>>,
+    pub prompts_behavior_traits: Json<Vec<BehaviorTraits>>,
 
     // v1
-    pub prompts_additional_example_dialogue: Vec<String>,
-    pub prompts_relationships: Vec<Relationships>,
-    pub prompts_skills_and_interests: Vec<SkillsAndInterests>,
-    pub prompts_additional_info: Vec<String>,
+    pub prompts_additional_example_dialogue: Json<Vec<String>>,
+    pub prompts_relationships: Json<Vec<Relationships>>,
+    pub prompts_skills_and_interests: Json<Vec<SkillsAndInterests>>,
+    pub prompts_additional_info: Json<Vec<String>>,
 
     pub creator_notes: Option<String>,
 
@@ -133,28 +136,21 @@ impl Character {
     }
 
     pub fn build_first_message(&self, user_name: &str) -> Prompt {
-        let p = self.prompts_first_message
-            .replace("{{user}}", user_name)
-            .replace("{{char}}", &self.name);
-        match serde_json::from_str(&p) {
-            Ok(toolcall) => {
-                Prompt {
-                    role: MessageRole::Assistant,
-                    content_type: MessageType::Text,
-                    content: "".to_string(),
-                    toolcall: Some(toolcall),
-                    created_at: 1,
-                }
-            }
-            Err(_) => {
-                Prompt {
-                    role: MessageRole::Assistant,
-                    content_type: MessageType::Text,
-                    content: p,
-                    toolcall: None,
-                    created_at: 1,
-                }
-            }
+        let p = self.prompts_first_message.0.clone()
+            .unwrap_or(FunctionCall { name: "send_message".to_string(), arguments: "{}".to_string() });
+
+        let p_arguments = p.arguments
+            .replace("{{char}}", &self.name)
+            .replace("{{user}}", user_name);
+        
+        let p_toolcall = FunctionCall { name: p.name, arguments: p_arguments };
+
+        Prompt {
+            role: MessageRole::Assistant,
+            content_type: MessageType::Text,
+            content: "".to_string(),
+            toolcall: Some(p_toolcall),
+            created_at: 1,
         }
     }
 }

@@ -5,12 +5,12 @@ use sqlx::types::Uuid;
 
 use metastable_clients::{EmbeddingMessage, EmbederClient, LlmClient, Mem0Filter, MemoryEvent, MemoryUpdateEntry, PgvectorClient, PostgresClient};
 use metastable_common::ModuleClient;
-use metastable_database::{TextEnum, SqlxCrud, TextEnumCodec};
+use metastable_database::{TextEnum, SqlxCrud};
 use metastable_runtime::{Agent, LlmTool, Message, Prompt, SystemConfig};
 
 use crate::agents::extract_facts::ExtractFactsOutput;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, TextEnum)]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum LlmMemoryEvent {
     #[default]
     Add,

@@ -24,3 +24,4 @@ metastable-database = { path = "../database" }
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
 metastable-runtime = { path = "../runtime" }
+sqlx.workspace = true
