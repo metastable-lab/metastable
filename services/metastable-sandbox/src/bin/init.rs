@@ -11,6 +11,7 @@ init_databases!(
         metastable_runtime::UserReferral,
         metastable_runtime::UserBadge,
         metastable_runtime::UserFollow,
+        metastable_runtime::UserPayment,
 
         metastable_runtime::SystemConfig,
 

@@ -3,6 +3,7 @@ mod url;
 mod referral;
 mod follow;
 mod log;
+mod payment;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,7 @@ pub use referral::UserReferral;
 pub use badge::UserBadge;
 pub use follow::UserFollow;
 pub use log::UserPointsLog;
+pub use payment::{UserPayment, UserPaymentStatus};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UserUsagePoints {
@@ -50,6 +52,8 @@ pub struct User {
 
     // access to the llm system
     pub llm_access_level: i64,
+    pub vip_level: i32,
+    pub vip_expieration_time: i64,
 
     // points related
     pub running_claimed_balance: i64,
@@ -109,7 +113,7 @@ impl User {
 impl User {
     /* BALANCE ADDITION */
     // Daily checkin: ONE claim per day (resets at 00:00 UTC+8)
-    pub fn daily_checkin(&mut self, amount: i64) -> Result<UserPointsLog> {
+    pub fn daily_checkin(&mut self) -> Result<UserPointsLog> {
         let current_timestamp = get_current_timestamp();
         
         // Calculate today's start time in UTC+8 timezone (00:00:00)
@@ -119,6 +123,17 @@ impl User {
         if self.free_balance_claimed_at >= current_date_start {
             return Err(anyhow!("[User::daily_checkin] Already checked in today"));
         }
+
+        if current_timestamp > self.vip_expieration_time {
+            self.vip_level = 0;
+        }
+
+        let amount = match self.vip_level {
+            1 => 100,
+            2 => 200,
+            3 => 240,
+            _ => 50,
+        };
 
         self.running_claimed_balance += amount;
         self.free_balance_claimed_at = current_timestamp;
@@ -139,6 +154,25 @@ impl User {
     pub fn creator_reward(&mut self, amount: i64) -> UserPointsLog {
         self.running_misc_balance += amount;
         UserPointsLog::from_creator_reward(&self.id, amount)
+    }
+
+    pub fn purchase(&mut self, level: i32) -> UserPointsLog {
+        self.vip_level = level;
+        let amount = match level {
+            1 => 1000,
+            2 => 2000,
+            3 => 5000,
+            _ => 0,
+        };
+        let current_timestamp = get_current_timestamp();
+        self.vip_expieration_time = current_timestamp + 31 * 24 * 60 * 60;
+        self.running_purchased_balance += amount;
+        UserPointsLog::from_purchase(&self.id, amount)
+    }
+
+    pub fn direct_purchase(&mut self, amount: i64) -> UserPointsLog {
+        self.running_purchased_balance += amount;
+        UserPointsLog::from_direct_purchase(&self.id, amount)
     }
 
     /* BALANCE SUBTRACTION */

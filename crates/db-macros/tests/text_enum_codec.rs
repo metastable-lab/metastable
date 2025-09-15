@@ -26,7 +26,6 @@ pub enum SimpleEnum {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
 
     #[test]
     fn test_unit_variant_to_json() {

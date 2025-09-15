@@ -4,7 +4,7 @@ use metastable_runtime_roleplay::MemoryUpdater;
 use tower_http::{cors::CorsLayer, timeout::TimeoutLayer, trace::TraceLayer};
 
 use metastable_service_api::{
-    graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, auth_routes, GlobalState
+    graphql_route, misc_routes, runtime_routes, setup_tracing, voice_routes, user_routes, auth_routes, stripe_routes, GlobalState
 };
 
 use metastable_database::init_databases;
@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
         .merge(graphql_route())
         .merge(user_routes())
         .merge(auth_routes())
+        .merge(stripe_routes())
         .layer(TimeoutLayer::new(std::time::Duration::from_secs(3600)))
         .layer(cors)
         .layer(trace)

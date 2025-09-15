@@ -112,7 +112,7 @@ async fn register(
     user.provider = payload.provider.clone();
 
     let mut user = user.create(&mut *tx).await?;
-    let claimed_log = user.daily_checkin(100).expect("user MUST be able to claim on account creation"); // infallable
+    let claimed_log = user.daily_checkin().expect("user MUST be able to claim on account creation"); // infallable
     let invitaion_log = user.invitation_reward(&referer.id, 200, 100);
     let invitation_reward_log = referer.invitation_reward(&user.id, 100, 200);
 
@@ -399,7 +399,7 @@ async fn daily_checkin(
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[daily_checkin] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
-    let checkin_log = user.daily_checkin(100)?;  // 100 points per checkin    
+    let checkin_log = user.daily_checkin()?;  // 100 points per checkin    
     checkin_log.create(&mut *tx).await?;
     user.update(&mut *tx).await?;
     tx.commit().await?;

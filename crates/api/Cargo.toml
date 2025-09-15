@@ -29,3 +29,5 @@ hex.workspace = true
 tracing-subscriber.workspace = true
 async-trait.workspace = true
 sqlx.workspace = true
+
+async-stripe = { version = "0.41", default-features = false, features = ["runtime-tokio-hyper-rustls", "webhook-events", "checkout","connect"] }

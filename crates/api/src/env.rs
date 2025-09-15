@@ -7,6 +7,8 @@ pub struct ApiServerEnv {
     pub hasura_graphql_admin_secret: String,
     pub otp_secret_key: String,
     pub maileroo_api_key: String,
+    pub stripe_secret_key: String,
+    pub stripe_webhook_secret: String,
 }
 
 impl EnvVars for ApiServerEnv {
@@ -18,6 +20,8 @@ impl EnvVars for ApiServerEnv {
             hasura_graphql_admin_secret: std::env::var("HASURA_GRAPHQL_ADMIN_SECRET").unwrap(),
             otp_secret_key: std::env::var("OTP_SECRET_KEY").unwrap(),
             maileroo_api_key: std::env::var("MAILEROO_API_KEY").unwrap(),
+            stripe_secret_key: std::env::var("STRIPE_SECRET_KEY").unwrap(),
+            stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").unwrap(),
         }
     }
 
@@ -29,6 +33,8 @@ impl EnvVars for ApiServerEnv {
             "HASURA_GRAPHQL_ADMIN_SECRET" => self.hasura_graphql_admin_secret.clone(),
             "OTP_SECRET_KEY" => self.otp_secret_key.clone(),
             "MAILEROO_API_KEY" => self.maileroo_api_key.clone(),
+            "STRIPE_SECRET_KEY" => self.stripe_secret_key.clone(),
+            "STRIPE_WEBHOOK_SECRET" => self.stripe_webhook_secret.clone(),
             _ => panic!("{} is not set", key),
         }
     }

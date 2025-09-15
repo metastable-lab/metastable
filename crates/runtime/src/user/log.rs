@@ -14,6 +14,8 @@ pub enum UserPointsLogAddReason {
     Inviation,
     SystemReward,
     CreatorReward,
+    Purchase,
+    DirectPurchase,
 }
 
 #[derive(Debug, Clone, Default, TextEnum)]
@@ -305,6 +307,72 @@ impl UserPointsLog {
             added_to_claimed: 0,
             added_to_purchased: 0,
             added_to_misc: amount,
+
+            reward_to: None,
+            reward_amount: 0,
+
+            disputed: false,
+            disputed_at: None,
+            resolved: false,
+            resolved_at: None,
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn from_purchase(user_id: &Uuid, amount: i64) -> Self {       
+        Self {
+            id: Uuid::new_v4(),
+
+            user: user_id.clone(),
+
+            add_reason: UserPointsLogAddReason::Purchase,
+            deduct_reason: UserPointsLogDeductReason::NA,
+            reward_reason: UserPointsLogRewardReason::NA,
+            
+            message: None,
+
+            deducted_from_claimed: 0,
+            deducted_from_purchased: 0,
+            deducted_from_misc: 0,
+            
+            added_to_claimed: 0,
+            added_to_purchased: amount,
+            added_to_misc: 0,
+
+            reward_to: None,
+            reward_amount: 0,
+
+            disputed: false,
+            disputed_at: None,
+            resolved: false,
+            resolved_at: None,
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn from_direct_purchase(user_id: &Uuid, amount: i64) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+
+            user: user_id.clone(),
+
+            add_reason: UserPointsLogAddReason::DirectPurchase,
+            deduct_reason: UserPointsLogDeductReason::NA,
+            reward_reason: UserPointsLogRewardReason::NA,
+            
+            message: None,
+
+            deducted_from_claimed: 0,
+            deducted_from_purchased: 0,
+            deducted_from_misc: 0,
+            
+            added_to_claimed: 0,
+            added_to_purchased: amount,
+            added_to_misc: 0,
 
             reward_to: None,
             reward_amount: 0,
