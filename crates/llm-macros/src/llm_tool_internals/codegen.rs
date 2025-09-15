@@ -262,10 +262,19 @@ fn get_schema_for_type(
                     if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
                         let inner_schema = get_schema_for_type(inner_ty, enum_lang, is_enum);
                         return quote! {
-                            serde_json::json!({
-                                "type": "array",
-                                "items": #inner_schema
-                            })
+                            {
+                                let mut items_schema = #inner_schema;
+                                if items_schema.is_object() {
+                                    items_schema.as_object_mut().unwrap().insert(
+                                        "additionalProperties".to_string(),
+                                        serde_json::json!(false)
+                                    );
+                                }
+                                let mut map = serde_json::Map::new();
+                                map.insert("type".to_string(), serde_json::json!("array"));
+                                map.insert("items".to_string(), items_schema);
+                                serde_json::Value::Object(map)
+                            }
                         };
                     }
                 }

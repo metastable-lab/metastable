@@ -84,7 +84,7 @@ pub enum BackgroundStories {
     #[prefix(lang = "zh", content = "梦想，渴望的事情，追求的事情")]
     Dreams(String),
 
-    #[catch_all]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
@@ -109,7 +109,7 @@ pub enum Relationships {
     #[prefix(lang = "en", content = "SocialCircle")]
     #[prefix(lang = "zh", content = "社交圈")]
     SocialCircle(String),
-    #[catch_all]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
@@ -143,7 +143,7 @@ pub enum SkillsAndInterests {
     #[prefix(lang = "zh", content = "性癖")]
     Kinks(String),
 
-    #[catch_all]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
@@ -180,6 +180,6 @@ pub enum BehaviorTraits {
     #[prefix(lang = "zh", content = "与用户的沟通特征")]
     BehaviorTraitsWithUser(String),
 
-    #[catch_all]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }

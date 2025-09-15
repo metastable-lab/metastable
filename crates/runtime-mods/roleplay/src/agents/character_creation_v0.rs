@@ -20,7 +20,7 @@ use crate::agents::SendMessage;
 #[llm_tool(
     name = "summarize_character",
     description = "根据与用户的对话，总结并创建一个完整的角色档案。",
-    enum_lang = "zh"
+    enum_lang = "en"
 )]
 pub struct SummarizeCharacter {
     #[llm_tool(description = "角色的名字")]
@@ -94,7 +94,7 @@ impl Agent for CharacterCreationAgent {
 
     fn llm_client(&self) -> &LlmClient { &self.llm }
     fn db_client(&self) -> &PostgresClient { &self.db }
-    fn model() -> &'static str { "x-ai/grok-3-mini" }
+    fn model() -> &'static str { "openai/gpt-5-mini" }
     fn system_config(&self) -> &SystemConfig { &self.system_config }
 
     async fn build_input(&self, input: &Self::Input) -> Result<Vec<Prompt>> {
@@ -209,9 +209,9 @@ impl Agent for CharacterCreationAgent {
             "name": "send_message",
             "arguments": {
                 "messages": [
-                    {"type": "动作", "content": "*他抬起眼，目光锐利。*"},
-                    {"type": "内心独白", "content": "*又一个迷途的羔羊！*"},
-                    {"type": "对话", "content": "**坐。**"}
+                    {"type": "Action", "content": "*他抬起眼，目光锐利。*"},
+                    {"type": "InnerThoughts", "content": "*又一个迷途的羔羊！*"},
+                    {"type": "Chat", "content": "**坐。**"}
                 ],
                 "options": [],
                 "summary": "初次与用户相遇的场景。"
@@ -219,7 +219,7 @@ impl Agent for CharacterCreationAgent {
         }
         ```
 
--   **语言**: 所有文本均为中文。对于结构化数组字段（背景故事/行为特征/人际关系/技能与兴趣），你必须输出对象 `{ type, content }`，其中 `type` 必须严格从 JSON Schema 的枚举中选择（中文前缀），`content` 为对应值（当为多项时请使用 `[a, b, c]` 形式）。
+-   **语言**: 所有文本均为中文。对于结构化数组字段（背景故事/行为特征/人际关系/技能与兴趣），你必须输出对象 `{ type, content }`，其中 `type` 必须严格从 JSON Schema 的枚举中选择，`content` 为对应值（当为多项时请使用 `[a, b, c]` 形式）。
 -   **字段覆盖**: 你必须尽可能完整地填充以下详情字段（如果对话没有直接给出，也要基于已有内容进行可信的推断与整合）：
     - 性取向（CharacterOrientation）：男、女、双性、其他
     - 背景故事（BackgroundStories）：职业、童年经历、成长环境、重大经历、价值观、过去的遗憾或创伤，无法释怀的事、梦想，渴望的事情，追求的事情、其他

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 #[llm_tool(
     name = "summarize_character",
     description = "根据与用户的对话，总结并创建一个完整的角色档案。",
-    enum_lang = "zh"
+    enum_lang = "en"
 )]
 pub struct SummarizeCharacter {
     #[llm_tool(description = "角色的名字")]
@@ -95,7 +95,8 @@ mod tests {
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。"
                     },
@@ -109,7 +110,8 @@ mod tests {
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
@@ -123,7 +125,8 @@ mod tests {
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
@@ -137,7 +140,8 @@ mod tests {
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },

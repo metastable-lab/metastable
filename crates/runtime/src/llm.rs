@@ -131,7 +131,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
             .ok_or(anyhow!("[Agent::call] No response from AI inference server for model {}", Self::model()))?;
 
         let message = choice.message.clone();
-        println!("raw message: {:?}", message);
+
         let finish_reason = choice.finish_reason.clone();
         let refusal = choice.message.refusal.clone();
         let usage = response.usage
