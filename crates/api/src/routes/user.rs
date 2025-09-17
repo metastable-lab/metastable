@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_openai::types::FunctionCall;
 use axum::extract::Path;
 use metastable_runtime_roleplay::agents::SendMessage;
 use serde::{Deserialize, Serialize};
@@ -14,7 +15,10 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    Character, CharacterFeature, CharacterHistory, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, ToolCall, User, UserFollow, UserReferral, UserUrl
+    Character, CharacterFeature, CharacterHistory, CharacterLanguage, 
+    CharacterOrientation, CharacterPost, CharacterPostComments, 
+    CharacterStatus, CharacterSub, ToolCall, User, UserFollow, UserReferral, UserUrl,
+    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
 };
 use crate::{
     ensure_account, 
@@ -46,10 +50,7 @@ pub fn user_routes() -> Router<GlobalState> {
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/user/character/review/{character_id}", 
-            post(review_character)
-            .route_layer(middleware::from_fn(authenticate))
-        )
+
         .route("/user/update_character/{character_id}",
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
@@ -212,32 +213,6 @@ async fn follow(
     Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
 }
 
-async fn review_character(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Path(character_id): Path<Uuid>,
-) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
-        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[review_character] User not found")))?;
-
-    let mut tx = state.db.get_client().begin().await?;
-    let mut character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", character_id),
-        &mut *tx
-    ).await?
-        .ok_or(anyhow::anyhow!("[review_character] Character not found"))?;
-    
-    if character.creator != user.id {
-        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[review_character] user not authorized to make changes")));
-    }
-    
-    character.status = CharacterStatus::Reviewing;
-    character.update(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Character reviewed successfully", json!(())))
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UpdateCharacterRequest {
     pub avatar_url: Option<String>,
@@ -246,17 +221,19 @@ pub struct UpdateCharacterRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     
-    pub gender: Option<String>,
-    pub language: Option<String>,
+    pub orientation: Option<CharacterOrientation>,
+    pub language: Option<CharacterLanguage>,
  
     pub prompts_scenario: Option<String>,
     pub prompts_personality: Option<String>,
     pub prompts_example_dialogue: Option<String>,
-    pub prompts_first_message: Option<String>,
-    pub prompts_background_stories: Option<Vec<String>>,
-    pub prompts_behavior_traits: Option<Vec<String>>,
-    pub prompts_relationships: Option<Vec<String>>,
-    pub prompts_skills_and_interests: Option<Vec<String>>,
+    pub prompts_first_message: Option<FunctionCall>,
+
+    pub prompts_additional_example_dialogue: Option<Vec<String>>,
+    pub prompts_background_stories: Option<Vec<BackgroundStories>>,
+    pub prompts_behavior_traits: Option<Vec<BehaviorTraits>>,
+    pub prompts_relationships: Option<Vec<Relationships>>,
+    pub prompts_skills_and_interests: Option<Vec<SkillsAndInterests>>,
     pub prompts_additional_info: Option<Vec<String>>,
 
     pub creator_notes: Option<String>,
@@ -287,42 +264,28 @@ async fn update_character(
     let character_history = CharacterHistory::new(old_character.clone());
     character_history.create(&mut *tx).await?;
 
+    let maybe_send_message= SendMessage::try_from_tool_call(
+        &payload.prompts_first_message.unwrap_or(
+            old_character.prompts_first_message.0.ok_or(anyhow!("[update_character] Invalid first message"))?
+        )
+    )?;
+    let first_message = maybe_send_message.into_tool_call()?;
 
     old_character.name = payload.name.unwrap_or(old_character.name);
     old_character.description = payload.description.unwrap_or(old_character.description);
-    if let Some(gender_str) = payload.gender {
-        old_character.gender = gender_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    if let Some(language_str) = payload.language {
-        old_character.language = language_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
+    old_character.orientation = payload.orientation.unwrap_or(old_character.orientation);
+    old_character.language = payload.language.unwrap_or(old_character.language);
     old_character.prompts_scenario = payload.prompts_scenario.unwrap_or(old_character.prompts_scenario);
     old_character.prompts_personality = payload.prompts_personality.unwrap_or(old_character.prompts_personality);
     old_character.prompts_example_dialogue = payload.prompts_example_dialogue.unwrap_or(old_character.prompts_example_dialogue);
-    if let Some(first_message_str) = payload.prompts_first_message {
-        let function_call = serde_json::from_str(&first_message_str)
-            .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Invalid JSON format for first_message: {}", e)))?;
-
-        let tc = SendMessage::try_from_tool_call(&function_call)
-            .map_err(|e| AppError::new(StatusCode::BAD_REQUEST, anyhow::anyhow!("Invalid tool call for first_message: {}", e)))?;
-        old_character.prompts_first_message = sqlx::types::Json(Some(tc.into_tool_call()?));
-    }
-    if let Some(background_stories_str) = payload.prompts_background_stories {
-        old_character.prompts_background_stories = sqlx::types::Json(background_stories_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
-    }
-    if let Some(behavior_traits_str) = payload.prompts_behavior_traits {
-        old_character.prompts_behavior_traits = sqlx::types::Json(behavior_traits_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
-    }
-    if let Some(relationships_str) = payload.prompts_relationships {
-        old_character.prompts_relationships = sqlx::types::Json(relationships_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
-    }
-    if let Some(skills_and_interests_str) = payload.prompts_skills_and_interests {
-        old_character.prompts_skills_and_interests = sqlx::types::Json(skills_and_interests_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?);
-    }
-    if let Some(additional_info_str) = payload.prompts_additional_info {
-        old_character.prompts_additional_info = sqlx::types::Json(additional_info_str);
-    }
-    old_character.creator_notes = payload.creator_notes;
+    old_character.prompts_first_message = sqlx::types::Json(Some(first_message));
+    old_character.prompts_background_stories = sqlx::types::Json(payload.prompts_background_stories.unwrap_or(old_character.prompts_background_stories.0));
+    old_character.prompts_behavior_traits = sqlx::types::Json(payload.prompts_behavior_traits.unwrap_or(old_character.prompts_behavior_traits.0));
+    old_character.prompts_relationships = sqlx::types::Json(payload.prompts_relationships.unwrap_or(old_character.prompts_relationships.0));
+    old_character.prompts_skills_and_interests = sqlx::types::Json(payload.prompts_skills_and_interests.unwrap_or(old_character.prompts_skills_and_interests.0));
+    old_character.prompts_additional_info = sqlx::types::Json(payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info.0));
+    old_character.prompts_additional_example_dialogue = sqlx::types::Json(payload.prompts_additional_example_dialogue.unwrap_or(old_character.prompts_additional_example_dialogue.0));
+    old_character.creator_notes = payload.creator_notes.or(old_character.creator_notes);
     old_character.tags = payload.tags.unwrap_or(old_character.tags);
 
     if let Some(avatar_url) = payload.avatar_url {
