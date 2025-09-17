@@ -17,7 +17,7 @@ use crate::{
     ensure_account, middleware::authenticate, response::{AppError, AppSuccess}, ApiServerEnv, GlobalState
 };
 use metastable_database::{QueryCriteria, SqlxCrud, SqlxFilterQuery};
-use metastable_runtime::{User, UserPayment, UserPaymentStatus};
+use metastable_runtime::{User, UserNotification, UserPayment, UserPaymentStatus};
 use metastable_common::ModuleClient;
 
 pub fn stripe_routes() -> Router<GlobalState> {
@@ -168,6 +168,8 @@ async fn stripe_webhook(
                             payment.status = UserPaymentStatus::Completed;
                             let log = user.purchase(payment.vip_level);
                             tracing::info!("[stripe_webhook] Purchase successful for user {} on level {}", user_id, payment.vip_level);
+                            let notify = UserNotification::payment_processed(user.id.clone(), format!("Payment proceed at level {}", payment.vip_level));
+                            notify.create(&mut *tx).await?;
                             payment.update(&mut *tx).await?;
                             log.create(&mut *tx).await?;
                             user.update(&mut *tx).await?;

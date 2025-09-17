@@ -4,6 +4,7 @@ mod referral;
 mod follow;
 mod log;
 mod payment;
+mod notifications;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ pub use badge::UserBadge;
 pub use follow::UserFollow;
 pub use log::UserPointsLog;
 pub use payment::{UserPayment, UserPaymentStatus};
+pub use notifications::UserNotification;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UserUsagePoints {

@@ -15,7 +15,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserReferral, UserUrl
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserNotification, UserReferral, UserRole, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -72,6 +72,11 @@ pub fn user_routes() -> Router<GlobalState> {
             post(create_post_comment)
             .route_layer(middleware::from_fn(authenticate))
         )
+
+        .route("/user/character/review/{character_id}",
+            post(create_character_review)
+            .route_layer(middleware::from_fn(authenticate))
+        )
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,6 +126,8 @@ async fn register(
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
+    let notify = UserNotification::referral_used(referer.id.clone(), user.id.clone());
+    notify.create(&mut *tx).await?;
     referral_code.update(&mut *tx).await?;
     referer.update(&mut *tx).await?;
     user.update(&mut *tx).await?;
@@ -209,6 +216,8 @@ async fn follow(
     }
 
     let follow = UserFollow::new(follower.id, following.id);
+    let notify = UserNotification::new_follower(follower.id, following.id);
+    notify.create(&mut *tx).await?;
     follow.create(&mut *tx).await?;
     tx.commit().await?;
 
@@ -409,6 +418,8 @@ async fn create_character_sub(
     }
 
     let character_sub = CharacterSub::new(user.id, character_id, vec![]);
+    let notify = UserNotification::new_character_favorite(user.id, character_id);
+    notify.create(&mut *tx).await?;
     character_sub.create(&mut *tx).await?;
     tx.commit().await?;
 
@@ -508,9 +519,50 @@ async fn create_post_comment(
     let mut post_comment = CharacterPostComments::default();
     post_comment.post = post.id;
     post_comment.user_id = user.id;
-    post_comment.content = payload.content;
+    post_comment.content = payload.content.clone();
     post_comment.create(&mut *tx).await?;
+    let notify = UserNotification::new_post_comment(user.id, post_id, payload.content);
+    notify.create(&mut *tx).await?;
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Post comment created successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCharacterReviewRequest {
+    pub published: bool,
+    pub comments: String,
+}
+
+async fn create_character_review(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+    Json(payload): Json<CreateCharacterReviewRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_review] User not found")))?;
+    if user.role != UserRole::Admin {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_character_review] User not authorized")));
+    }
+
+    let mut tx = state.db.get_client().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[create_character_review] Character not found"))?;
+
+    let notify = if payload.published {
+        character.status = CharacterStatus::Published;
+        UserNotification::character_review_outcome_published(character.id.clone(), character_id, payload.comments)
+    } else {
+        character.status = CharacterStatus::Draft;
+        UserNotification::character_review_outcome_rejected(character.id.clone(), character_id, payload.comments)
+    };
+    notify.create(&mut *tx).await?;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character review created successfully", json!(())))
 }

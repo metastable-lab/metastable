@@ -12,6 +12,7 @@ init_databases!(
         metastable_runtime::UserBadge,
         metastable_runtime::UserFollow,
         metastable_runtime::UserPayment,
+        metastable_runtime::UserNotification,
 
         metastable_runtime::SystemConfig,
 
