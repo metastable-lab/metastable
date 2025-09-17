@@ -15,10 +15,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    Character, CharacterFeature, CharacterHistory, CharacterLanguage, 
-    CharacterOrientation, CharacterPost, CharacterPostComments, 
-    CharacterStatus, CharacterSub, ToolCall, User, UserFollow, UserReferral, UserUrl,
-    BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserReferral, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -48,6 +45,11 @@ pub fn user_routes() -> Router<GlobalState> {
         )
         .route("/user/follow/{following_id}",
             post(follow)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/character/new",
+            post(new_character)
             .route_layer(middleware::from_fn(authenticate))
         )
 
@@ -325,6 +327,66 @@ async fn update_character(
 
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
     
+}
+
+async fn new_character(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<UpdateCharacterRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[new_character] User not found")))?;
+
+    let mut features = vec![CharacterFeature::Roleplay];
+    if let Some(avatar_url) = payload.avatar_url {
+        features.push(CharacterFeature::AvatarImage(avatar_url));
+    }
+    if let Some(background_url) = payload.background_url {
+        features.push(CharacterFeature::BackgroundImage(background_url));
+    }
+
+    let first_message = {
+        let tc = payload.prompts_first_message
+            .ok_or(anyhow!("[new_character] Invalid first message"))?;
+        SendMessage::try_from_tool_call(&tc)?.into_tool_call()?
+    };
+
+    let character = Character {
+        id: Uuid::default(),
+        name: payload.name.unwrap_or("Unknown".to_string()),
+        description: payload.description.unwrap_or("Unknown".to_string()),
+        creator: user.id,
+        creation_message: None,
+        creation_session: None,
+        version: 1,
+        status: CharacterStatus::Draft,
+
+        gender: CharacterGender::default(),
+        orientation: payload.orientation.unwrap_or_default(),
+        language: payload.language.unwrap_or(CharacterLanguage::English),
+        features: sqlx::types::Json(features),
+        prompts_scenario: payload.prompts_scenario.unwrap_or("Unknown".to_string()),
+        prompts_personality: payload.prompts_personality.unwrap_or("Unknown".to_string()),
+        prompts_example_dialogue: payload.prompts_example_dialogue.unwrap_or("Unknown".to_string()),
+        prompts_first_message: sqlx::types::Json(Some(first_message)),
+        prompts_background_stories: sqlx::types::Json(payload.prompts_background_stories.unwrap_or(vec![BackgroundStories::default()])),
+        prompts_behavior_traits: sqlx::types::Json(payload.prompts_behavior_traits.unwrap_or(vec![BehaviorTraits::default()])),
+        prompts_additional_example_dialogue: sqlx::types::Json(payload.prompts_additional_example_dialogue.unwrap_or(vec![String::default()])),
+        prompts_relationships: sqlx::types::Json(payload.prompts_relationships.unwrap_or(vec![Relationships::default()])),
+        prompts_skills_and_interests: sqlx::types::Json(payload.prompts_skills_and_interests.unwrap_or(vec![SkillsAndInterests::default()])),
+        prompts_additional_info: sqlx::types::Json(payload.prompts_additional_info.unwrap_or(vec![String::default()])),
+        creator_notes: payload.creator_notes,
+        tags: payload.tags.unwrap_or(vec![]),
+        created_at: get_current_timestamp(),
+        updated_at: get_current_timestamp(),
+    };
+
+    let mut tx = state.db.get_client().begin().await?;
+    let _ = character.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character created successfully", json!(())))
+
 }
 
 async fn create_character_sub(
