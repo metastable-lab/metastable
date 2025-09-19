@@ -15,7 +15,7 @@ pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
     let deserialize_impl = generate_deserialize_impl(enum_ident, &parsed_enum.variants);
     let sqlx_impls = generate_sqlx_impls(enum_ident);
 
-    quote! {
+    let res = quote! {
         #text_enum_codec_impl
         #display_impl
         #from_str_impl
@@ -23,7 +23,11 @@ pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
         #serialize_impl
         #deserialize_impl
         #sqlx_impls
-    }
+    };
+
+    println!("Generated {:?}", res.to_string());
+
+    res
 }
 
 fn generate_text_enum_codec_trait_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
@@ -363,7 +367,10 @@ fn generate_display_impl(enum_ident: &Ident) -> TokenStream {
     quote! {
         impl ::std::fmt::Display for #enum_ident {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                let s = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+                let mut s = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
+                if s.starts_with('\"') && s.ends_with('\"') && s.len() >= 2 {
+                    s = s[1..s.len()-1].to_string();
+                }
                 write!(f, "{}", s)
             }
         }
