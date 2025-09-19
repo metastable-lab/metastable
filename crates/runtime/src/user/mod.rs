@@ -190,6 +190,7 @@ impl User {
 
     pub fn pay_for_chat_message(&mut self, amount: i64, message: Uuid, character_creator: Uuid, reward_amount: i64) -> Result<UserPointsLog> {
         let usage = self.pay(amount)?;
+        println!("Usage {:?}", usage);
         Ok(UserPointsLog::from_chat_message(&self.id, usage, message, character_creator, reward_amount))
     }
 
@@ -222,6 +223,7 @@ impl User {
         // Finally try paid_avaliable_balance
         if remaining > 0 {
             if self.running_purchased_balance >= remaining {
+                println!("Dudect from purchased {remaining}");
                 self.running_purchased_balance -= remaining;
                 self.last_balance_deduction_at = current_timestamp;
                 remaining = 0;
@@ -235,6 +237,7 @@ impl User {
             Err(anyhow!("[User::pay] failed to pay balance"))
         } else {
             self.balance_usage += amount;
+            println!("Final {paid_claimed_balance} {paid_misc_balance} {paid_purchased_balance}");
             Ok(UserUsagePoints {
                 points_consumed_claimed: paid_claimed_balance,
                 points_consumed_misc: paid_misc_balance,

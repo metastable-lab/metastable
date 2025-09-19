@@ -15,7 +15,7 @@ pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
     let deserialize_impl = generate_deserialize_impl(enum_ident, &parsed_enum.variants);
     let sqlx_impls = generate_sqlx_impls(enum_ident);
 
-    let res = quote! {
+    quote! {
         #text_enum_codec_impl
         #display_impl
         #from_str_impl
@@ -23,11 +23,7 @@ pub fn generate_text_enum_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
         #serialize_impl
         #deserialize_impl
         #sqlx_impls
-    };
-
-    println!("Generated {:?}", res.to_string());
-
-    res
+    }
 }
 
 fn generate_text_enum_codec_trait_impl(parsed_enum: &TextEnumCodec) -> TokenStream {
