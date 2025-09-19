@@ -132,10 +132,8 @@ async fn call_agent(
             match payload.call_type {
                 RuntimeCallType::RoleplayV1 => {
                     let log = user.pay_for_chat_message(price, message_id, character_creator, 1)?;
-                    println!("Final Log {:?}", log);
                     if log.reward_to.is_some() {
                         let creator_log = creator.creator_reward(1);
-                        println!("Final Log {:?}", creator_log);
                         creator_log.create(&mut *tx).await?;
                         creator.update(&mut *tx).await?;
                     }
