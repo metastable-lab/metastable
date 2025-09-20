@@ -1,5 +1,5 @@
 {
-  "resource_version": 114,
+  "resource_version": 35,
   "metadata": {
     "version": 3,
     "sources": [
@@ -198,7 +198,6 @@
                 "permission": {
                   "columns": [
                     "public",
-                    "hidden",
                     "use_character_memory"
                   ],
                   "filter": {
@@ -491,7 +490,8 @@
                 "role": "user",
                 "permission": {
                   "columns": [
-                    "hidden"
+                    "content",
+                    "reaction"
                   ],
                   "filter": {
                     "user_id": {
