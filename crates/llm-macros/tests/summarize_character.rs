@@ -1,6 +1,6 @@
 use metastable_llm_macros::LlmTool;
 use metastable_runtime::{
-    BackgroundStories, BehaviorTraits, CharacterGender, CharacterLanguage, Relationships,
+    BackgroundStories, BehaviorTraits, CharacterLanguage, Relationships,
     SkillsAndInterests, CharacterOrientation,
 };
 
@@ -17,8 +17,6 @@ pub struct SummarizeCharacter {
     pub name: String,
     #[llm_tool(description = "对角色的一段简短描述，包括其核心身份、外貌特点等。")]
     pub description: String,
-    #[llm_tool(description = "角色的性别", is_enum = true)]
-    pub gender: CharacterGender,
     #[llm_tool(description = "角色的性取向", is_enum = true)]
     pub orientation: CharacterOrientation,
     #[llm_tool(description = "角色的主要使用语言", is_enum = true)]
@@ -78,7 +76,6 @@ mod tests {
             "properties": {
              "name": { "type": "string", "description": "角色的名字" },
                     "description": { "type": "string", "description": "对角色的一段简短描述，包括其核心身份、外貌特点等。" },
-                    "gender": { "type": "string", "enum": ["Male", "Female", "Multiple", "Others"], "description": "角色的性别" },
                     "orientation": { "type": "string", "enum": ["Female", "Male", "Full"], "description": "角色的性取向" },
                     "language": { "type": "string", "enum": ["English", "Chinese", "Japanese", "Korean", "Others"], "description": "角色的主要使用语言" },
                     "prompts_personality": { "type": "string", "description": "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。" },
@@ -150,7 +147,7 @@ mod tests {
                     "tags": { "type": "array", "items": { "type": "string" }, "description": "描述角色特点的标签，便于搜索和分类。" }
                 },
                 "required": [
-                    "name", "description", "gender", "orientation", "language",
+                    "name", "description", "orientation", "language",
                     "prompts_personality", "prompts_scenario", "prompts_example_dialogue", "prompts_first_message",
                     "background_stories", "behavior_traits", "relationships", "skills_and_interests", "tags"
                 ]
@@ -171,7 +168,6 @@ mod tests {
         let summary = SummarizeCharacter {
             name: "艾拉".to_string(),
             description: "一位充满活力的年轻探险家，总是渴望发现新奇事物。".to_string(),
-            gender: CharacterGender::Female,
             orientation: CharacterOrientation::Full,
             language: CharacterLanguage::Chinese,
             prompts_personality: "热情、好奇、勇敢".to_string(),
@@ -203,7 +199,6 @@ mod tests {
 
         assert_eq!(summary.name, reconstructed_summary.name);
         assert_eq!(summary.description, reconstructed_summary.description);
-        assert_eq!(summary.gender, reconstructed_summary.gender);
         assert_eq!(summary.orientation, reconstructed_summary.orientation);
         assert_eq!(summary.language, reconstructed_summary.language);
         assert_eq!(summary.prompts_personality, reconstructed_summary.prompts_personality);

@@ -32,7 +32,6 @@ pub struct CharacterHistory {
     pub version: i64,
 
     pub status: CharacterStatus,
-    pub gender: CharacterGender,
     pub language: CharacterLanguage,
     pub features: Vec<String>,
 
@@ -69,7 +68,6 @@ impl CharacterHistory {
             description: self.description.clone(),
             version: self.version,
             status: self.status.clone(),
-            gender: self.gender.clone(),
             language: self.language.clone(),
             features: self.migrate_features().clone(),
             prompts_scenario: self.prompts_scenario.clone(),

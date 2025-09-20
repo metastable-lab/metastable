@@ -18,7 +18,7 @@ use crate::{Message, MessageRole, MessageType, Prompt, User};
 
 pub use character_detail::{
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
-    CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
+    CharacterFeature, CharacterLanguage, CharacterStatus, CharacterOrientation,
 };
 
 pub use audit::AuditLog;
@@ -51,7 +51,6 @@ pub struct Character {
     pub version: i64,
 
     pub status: CharacterStatus,
-    pub gender: CharacterGender,
     pub orientation: CharacterOrientation,
     pub language: CharacterLanguage,
     pub features: Json<Vec<CharacterFeature>>,

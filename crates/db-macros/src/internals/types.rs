@@ -159,7 +159,7 @@ pub fn map_rust_type_to_sql(ty: &Type, _is_pk: bool, processing_array_inner: boo
         "NaiveDateTime" | "::chrono::NaiveDateTime" | "chrono::NaiveDateTime" => "TIMESTAMP".to_string(),
         "NaiveDate" | "::chrono::NaiveDate" | "chrono::NaiveDate" => "DATE".to_string(),
         "NaiveTime" | "::chrono::NaiveTime" | "chrono::NaiveTime" => "TIME".to_string(),
-        _ if !is_simple_type(ty) && !type_str.starts_with("Option<") && !type_str.starts_with("Vec<") => "TEXT".to_string(),
+        _ if !is_simple_type(ty) && !type_str.starts_with("Option<") && !type_str.starts_with("Vec<") => "JSONB".to_string(),
         _ => {
             panic!("Unsupported Rust type for SQL mapping: '{}'. It is not a recognized simple type, Option<Simple>, Vec<Simple>, Json<T>, or a type that can be mapped to TEXT (e.g. an enum deriving Display/ToString, FromStr, Default).", type_str)
         }

@@ -18,7 +18,13 @@ pub fn generate_row_struct(row_struct_name: &Ident, fields_data: &[FieldData]) -
         let mut row_field_ty = field_ty.clone();
 
         if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
-            row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
+            // If the SQL type is JSONB, keep the original enum type (for TextEnum support)
+            if field.sql_type == "JSONB" {
+                // Keep the original type as it likely has proper SQLx JSONB implementations
+                row_field_ty = field_ty.clone();
+            } else {
+                row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
+            }
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
             let is_inner_text_mappable_enum = !is_simple_type(&vec_inner_ty) && 
                                               !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Option<") && 
@@ -416,10 +422,15 @@ fn generate_from_row_assignments(fields_data: &[FieldData]) -> Vec<TokenStream> 
         let row_field_name = &field_ident;
 
         if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
-            if field_is_option {
-                 quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
+            // If the SQL type is JSONB, the row struct has the original enum type, so no parsing needed
+            if field.sql_type == "JSONB" {
+                quote! { #field_ident: row.#row_field_name }
             } else {
-                 quote! { #field_ident: row.#row_field_name.parse().unwrap_or_else(|_| <#type_for_analysis>::default()) }
+                if field_is_option {
+                     quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
+                } else {
+                     quote! { #field_ident: row.#row_field_name.parse().unwrap_or_else(|_| <#type_for_analysis>::default()) }
+                }
             }
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
             let is_vec_inner_type_path = matches!(&vec_inner_ty, syn::Type::Path(_));

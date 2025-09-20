@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use metastable_clients::{PostgresClient, LlmClient};
 
 use metastable_runtime::{
-    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, CharacterStatus, ChatSession,
+    Character, CharacterFeature, CharacterLanguage, CharacterOrientation, CharacterStatus, ChatSession,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
 };
 
@@ -27,8 +27,6 @@ pub struct SummarizeCharacter {
     pub name: String,
     #[llm_tool(description = "对角色的一段简短描述，包括其核心身份、外貌特点等。")]
     pub description: String,
-    #[llm_tool(description = "角色的性别", is_enum = true)]
-    pub gender: CharacterGender,
     #[llm_tool(description = "角色的性取向", is_enum = true)]
     pub orientation: CharacterOrientation,
     #[llm_tool(description = "角色的主要使用语言", is_enum = true)]
@@ -141,7 +139,6 @@ impl Agent for CharacterCreationAgent {
             id: Uuid::new_v4(),
             name: tool.name.clone(),
             description: tool.description.clone(),
-            gender: tool.gender.clone(),
             language: tool.language.clone(),
             features: Json(vec![CharacterFeature::Roleplay]),
             orientation: tool.orientation.clone(),

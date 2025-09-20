@@ -4,7 +4,7 @@ use metastable_clients::PostgresClient;
 use metastable_common::ModuleClient;
 use metastable_database::{QueryCriteria, SqlxFilterQuery};
 use reqwest::Client;
-use metastable_runtime::{define_agent_router, AgentRouter, User};
+use metastable_runtime::{define_agent_router, AgentRouter, User, UserRole};
 use metastable_runtime_roleplay::agents::{
     RoleplayV1Agent,
     RoleplayCharacterCreationV1Agent,
@@ -40,7 +40,7 @@ impl GlobalState {
         let mut tx = db.get_client().begin().await?;
         let admin_user = User::find_one_by_criteria(
             QueryCriteria::new()
-                .add_valued_filter("role", "=", "Admin"),
+                .add_valued_filter("role", "=", UserRole::Admin),
             &mut *tx
         ).await?.expect("admin users in the database");
 

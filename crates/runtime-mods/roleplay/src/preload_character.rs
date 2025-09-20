@@ -6,7 +6,7 @@ use sqlx::types::{Json, Uuid};
 use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_clients::PostgresClient;
 use metastable_runtime::{
-    Character, CharacterFeature, CharacterGender, CharacterLanguage, CharacterOrientation, 
+    Character, CharacterFeature, CharacterLanguage, CharacterOrientation, 
     CharacterStatus, BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests
 };
 
@@ -20,7 +20,6 @@ pub async fn preload_characters(db: &PostgresClient, user_id: Uuid) -> Result<()
             creator: user_id,
             version: 3,
             status: CharacterStatus::Published,
-            gender: CharacterGender::Male,
             language: CharacterLanguage::Chinese,
             orientation: CharacterOrientation::Full,
             features: Json(vec![

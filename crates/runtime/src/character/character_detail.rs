@@ -12,15 +12,6 @@ pub enum CharacterStatus {
     Archived(String),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
-pub enum CharacterGender {
-    Male,
-    Female,
-    Multiple,
-    #[catch_all]
-    Others(String),
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterLanguage {
     #[default]

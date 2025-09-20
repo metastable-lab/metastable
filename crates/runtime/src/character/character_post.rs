@@ -18,6 +18,7 @@ pub struct CharacterPost {
     pub user_id: Uuid,
 
     pub content: String,
+    pub hidden: bool,
 
     pub created_at: i64,
     pub updated_at: i64

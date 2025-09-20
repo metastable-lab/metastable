@@ -7,7 +7,7 @@ use sqlx::types::{Json, Uuid};
 use crate::User;
 
 use super::{
-    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, 
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, 
     CharacterLanguage, CharacterStatus, Relationships, SkillsAndInterests
 };
 
@@ -29,7 +29,6 @@ pub struct CharacterHistory {
     pub version: i64,
 
     pub status: CharacterStatus,
-    pub gender: CharacterGender,
     pub language: CharacterLanguage,
     pub features: Json<Vec<CharacterFeature>>,
 
@@ -66,7 +65,6 @@ impl CharacterHistory {
             description: character.description,
             version: character.version,
             status: character.status,
-            gender: character.gender,
             language: character.language,
             features: character.features,
             prompts_scenario: character.prompts_scenario,

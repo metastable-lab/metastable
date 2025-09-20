@@ -15,7 +15,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterGender, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserNotification, UserReferral, UserRole, UserUrl
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserNotification, UserReferral, UserRole, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -370,7 +370,6 @@ async fn new_character(
         version: 1,
         status: CharacterStatus::Draft,
 
-        gender: CharacterGender::default(),
         orientation: payload.orientation.unwrap_or_default(),
         language: payload.language.unwrap_or(CharacterLanguage::English),
         features: sqlx::types::Json(features),
