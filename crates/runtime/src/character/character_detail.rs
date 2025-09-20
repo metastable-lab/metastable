@@ -1,31 +1,16 @@
-use serde::{Deserialize, Serialize};
-use metastable_database::TextCodecEnum;
+use metastable_database::TextEnum;
 
 // Core character enums moved from character.rs
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterStatus {
     #[default]
     Draft,
     Reviewing,
-    Rejected(String),
-
     Published,
-    Archived(String),
+    Archived,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
-pub enum CharacterGender {
-    #[default]
-    Male,
-    Female,
-    Multiple,
-    Others(String),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterLanguage {
     #[default]
     English,
@@ -35,8 +20,7 @@ pub enum CharacterLanguage {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterFeature {
     #[default]
     Roleplay,
@@ -51,8 +35,7 @@ pub enum CharacterFeature {
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum CharacterOrientation {
     #[default]
     Female,
@@ -60,8 +43,7 @@ pub enum CharacterOrientation {
     Full,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextCodecEnum)]
-#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum BackgroundStories {
     #[prefix(lang = "en", content = "Professions")]
     #[prefix(lang = "zh", content = "职业")]
@@ -91,12 +73,11 @@ pub enum BackgroundStories {
     #[prefix(lang = "zh", content = "梦想，渴望的事情，追求的事情")]
     Dreams(String),
 
-    #[catch_all(no_prefix = true)]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextCodecEnum)]
-#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum Relationships {
     #[prefix(lang = "en", content = "IntimatePartner")]
     #[prefix(lang = "zh", content = "亲密伴侣")]
@@ -117,12 +98,11 @@ pub enum Relationships {
     #[prefix(lang = "en", content = "SocialCircle")]
     #[prefix(lang = "zh", content = "社交圈")]
     SocialCircle(String),
-    #[catch_all(no_prefix = true)]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextCodecEnum)]
-#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum SkillsAndInterests {
     #[prefix(lang = "en", content = "ProfessionalSkills")]
     #[prefix(lang = "zh", content = "职业技能")]
@@ -152,12 +132,11 @@ pub enum SkillsAndInterests {
     #[prefix(lang = "zh", content = "性癖")]
     Kinks(String),
 
-    #[catch_all(no_prefix = true)]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, TextCodecEnum)]
-#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum BehaviorTraits {
     #[prefix(lang = "en", content = "PhysicalBehavior")]
     #[prefix(lang = "zh", content = "行为举止")]
@@ -190,6 +169,6 @@ pub enum BehaviorTraits {
     #[prefix(lang = "zh", content = "与用户的沟通特征")]
     BehaviorTraitsWithUser(String),
 
-    #[catch_all(no_prefix = true)]
+    #[catch_all(include_prefix = true)]
     Others(String),
 }

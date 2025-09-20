@@ -5,9 +5,9 @@ use metastable_database::{OrderDirection, QueryCriteria, SqlxCrud, SqlxFilterQue
 use metastable_runtime::{CharacterFeature, ChatSession, Message, Prompt, SystemConfig};
 use serde::{Deserialize, Serialize};
 use metastable_clients::{EmbeddingMessage, EmbederClient, Mem0Filter, PgvectorClient, PostgresClient};
-use sqlx::types::Uuid;
+use sqlx::types::{Json, Uuid};
 
-use crate::agents::SendMessage;
+use crate::{agents::SendMessage, try_prase_message};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RoleplayInput {
@@ -121,12 +121,12 @@ impl RoleplayMemory {
             return Err(anyhow!("[RoleplayInput::handle_outputs] No messages returned"));
         }
 
-        let msg = match &input {
+        let (mut msg, session_id) = match &input {
             RoleplayInput::ContinueSession(session_id, _) => {
                 let mut message = message.clone();
                 message.session = Some(session_id.clone());
                 message.summary = Some(tool.summary.clone());
-                message.create(&mut *tx).await?
+                (message.create(&mut *tx).await?, session_id.clone())
             },
             RoleplayInput::RegenerateSession(session_id) => {
                 let latest_message = Message::find_one_by_criteria(
@@ -140,9 +140,22 @@ impl RoleplayMemory {
                 message.id = latest_message.id;
                 message.session = Some(session_id.clone());
                 message.summary = Some(tool.summary.clone());
-                message.update(&mut *tx).await?
+                (message.update(&mut *tx).await?, session_id.clone())
             },
         };
+
+        let tc = try_prase_message(&msg)?;
+        msg.assistant_message_tool_call = Json(Some(tc));
+        let msg = msg.update(&mut *tx).await?;
+
+        let mut session = ChatSession::find_one_by_criteria(
+            QueryCriteria::new().add_valued_filter("id", "=", session_id.clone()),
+            &mut *tx
+        ).await?
+            .ok_or(anyhow!("[RoleplayInput::handle_outputs] Session not found"))?;
+
+        session.nonce += 1;
+        session.update(&mut *tx).await?;
 
         tx.commit().await?;
         Ok(msg)

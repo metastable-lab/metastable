@@ -18,7 +18,13 @@ pub fn generate_row_struct(row_struct_name: &Ident, fields_data: &[FieldData]) -
         let mut row_field_ty = field_ty.clone();
 
         if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
-            row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
+            // If the SQL type is JSONB, keep the original enum type (for TextEnum support)
+            if field.sql_type == "JSONB" {
+                // Keep the original type as it likely has proper SQLx JSONB implementations
+                row_field_ty = field_ty.clone();
+            } else {
+                row_field_ty = if field_is_option { parse_quote!(Option<String>) } else { parse_quote!(String) };
+            }
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
             let is_inner_text_mappable_enum = !is_simple_type(&vec_inner_ty) && 
                                               !get_fully_qualified_type_string(&vec_inner_ty).starts_with("Option<") && 
@@ -416,10 +422,15 @@ fn generate_from_row_assignments(fields_data: &[FieldData]) -> Vec<TokenStream> 
         let row_field_name = &field_ident;
 
         if !is_simple_type(&type_for_analysis) && !is_json_type_for_analysis && !fq_type_str_for_analysis.starts_with("Option<") && !fq_type_str_for_analysis.starts_with("Vec<") {
-            if field_is_option {
-                 quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
+            // If the SQL type is JSONB, the row struct has the original enum type, so no parsing needed
+            if field.sql_type == "JSONB" {
+                quote! { #field_ident: row.#row_field_name }
             } else {
-                 quote! { #field_ident: row.#row_field_name.parse().unwrap_or_else(|_| <#type_for_analysis>::default()) }
+                if field_is_option {
+                     quote! { #field_ident: row.#row_field_name.map(|s| s.parse().unwrap_or_else(|_| <#type_for_analysis>::default())) }
+                } else {
+                     quote! { #field_ident: row.#row_field_name.parse().unwrap_or_else(|_| <#type_for_analysis>::default()) }
+                }
             }
         } else if let Some(vec_inner_ty) = get_vec_inner_type(field_ty) { 
             let is_vec_inner_type_path = matches!(&vec_inner_ty, syn::Type::Path(_));
@@ -428,9 +439,6 @@ fn generate_from_row_assignments(fields_data: &[FieldData]) -> Vec<TokenStream> 
             let is_vec_inner_text_mappable_candidate = 
                 is_vec_inner_type_path &&
                 !is_simple_type(&vec_inner_ty) &&
-                !fq_vec_inner_ty_str.starts_with("Json<") && 
-                !fq_vec_inner_ty_str.starts_with("::sqlx::types::Json<") && 
-                !fq_vec_inner_ty_str.starts_with("sqlx::types::Json<") &&
                 !fq_vec_inner_ty_str.starts_with("Option<") && 
                 !fq_vec_inner_ty_str.starts_with("Vec<");
 
@@ -559,13 +567,13 @@ fn generate_bind_streams(fields_data: &[FieldData]) -> (Vec<TokenStream>, Vec<To
 
         let field_ident = format_ident!("{}", field.name);
         let field_access_path = quote!{ self.#field_ident };
-        let field_is_option = field.is_option;
         let type_for_analysis = get_option_inner_type(&field.ty).unwrap_or_else(|| field.ty.clone()); 
         let fq_type_str_for_analysis = get_fully_qualified_type_string(&type_for_analysis);
+        let is_json_type_for_analysis = fq_type_str_for_analysis.starts_with("Json<") || fq_type_str_for_analysis.starts_with("::sqlx::types::Json<") || fq_type_str_for_analysis.starts_with("sqlx::types::Json<");
         
         let is_standalone_text_mappable_candidate =
             !is_simple_type(&type_for_analysis) &&
-            !fq_type_str_for_analysis.starts_with("Json<") &&
+            !is_json_type_for_analysis &&
             get_vec_inner_type(&type_for_analysis).is_none();
         
         let is_vec_text_mappable_enum = get_vec_inner_type(&field.ty).map_or(false, |vt| 
@@ -575,11 +583,7 @@ fn generate_bind_streams(fields_data: &[FieldData]) -> (Vec<TokenStream>, Vec<To
         );
         
         let bind_stream = if is_standalone_text_mappable_candidate {
-            if field_is_option {
-                 quote! { .bind(#field_access_path.as_ref().map(|v| v.to_string())) }
-            } else {
-                 quote! { .bind(#field_access_path.to_string()) }
-            }
+            quote! { .bind(#field_access_path.clone()) }
         } else if is_vec_text_mappable_enum {
             quote! { .bind(#field_access_path.iter().map(|v| v.to_string()).collect::<Vec<String>>()) }
         } else {
@@ -624,6 +628,7 @@ pub fn generate_migrate_fn(
     table_name: &str,
     fields_data: &[FieldData],
     allow_column_dropping: bool,
+    allow_type_change: bool,
 ) -> TokenStream {
     let active_fields: Vec<_> = fields_data.iter().filter(|f| !f.is_skipped).collect();
 
@@ -653,7 +658,7 @@ pub fn generate_migrate_fn(
 
             quote! {
                 if !db_columns.contains_key(#col_name) {
-                    println!("[MIGRATE][ACTION] Table '{}': Adding column '{}'.", #table_name, #col_name);
+                    tracing::info!("[MIGRATE][ACTION] Table '{}': Adding column '{}'.", #table_name, #col_name);
                     alter_statements.push(#add_sql.to_string());
                 }
             }
@@ -665,8 +670,9 @@ pub fn generate_migrate_fn(
             let column_name = &f.name;
             let sql_type = &f.sql_type;
             let is_nullable = f.is_option;
+            let vector_dim = f.vector_dimension.unwrap_or(0);
             quote! {
-                ( #column_name, #sql_type, #is_nullable )
+                ( #column_name, #sql_type, #is_nullable, #vector_dim )
             }
         })
         .collect();
@@ -679,6 +685,42 @@ pub fn generate_migrate_fn(
         impl ::metastable_database::SchemaMigrator for #struct_name {
             async fn migrate(pool: &::sqlx::PgPool) -> anyhow::Result<()> {
                 use sqlx::Row;
+                
+                fn get_sql_default_value(sql_type: &str, vector_dimension: usize) -> String {
+                    let sql_type_upper = sql_type.to_uppercase();
+                
+                    if sql_type_upper.ends_with("[]") {
+                        "DEFAULT '{}'".to_string()
+                    } else if sql_type_upper.starts_with("TEXT") || sql_type_upper.starts_with("VARCHAR") {
+                        "DEFAULT ''".to_string()
+                    } else if sql_type_upper.starts_with("INT") || sql_type_upper.starts_with("BIGINT") || sql_type_upper.starts_with("REAL") || sql_type_upper.starts_with("DOUBLE") {
+                        "DEFAULT 0".to_string()
+                    } else if sql_type_upper.starts_with("BOOL") {
+                        "DEFAULT false".to_string()
+                    } else if sql_type_upper.starts_with("JSON") {
+                        "DEFAULT '[]'".to_string()
+                    } else if sql_type_upper.starts_with("UUID") {
+                        "DEFAULT '00000000-0000-0000-0000-000000000000'".to_string()
+                    } else if sql_type_upper.starts_with("VECTOR") {
+                        let zeros = vec!["0"; vector_dimension].join(",");
+                        format!("DEFAULT '[{}]'", zeros)
+                    } else if sql_type_upper.contains("TIMESTAMP") {
+                        "DEFAULT to_timestamp(0)".to_string()
+                    } else {
+                        "".to_string()
+                    }
+                }
+
+                fn generate_casting_expression(col_name: &str, db_type: &str, struct_type: &str) -> String {
+                    let db_type_upper = db_type.to_uppercase();
+                    let struct_type_upper = struct_type.to_uppercase();
+                
+                    if (db_type_upper.starts_with('_') || db_type_upper.ends_with("[]")) && struct_type_upper == "JSONB" {
+                        format!("array_to_json(\"{}\")::jsonb", col_name)
+                    } else {
+                        format!("\"{}\"::{}", col_name, struct_type)
+                    }
+                }
                 
                 fn are_sql_types_equivalent(struct_type: &str, db_type_raw: &str) -> bool {
                     let struct_type_upper = struct_type.trim().to_uppercase();
@@ -707,7 +749,7 @@ pub fn generate_migrate_fn(
                     }
                 }
 
-                println!("[MIGRATE][INFO] Starting migration check for table '{}'...", #table_name);
+                tracing::info!("[MIGRATE][INFO] Starting migration check for table '{}'...", #table_name);
 
                 let table_exists: bool = sqlx::query_scalar(
                     "SELECT EXISTS (
@@ -720,7 +762,7 @@ pub fn generate_migrate_fn(
                 .await?;
 
                 if !table_exists {
-                    println!("[MIGRATE][ACTION] Table '{}' does not exist. Creating it now.", #table_name);
+                    tracing::info!("[MIGRATE][ACTION] Table '{}' does not exist. Creating it now.", #table_name);
                     let create_sql = Self::create_table_sql();
                     let trigger_func_sql = r#"
                     CREATE OR REPLACE FUNCTION set_updated_at_unix_timestamp()
@@ -743,7 +785,7 @@ pub fn generate_migrate_fn(
                     }
                     tx.commit().await?;
 
-                    println!("[MIGRATE][SUCCESS] Table '{}' created.", #table_name);
+                    tracing::info!("[MIGRATE][SUCCESS] Table '{}' created.", #table_name);
                     return Ok(());
                 }
 
@@ -764,11 +806,11 @@ pub fn generate_migrate_fn(
                 })
                 .collect();
 
-                let struct_columns: std::collections::HashMap<String, (String, bool)> = {
+                let struct_columns: std::collections::HashMap<String, (String, bool, usize)> = {
                     let mut map = std::collections::HashMap::new();
                     #(
-                        let (col_name, sql_type, is_nullable) = #struct_column_definitions;
-                        map.insert(col_name.to_string(), (sql_type.to_string(), is_nullable));
+                        let (col_name, sql_type, is_nullable, vector_dim) = #struct_column_definitions;
+                        map.insert(col_name.to_string(), (sql_type.to_string(), is_nullable, vector_dim));
                     )*
                     map
                 };
@@ -781,23 +823,43 @@ pub fn generate_migrate_fn(
                     if !struct_columns.contains_key(col_name) {
                         if #allow_column_dropping {
                             let drop_sql = format!("ALTER TABLE \"{}\" DROP COLUMN \"{}\"", #table_name, col_name);
-                            println!("[MIGRATE][ACTION] Table '{}': Dropping column '{}' as 'allow_column_dropping' is enabled.", #table_name, col_name);
+                            tracing::info!("[MIGRATE][ACTION] Table '{}': Dropping column '{}' as 'allow_column_dropping' is enabled.", #table_name, col_name);
                             alter_statements.push(drop_sql);
                         } else {
-                            println!("[MIGRATE][WARNING] Table '{}': Column '{}' exists in the database but not in the struct. This column will NOT be dropped automatically.", #table_name, col_name);
+                            tracing::warn!("[MIGRATE][WARNING] Table '{}': Column '{}' exists in the database but not in the struct. This column will NOT be dropped automatically.", #table_name, col_name);
                         }
                     }
                 }
 
                 for (col_name, (db_type, db_nullable)) in &db_columns {
-                    if let Some((struct_type, struct_nullable)) = struct_columns.get(col_name) {
+                    if let Some((struct_type, struct_nullable, vector_dim)) = struct_columns.get(col_name) {
                         if !are_sql_types_equivalent(struct_type, db_type) {
-                             println!("[MIGRATE][WARNING] Table '{}': Mismatch for column '{}'. Struct expects compatible with '{}' but database has '{}'. The column type will NOT be changed.", #table_name, col_name, struct_type, db_type);
+                            if #allow_type_change {
+                                tracing::info!("[MIGRATE][ACTION] Table '{}': Changing type of column '{}' to '{}' as 'allow_type_change' is enabled.", #table_name, col_name, struct_type);
+                                
+                                let drop_default_sql = format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" DROP DEFAULT", #table_name, col_name);
+                                alter_statements.push(drop_default_sql);
+                                
+                                let using_clause = generate_casting_expression(col_name, db_type, struct_type);
+                                let alter_type_sql = format!(
+                                    "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE {} USING {}", 
+                                    #table_name, col_name, struct_type, using_clause
+                                );
+                                alter_statements.push(alter_type_sql);
+
+                                let new_default_clause = get_sql_default_value(struct_type, *vector_dim);
+                                if !new_default_clause.is_empty() {
+                                    let set_default_sql = format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET {}", #table_name, col_name, new_default_clause);
+                                    alter_statements.push(set_default_sql);
+                                }
+                            } else {
+                                tracing::warn!("[MIGRATE][WARNING] Table '{}': Mismatch for column '{}'. Struct expects compatible with '{}' but database has '{}'. The column type will NOT be changed.", #table_name, col_name, struct_type, db_type);
+                            }
                         }
                         if *db_nullable != *struct_nullable {
                             let new_nullability = if *struct_nullable { "DROP NOT NULL" } else { "SET NOT NULL" };
                             let alter_null_sql = format!("ALTER TABLE \"{}\" ALTER COLUMN \"{}\" {}", #table_name, col_name, new_nullability);
-                            println!("[MIGRATE][ACTION] Table '{}': Altering nullability of column '{}'.", #table_name, col_name);
+                            tracing::info!("[MIGRATE][ACTION] Table '{}': Altering nullability of column '{}'.", #table_name, col_name);
                             alter_statements.push(alter_null_sql);
                         }
                     }
@@ -821,9 +883,9 @@ pub fn generate_migrate_fn(
                     }
 
                     tx.commit().await?;
-                    println!("[MIGRATE][SUCCESS] Table '{}' migrated successfully.", #table_name);
+                    tracing::info!("[MIGRATE][SUCCESS] Table '{}' migrated successfully.", #table_name);
                 } else {
-                    println!("[MIGRATE][INFO] Table '{}' is already up-to-date.", #table_name);
+                    tracing::info!("[MIGRATE][INFO] Table '{}' is already up-to-date.", #table_name);
                 }
 
                 Ok(())

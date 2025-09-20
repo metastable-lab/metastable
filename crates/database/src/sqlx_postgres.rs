@@ -247,16 +247,20 @@ pub trait SqlxFilterQuery: SqlxSchema + Sized {
 }
 
 /// Trait for enums that can be rendered/parsing into localized text forms for prompts and storage.
+/// TextEnumCodec provides serialization/deserialization for enums to/from text formats.
 /// Implementations typically come from a derive macro.
-pub trait TextPromptCodec: Sized {
-    /// Format for display, using the storage language.
-    fn to_lang(&self, lang: &str) -> String;
-    /// Returns the type and content parts for a given language.
-    fn to_lang_parts(&self, lang: &str) -> (String, String);
-    /// Parse from any supported language representation.
-    fn parse_any_lang(s: &str) -> anyhow::Result<Self>;
-    fn parse_with_type_and_content(type_str: &str, content_str: &str) -> anyhow::Result<Self>;
+pub trait TextEnumCodec: Sized {
+    /// Generates a string representation of the enum suitable for including in a prompt.
+    fn to_prompt_text(&self, lang: &str) -> String;
+
+    /// Generate JSON schema for tool calls.
     fn schema(lang: Option<&str>) -> serde_json::Value;
+
+    /// Get language for type tags in structured output (default "en").
+    fn type_lang() -> &'static str { "en" }
+
+    /// Get default language for schemas (default "en").
+    fn schema_lang() -> &'static str { "en" }
 }
 
 #[async_trait::async_trait]

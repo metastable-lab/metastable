@@ -56,13 +56,3 @@ macro_rules! define_agent_router {
         }
     };
 }
-
-// use metastable_roleplay::{
-//     agents::{RoleplayV0Agent, RoleplayV1Agent, SendMessage},
-//     input::RoleplayInput,
-// };
-
-// define_agent_router! {
-//     RoleplayV0 as roleplay_v0 (RoleplayV0Agent),
-//     RoleplayV1 as roleplay_v1 (RoleplayV1Agent),
-// }

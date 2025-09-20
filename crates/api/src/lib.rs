@@ -13,6 +13,7 @@ pub use routes::{
     runtime_routes,
     user_routes,
     auth_routes,
+    stripe_routes,
 };
 
 pub use env::ApiServerEnv;

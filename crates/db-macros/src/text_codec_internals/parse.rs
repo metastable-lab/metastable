@@ -2,59 +2,48 @@ use syn::{DeriveInput, Lit, Meta, NestedMeta, Ident, Data, Fields, Variant};
 use quote::quote;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormatKind {
-    Paren,
-    Colon(String),
-}
-
 #[derive(Debug)]
-pub struct TextCodecEnum {
+pub struct TextEnumCodec {
     pub ident: Ident,
-    pub format: FormatKind,
-    pub storage_lang: String,
-    pub variants: Vec<TextCodecVariant>,
+    pub type_lang: String,
+    pub schema_lang: String,
+    pub variants: Vec<TextEnumVariant>,
 }
 
 #[derive(Debug)]
-pub struct TextCodecVariant {
+pub struct TextEnumVariant {
     pub ident: Ident,
     pub kind: VariantKind,
     pub prefixes: HashMap<String, String>,
     pub is_catch_all: bool,
+    pub catch_all_include_prefix: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VariantKind {
-    Unit,
-    String,
-    VecString,
-    Uuid,
-    Unsupported,
+    Unit,           // Like: Scenario
+    String,         // Like: Scenario(String)
+    VecString,      // Like: Items(Vec<String>)
+    Uuid,          // Like: Entity(Uuid)
+    Unsupported,   // Other types
 }
 
-pub fn parse_text_codec_enum(input: &DeriveInput) -> Result<TextCodecEnum, syn::Error> {
-    let mut format = FormatKind::Paren;
-    let mut storage_lang = "en".to_string();
+pub fn parse_text_enum(input: &DeriveInput) -> Result<TextEnumCodec, syn::Error> {
+    let mut type_lang = "en".to_string();
+    let mut schema_lang = "en".to_string();
 
     for attr in &input.attrs {
-        if attr.path.is_ident("text_codec") {
+        if attr.path.is_ident("text_enum") {
             if let Ok(Meta::List(list)) = attr.parse_meta() {
                 for nested in list.nested.iter() {
                     if let NestedMeta::Meta(Meta::NameValue(nv)) = nested {
-                        if nv.path.is_ident("format") {
+                        if nv.path.is_ident("type_lang") {
                             if let Lit::Str(s) = &nv.lit {
-                                if s.value() == "paren" {
-                                    format = FormatKind::Paren;
-                                }
+                                type_lang = s.value();
                             }
-                        } else if nv.path.is_ident("colon_char") {
+                        } else if nv.path.is_ident("schema_lang") {
                             if let Lit::Str(s) = &nv.lit {
-                                format = FormatKind::Colon(s.value());
-                            }
-                        } else if nv.path.is_ident("storage_lang") {
-                            if let Lit::Str(s) = &nv.lit {
-                                storage_lang = s.value();
+                                schema_lang = s.value();
                             }
                         }
                     }
@@ -62,24 +51,25 @@ pub fn parse_text_codec_enum(input: &DeriveInput) -> Result<TextCodecEnum, syn::
             }
         }
     }
-    
+
     let variants = if let Data::Enum(data_enum) = &input.data {
         data_enum.variants.iter().map(parse_variant).collect::<Result<Vec<_>,_>>()?
     } else {
-        return Err(syn::Error::new_spanned(&input.ident, "TextCodecEnum can only be derived for enums"));
+        return Err(syn::Error::new_spanned(&input.ident, "TextEnum can only be derived for enums"));
     };
 
-    Ok(TextCodecEnum {
+    Ok(TextEnumCodec {
         ident: input.ident.clone(),
-        format,
-        storage_lang,
+        type_lang,
+        schema_lang,
         variants,
     })
 }
 
-fn parse_variant(variant: &Variant) -> Result<TextCodecVariant, syn::Error> {
+fn parse_variant(variant: &Variant) -> Result<TextEnumVariant, syn::Error> {
     let mut prefixes = HashMap::new();
     let mut is_catch_all = false;
+    let mut catch_all_include_prefix = false;
 
     for attr in &variant.attrs {
         if attr.path.is_ident("prefix") {
@@ -89,6 +79,17 @@ fn parse_variant(variant: &Variant) -> Result<TextCodecVariant, syn::Error> {
             }
         } else if attr.path.is_ident("catch_all") {
             is_catch_all = true;
+            if let Ok(Meta::List(list)) = attr.parse_meta() {
+                for nested in list.nested.iter() {
+                    if let NestedMeta::Meta(Meta::NameValue(nv)) = nested {
+                        if nv.path.is_ident("include_prefix") {
+                            if let Lit::Bool(b) = &nv.lit {
+                                catch_all_include_prefix = b.value;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -99,7 +100,7 @@ fn parse_variant(variant: &Variant) -> Result<TextCodecVariant, syn::Error> {
             let ty_str = quote!(#ty).to_string().replace(' ', "");
             if ty_str == "String" || ty_str == "std::string::String" {
                 VariantKind::String
-            } else if ty_str == "Vec<String>" || ty_str == "std::string::String" {
+            } else if ty_str == "Vec<String>" {
                 VariantKind::VecString
             } else if ty_str == "Uuid" || ty_str == "sqlx::types::Uuid" {
                 VariantKind::Uuid
@@ -110,11 +111,12 @@ fn parse_variant(variant: &Variant) -> Result<TextCodecVariant, syn::Error> {
         _ => VariantKind::Unsupported,
     };
 
-    Ok(TextCodecVariant {
+    Ok(TextEnumVariant {
         ident: variant.ident.clone(),
         kind,
         prefixes,
         is_catch_all,
+        catch_all_include_prefix,
     })
 }
 
@@ -127,10 +129,9 @@ fn parse_prefix_attribute(list: &syn::MetaList) -> Result<(String, String), syn:
                 if let Lit::Str(s) = &nv.lit {
                     lang = Some(s.value());
                 }
-            } else if nv.path.is_ident("content") {
-                if let Lit::Str(s) = &nv.lit {
-                    content = Some(s.value());
-                }
+            } else if nv.path.is_ident("content")
+                && let Lit::Str(s) = &nv.lit {
+                content = Some(s.value());
             }
         }
     }

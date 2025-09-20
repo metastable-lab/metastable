@@ -8,15 +8,15 @@ mod character;
 mod session;
 mod agents;
 
-pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow, UserUsagePoints, UserPointsLog};
+pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow, UserUsagePoints, UserPointsLog, UserPayment, UserPaymentStatus, UserNotification};
 pub use system_config::SystemConfig;
 pub use cards::{Card, CardPool, DrawHistory, DrawType, DrawProbability};
 pub use message::{MessageRole, MessageType, Message};
 pub use prompt::Prompt;
-pub use character::{Character, CharacterSub, CharacterHistory, 
-    CharacterFeature, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
+pub use character::{Character, CharacterSub, CharacterHistory, CharacterMask,
+    CharacterFeature, CharacterLanguage, CharacterStatus, CharacterOrientation,
     BackgroundStories, BehaviorTraits, Relationships, SkillsAndInterests,
-    AuditLog,
+    AuditLog, CharacterPost, CharacterPostComments,
 };
 pub use session::ChatSession;
 

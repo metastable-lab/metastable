@@ -6,15 +6,24 @@ use super::parse::{LlmTool, LlmToolField};
 
 pub fn generate_llm_tool_impl(parsed_tool: &LlmTool) -> TokenStream {
     let tool_ident = &parsed_tool.ident;
-    let tool_name = parsed_tool.name.clone().unwrap_or_else(|| tool_ident.to_string());
+    let tool_name = parsed_tool
+        .name
+        .clone()
+        .unwrap_or_else(|| tool_ident.to_string());
     let tool_description = parsed_tool.description.clone().unwrap_or_default();
+    let enum_lang = parsed_tool.enum_lang.clone();
 
-    let fields = parsed_tool.data.as_ref().take_struct().expect("LlmTool can only be derived for structs").fields;
+    let fields = parsed_tool
+        .data
+        .as_ref()
+        .take_struct()
+        .expect("LlmTool can only be derived for structs")
+        .fields;
 
-    let schema_impl = generate_schema_impl(&fields);
+    let schema_impl = generate_schema_impl(&fields, enum_lang.as_deref());
     let from_tool_call_impl = generate_from_tool_call_impl(tool_ident, &tool_name, &fields);
-    let into_tool_call_impl = generate_into_tool_call_impl(&tool_name, &fields);
-    
+    let into_tool_call_impl = generate_into_tool_call_impl(&tool_name, &fields, enum_lang.as_deref());
+
     quote! {
         impl ::metastable_runtime::ToolCall for #tool_ident {
             fn schema() -> serde_json::Value {
@@ -29,7 +38,7 @@ pub fn generate_llm_tool_impl(parsed_tool: &LlmTool) -> TokenStream {
                     strict: Some(true),
                 }
             }
-            
+
             #from_tool_call_impl
 
             #into_tool_call_impl
@@ -37,12 +46,12 @@ pub fn generate_llm_tool_impl(parsed_tool: &LlmTool) -> TokenStream {
     }
 }
 
-fn generate_schema_impl(fields: &[&LlmToolField]) -> TokenStream {
+fn generate_schema_impl(fields: &[&LlmToolField], enum_lang: Option<&str>) -> TokenStream {
     let props = fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
         let description = f.description.clone().unwrap_or_default();
-        let schema_call = get_schema_for_type(&f.ty, f.enum_lang.as_deref(), f.is_enum);
+        let schema_call = get_schema_for_type(&f.ty, enum_lang, f.is_enum);
 
         quote! {
             let mut schema = #schema_call;
@@ -55,7 +64,8 @@ fn generate_schema_impl(fields: &[&LlmToolField]) -> TokenStream {
         }
     });
 
-    let required_fields: Vec<proc_macro2::TokenStream> = fields.iter()
+    let required_fields: Vec<proc_macro2::TokenStream> = fields
+        .iter()
         .filter(|f| {
             if let Type::Path(type_path) = &f.ty {
                 if let Some(segment) = type_path.path.segments.last() {
@@ -69,7 +79,7 @@ fn generate_schema_impl(fields: &[&LlmToolField]) -> TokenStream {
             quote! { #field_name }
         })
         .collect();
-    
+
     quote! {
         let mut properties = serde_json::Map::new();
         #(#props)*
@@ -81,58 +91,35 @@ fn generate_schema_impl(fields: &[&LlmToolField]) -> TokenStream {
     }
 }
 
-fn generate_from_tool_call_impl(_tool_ident: &syn::Ident, tool_name: &str, fields: &[&LlmToolField]) -> TokenStream {
+fn generate_from_tool_call_impl(
+    _tool_ident: &syn::Ident,
+    tool_name: &str,
+    fields: &[&LlmToolField],
+) -> TokenStream {
     let field_parsers = fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
 
         let (is_option, base_ty) = unwrap_option(&f.ty);
-        let (is_vec, inner_ty) = unwrap_vec(&base_ty);
-        
-        let parser = if f.enum_lang.is_some() {
-            // TextPromptCodec enum
+        let (is_vec, _inner_ty) = unwrap_vec(&base_ty);
+
+        let parser = if f.is_enum {
+            // TextEnumCodec enum
+            let parsing_logic = quote! {
+                serde_json::from_value(value.clone())
+                    .map_err(|e| Error::custom(e.to_string()))?
+            };
+
             if is_vec {
-                let inner_ty = inner_ty.as_ref().unwrap_or(&base_ty);
                 quote! {
                     let arr = value.as_array().ok_or_else(|| Error::custom(format!("Field {} is not an array", #field_name_str)))?;
-                    arr.iter().map(|v| {
-                        let obj = v.as_object().ok_or_else(|| Error::custom("Invalid object in array"))?;
-                        let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
-                        let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
-                        <#inner_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
+                    arr.iter().map(|value| {
+                        serde_json::from_value(value.clone())
                             .map_err(|e| Error::custom(e.to_string()))
                     }).collect::<Result<Vec<_>, _>>()?
                 }
             } else {
-                 quote! {
-                    if let Some(s) = value.as_str() {
-                        <#base_ty as ::metastable_database::TextPromptCodec>::parse_any_lang(s)
-                            .map_err(|e| Error::custom(e.to_string()))?
-                    } else if let Some(obj) = value.as_object() {
-                        let type_str = obj.get("type").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing type in object"))?;
-                        let content_str = obj.get("content").and_then(|v| v.as_str()).ok_or_else(|| Error::custom("Missing content in object"))?;
-                        <#base_ty as ::metastable_database::TextPromptCodec>::parse_with_type_and_content(type_str, content_str)
-                            .map_err(|e| Error::custom(e.to_string()))?
-                    } else {
-                        return Err(Error::custom(format!("Invalid value for field {}", #field_name_str)));
-                    }
-                }
-            }
-        } else if f.is_enum {
-            // Standard enum
-            if is_vec {
-                let inner_ty = inner_ty.as_ref().unwrap_or(&base_ty);
-                quote! {
-                    let arr = value.as_array().ok_or_else(|| Error::custom(format!("Field {} is not an array", #field_name_str)))?;
-                    arr.iter().map(|v| {
-                        let s = v.as_str().ok_or_else(|| Error::custom("Invalid string in array"))?;
-                        s.parse::<#inner_ty>().map_err(|e| Error::custom(e.to_string()))
-                    }).collect::<Result<Vec<_>, _>>()?
-                }
-            } else {
-                quote! {
-                    value.as_str().ok_or_else(|| Error::custom(format!("Invalid string for field {}", #field_name_str)))?.parse().map_err(|e| Error::custom(format!("Failed to parse enum: {}", e)))?
-                }
+                parsing_logic
             }
         } else {
             // Regular type
@@ -167,7 +154,13 @@ fn generate_from_tool_call_impl(_tool_ident: &syn::Ident, tool_name: &str, field
             if tool_call.name != #tool_name {
                 return Err(Error::custom(format!("Unexpected tool name: got '{}', expected '{}'", tool_call.name, #tool_name)));
             }
-            let tool_call_args: serde_json::Value = serde_json::from_str(&tool_call.arguments)?;
+            let tool_call_args: serde_json::Value = serde_json::from_str(&tool_call.arguments)
+                .or_else(|_| {
+                    // If parsing fails, treat the whole arguments string as a single JSON string value.
+                    // This is a fallback for when the LLM forgets to wrap the arguments in an object.
+                    Ok(serde_json::Value::String(tool_call.arguments.clone()))
+                })?;
+
             let tool_call_args = tool_call_args.as_object().ok_or_else(|| serde_json::Error::custom("Invalid tool call arguments"))?;
             Ok(Self {
                 #(#field_parsers,)*
@@ -176,44 +169,32 @@ fn generate_from_tool_call_impl(_tool_ident: &syn::Ident, tool_name: &str, field
     }
 }
 
-fn generate_into_tool_call_impl(tool_name: &str, fields: &[&LlmToolField]) -> TokenStream {
+fn generate_into_tool_call_impl(
+    tool_name: &str,
+    fields: &[&LlmToolField],
+    _enum_lang: Option<&str>,
+) -> TokenStream {
     let field_serializers = fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
-        
+
         let (is_option, base_ty) = unwrap_option(&f.ty);
         let (is_vec, _) = unwrap_vec(&base_ty);
 
-        let serializer = if let Some(enum_lang) = f.enum_lang.as_deref() {
+        let serializer = if f.is_enum {
             if is_vec {
                 quote! {
                     let mut items = Vec::new();
                     for item in value {
-                        let (ty, content) = ::metastable_database::TextPromptCodec::to_lang_parts(item, #enum_lang);
-                        items.push(serde_json::json!({
-                            "type": ty,
-                            "content": content
-                        }));
+                        let json_val = serde_json::to_value(item)?;
+                        items.push(json_val);
                     }
                     args.insert(#field_name_str.to_string(), serde_json::Value::Array(items));
                 }
             } else {
                 quote! {
-                    args.insert(#field_name_str.to_string(), serde_json::to_value(::metastable_database::TextPromptCodec::to_lang(value, #enum_lang))?);
-                }
-            }
-        } else if f.is_enum {
-            if is_vec {
-                quote! {
-                    let mut items = Vec::new();
-                    for item in value {
-                        items.push(serde_json::to_value(item.to_string())?);
-                    }
-                    args.insert(#field_name_str.to_string(), serde_json::Value::Array(items));
-                }
-            } else {
-                quote! {
-                    args.insert(#field_name_str.to_string(), serde_json::to_value(value.to_string())?);
+                    let json_val = serde_json::to_value(value)?;
+                    args.insert(#field_name_str.to_string(), json_val);
                 }
             }
         } else {
@@ -240,7 +221,7 @@ fn generate_into_tool_call_impl(tool_name: &str, fields: &[&LlmToolField]) -> To
         fn into_tool_call(&self) -> Result<async_openai::types::FunctionCall, serde_json::Error> {
             let mut args = serde_json::Map::new();
             #(#field_serializers)*
-            
+
             let arguments = if args.is_empty() {
                 "{}".to_string()
             } else {
@@ -255,13 +236,22 @@ fn generate_into_tool_call_impl(tool_name: &str, fields: &[&LlmToolField]) -> To
     }
 }
 
-fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>, is_enum: bool) -> proc_macro2::TokenStream {
+fn get_schema_for_type(
+    ty: &Type,
+    enum_lang: Option<&str>,
+    is_enum: bool,
+) -> proc_macro2::TokenStream {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
             let type_name = &segment.ident;
             if type_name == "String" {
                 return quote! { serde_json::json!({ "type": "string" }) };
-            } else if type_name == "i64" || type_name == "u64" || type_name == "f64" || type_name == "isize" || type_name == "usize" {
+            } else if type_name == "i64"
+                || type_name == "u64"
+                || type_name == "f64"
+                || type_name == "isize"
+                || type_name == "usize"
+            {
                 return quote! { serde_json::json!({ "type": "number" }) };
             } else if type_name == "bool" {
                 return quote! { serde_json::json!({ "type": "boolean" }) };
@@ -270,33 +260,21 @@ fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>, is_enum: bool) -> pro
             } else if type_name == "Vec" {
                 if let PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
-                        if enum_lang.is_some() {
-                             let lang_opt = match enum_lang {
-                                Some(lang) => quote! { Some(#lang) },
-                                None => quote! { None },
-                            };
-                            let type_schema = quote! { <#inner_ty as ::metastable_database::TextPromptCodec>::schema(#lang_opt) };
-                            return quote! {
-                                serde_json::json!({
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "type": #type_schema,
-                                            "content": { "type": "string" }
-                                        },
-                                        "required": ["type", "content"]
-                                    }
-                                })
-                            };
-                        }
-
-                        let inner_schema = get_schema_for_type(inner_ty, None, is_enum);
+                        let inner_schema = get_schema_for_type(inner_ty, enum_lang, is_enum);
                         return quote! {
-                            serde_json::json!({
-                                "type": "array",
-                                "items": #inner_schema
-                            })
+                            {
+                                let mut items_schema = #inner_schema;
+                                if items_schema.is_object() {
+                                    items_schema.as_object_mut().unwrap().insert(
+                                        "additionalProperties".to_string(),
+                                        serde_json::json!(false)
+                                    );
+                                }
+                                let mut map = serde_json::Map::new();
+                                map.insert("type".to_string(), serde_json::json!("array"));
+                                map.insert("items".to_string(), items_schema);
+                                serde_json::Value::Object(map)
+                            }
                         };
                     }
                 }
@@ -310,12 +288,12 @@ fn get_schema_for_type(ty: &Type, enum_lang: Option<&str>, is_enum: bool) -> pro
         }
     }
 
-    if is_enum || enum_lang.is_some() {
+    if is_enum {
         let lang_opt = match enum_lang {
             Some(lang) => quote! { Some(#lang) },
             None => quote! { None },
         };
-        quote! { <#ty as ::metastable_database::TextPromptCodec>::schema(#lang_opt) }
+        quote! { <#ty as ::metastable_database::TextEnumCodec>::schema(#lang_opt) }
     } else {
         quote! { <#ty as ::metastable_runtime::ToolCall>::schema() }
     }

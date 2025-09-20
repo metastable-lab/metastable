@@ -3,21 +3,25 @@ mod url;
 mod referral;
 mod follow;
 mod log;
+mod payment;
+mod notifications;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use metastable_database::TextCodecEnum;
 use sqlx::types::{Json, Uuid};
 use serde_json::json;
-use metastable_common::{encrypt, decrypt, get_current_timestamp};
-use metastable_database::SqlxObject;
+
+use metastable_database::{SqlxObject, TextEnum};
+use metastable_common::{encrypt, decrypt, get_current_timestamp, get_today_start_timestamp_utc8};
 
 pub use url::UserUrl;
 pub use referral::UserReferral;
 pub use badge::UserBadge;
 pub use follow::UserFollow;
 pub use log::UserPointsLog;
+pub use payment::{UserPayment, UserPaymentStatus};
+pub use notifications::UserNotification;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UserUsagePoints {
@@ -26,8 +30,7 @@ pub struct UserUsagePoints {
     pub points_consumed_misc: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]
 pub enum UserRole {
     Admin,
     #[default]
@@ -51,6 +54,8 @@ pub struct User {
 
     // access to the llm system
     pub llm_access_level: i64,
+    pub vip_level: i32,
+    pub vip_expieration_time: i64,
 
     // points related
     pub running_claimed_balance: i64,
@@ -70,6 +75,8 @@ pub struct User {
     pub avatar: Option<String>,
     pub bio: Option<String>,
     
+    pub mask: Vec<String>,
+
     pub extra: Option<Json<Value>>, // array of user profiles to be injected into prompts
 
     pub created_at: i64,
@@ -107,18 +114,31 @@ impl User {
 
 impl User {
     /* BALANCE ADDITION */
-    // Rate limit: ONE Claim per 24 hours
-    pub fn try_claim_free_balance(&mut self, amount: i64) -> Result<UserPointsLog> {
+    // Daily checkin: ONE claim per day (resets at 00:00 UTC+8)
+    pub fn daily_checkin(&mut self) -> Result<UserPointsLog> {
         let current_timestamp = get_current_timestamp();
-        // ONE Claim per day
-        if current_timestamp - self.free_balance_claimed_at < 24 * 60 * 60 {
-            return Err(anyhow!("[User::try_claim_free_balance] Too frequent to claim free balance"));
+        
+        // Calculate today's start time in UTC+8 timezone (00:00:00)
+        let current_date_start = get_today_start_timestamp_utc8();
+        
+        // Check if already checked in today
+        if self.free_balance_claimed_at >= current_date_start {
+            return Err(anyhow!("[User::daily_checkin] Already checked in today"));
         }
+
+        if current_timestamp > self.vip_expieration_time {
+            self.vip_level = 0;
+        }
+
+        let amount = match self.vip_level {
+            1 => 100,
+            2 => 200,
+            3 => 240,
+            _ => 50,
+        };
 
         self.running_claimed_balance += amount;
         self.free_balance_claimed_at = current_timestamp;
-
-        // add log
 
         Ok(UserPointsLog::from_daily_checkin(&self.id, amount))
     }
@@ -136,6 +156,25 @@ impl User {
     pub fn creator_reward(&mut self, amount: i64) -> UserPointsLog {
         self.running_misc_balance += amount;
         UserPointsLog::from_creator_reward(&self.id, amount)
+    }
+
+    pub fn purchase(&mut self, level: i32) -> UserPointsLog {
+        self.vip_level = level;
+        let amount = match level {
+            1 => 1000,
+            2 => 2000,
+            3 => 5000,
+            _ => 0,
+        };
+        let current_timestamp = get_current_timestamp();
+        self.vip_expieration_time = current_timestamp + 31 * 24 * 60 * 60;
+        self.running_purchased_balance += amount;
+        UserPointsLog::from_purchase(&self.id, amount)
+    }
+
+    pub fn direct_purchase(&mut self, amount: i64) -> UserPointsLog {
+        self.running_purchased_balance += amount;
+        UserPointsLog::from_direct_purchase(&self.id, amount)
     }
 
     /* BALANCE SUBTRACTION */
@@ -185,8 +224,8 @@ impl User {
             if self.running_purchased_balance >= remaining {
                 self.running_purchased_balance -= remaining;
                 self.last_balance_deduction_at = current_timestamp;
-                remaining = 0;
                 paid_purchased_balance += remaining;
+                remaining = 0;
             }
         }
 

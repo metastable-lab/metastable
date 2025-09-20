@@ -46,7 +46,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 xsalsa20poly1305 = "0.9"
 blake3 = "^1"
 base64 = "0.21"
-
+x25519-dalek = "2.0.1"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-tz = "0.9"
 async-trait = "0.1"

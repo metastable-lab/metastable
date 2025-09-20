@@ -1,6 +1,6 @@
 use metastable_llm_macros::LlmTool;
 use metastable_runtime::{
-    BackgroundStories, BehaviorTraits, CharacterGender, CharacterLanguage, Relationships,
+    BackgroundStories, BehaviorTraits, CharacterLanguage, Relationships,
     SkillsAndInterests, CharacterOrientation,
 };
 
@@ -9,15 +9,14 @@ use serde::{Deserialize, Serialize};
 #[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
 #[llm_tool(
     name = "summarize_character",
-    description = "根据与用户的对话，总结并创建一个完整的角色档案。"
+    description = "根据与用户的对话，总结并创建一个完整的角色档案。",
+    enum_lang = "en"
 )]
 pub struct SummarizeCharacter {
     #[llm_tool(description = "角色的名字")]
     pub name: String,
     #[llm_tool(description = "对角色的一段简短描述，包括其核心身份、外貌特点等。")]
     pub description: String,
-    #[llm_tool(description = "角色的性别", is_enum = true)]
-    pub gender: CharacterGender,
     #[llm_tool(description = "角色的性取向", is_enum = true)]
     pub orientation: CharacterOrientation,
     #[llm_tool(description = "角色的主要使用语言", is_enum = true)]
@@ -32,22 +31,22 @@ pub struct SummarizeCharacter {
     pub prompts_first_message: String,
     #[llm_tool(
         description = "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub background_stories: Vec<BackgroundStories>,
     #[llm_tool(
         description = "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub behavior_traits: Vec<BehaviorTraits>,
     #[llm_tool(
         description = "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub relationships: Vec<Relationships>,
     #[llm_tool(
         description = "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。",
-        enum_lang = "zh"
+        is_enum = true
     )]
     pub skills_and_interests: Vec<SkillsAndInterests>,
     #[llm_tool(description = "追加对话风格示例（多条）。")]
@@ -77,7 +76,6 @@ mod tests {
             "properties": {
              "name": { "type": "string", "description": "角色的名字" },
                     "description": { "type": "string", "description": "对角色的一段简短描述，包括其核心身份、外貌特点等。" },
-                    "gender": { "type": "string", "enum": ["Male", "Female", "Multiple", "Others"], "description": "角色的性别" },
                     "orientation": { "type": "string", "enum": ["Female", "Male", "Full"], "description": "角色的性取向" },
                     "language": { "type": "string", "enum": ["English", "Chinese", "Japanese", "Korean", "Others"], "description": "角色的主要使用语言" },
                     "prompts_personality": { "type": "string", "description": "描述角色的性格特点。例如：热情、冷漠、幽默、严肃等。" },
@@ -90,11 +88,12 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "职业", "童年经历", "成长环境", "重大经历", "价值观", "过去的遗憾或创伤，无法释怀的事", "梦想，渴望的事情，追求的事情", "Others"
+                                    "职业", "童年经历", "成长环境", "重大经历", "价值观", "过去的遗憾或创伤，无法释怀的事", "梦想，渴望的事情，追求的事情"
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "背景故事条目。严格对象格式：{ type:  中文前缀, content: 值 }。type 只能取以下之一。"
                     },
@@ -104,11 +103,12 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "行为举止", "外貌特征", "穿搭风格", "情绪表达方式", "个人沟通习惯", "与用户的沟通习惯", "个人行为特征", "与用户的沟通特征", "Others"
+                                    "行为举止", "外貌特征", "穿搭风格", "情绪表达方式", "个人沟通习惯", "与用户的沟通习惯", "个人行为特征", "与用户的沟通特征"
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "行为特征条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
@@ -118,11 +118,12 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "亲密伴侣", "家庭", "朋友", "敌人", "社交圈", "Others"
+                                    "亲密伴侣", "家庭", "朋友", "敌人", "社交圈"
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "人际关系条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
@@ -132,11 +133,12 @@ mod tests {
                             "type": "object",
                             "properties": {
                                 "type": { "type": "string", "enum": [
-                                    "职业技能", "生活技能", "兴趣爱好", "弱点，不擅长的领域", "优点，擅长的事情", "内心矛盾冲突", "性癖", "Others"
+                                    "职业技能", "生活技能", "兴趣爱好", "弱点，不擅长的领域", "优点，擅长的事情", "内心矛盾冲突", "性癖"
                                 ]},
                                 "content": { "type": "string" }
                             },
-                            "required": ["type", "content"]
+                            "required": ["type", "content"],
+                            "additionalProperties": false
                         },
                         "description": "技能与兴趣条目。严格对象格式：{ type: 中文前缀, content: 值 }。"
                     },
@@ -145,7 +147,7 @@ mod tests {
                     "tags": { "type": "array", "items": { "type": "string" }, "description": "描述角色特点的标签，便于搜索和分类。" }
                 },
                 "required": [
-                    "name", "description", "gender", "orientation", "language",
+                    "name", "description", "orientation", "language",
                     "prompts_personality", "prompts_scenario", "prompts_example_dialogue", "prompts_first_message",
                     "background_stories", "behavior_traits", "relationships", "skills_and_interests", "tags"
                 ]
@@ -166,7 +168,6 @@ mod tests {
         let summary = SummarizeCharacter {
             name: "艾拉".to_string(),
             description: "一位充满活力的年轻探险家，总是渴望发现新奇事物。".to_string(),
-            gender: CharacterGender::Female,
             orientation: CharacterOrientation::Full,
             language: CharacterLanguage::Chinese,
             prompts_personality: "热情、好奇、勇敢".to_string(),
@@ -198,7 +199,6 @@ mod tests {
 
         assert_eq!(summary.name, reconstructed_summary.name);
         assert_eq!(summary.description, reconstructed_summary.description);
-        assert_eq!(summary.gender, reconstructed_summary.gender);
         assert_eq!(summary.orientation, reconstructed_summary.orientation);
         assert_eq!(summary.language, reconstructed_summary.language);
         assert_eq!(summary.prompts_personality, reconstructed_summary.prompts_personality);

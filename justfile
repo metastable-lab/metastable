@@ -16,10 +16,8 @@ export HASURA_GRAPHQL_ADMIN_SECRET := env("HASURA_GRAPHQL_ADMIN_SECRET")
 export PGVECTOR_URI := env("PGVECTOR_URI")
 export OTP_SECRET_KEY := env("OTP_SECRET_KEY")
 export MAILEROO_API_KEY := env("MAILEROO_API_KEY")
-
-export GRAPH_URI := env("GRAPH_URI")
-export GRAPH_USER := env("GRAPH_USER")
-export GRAPH_PASSWORD := env("GRAPH_PASSWORD")
+export STRIPE_SECRET_KEY := env("STRIPE_SECRET_KEY")
+export STRIPE_WEBHOOK_SECRET := env("STRIPE_WEBHOOK_SECRET")
 
 export EMBEDDING_API_KEY := env("EMBEDDING_API_KEY")
 export EMBEDDING_BASE_URL := env("EMBEDDING_BASE_URL")
@@ -39,7 +37,17 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 @sandbox-migrate:
     cargo run --package metastable-sandbox --bin migrate --release
 
+@sandbox-migrate-messages:
+    cargo run --package metastable-sandbox --bin messages --release
+
+@sandbox-text-migration:
+    cargo run --package metastable-sandbox --bin text_migration --release
+
+@sandbox-messages-migration:
+    cargo run --package metastable-sandbox --bin messages_robust --release
+
+@sandbox-messages-migration-prod:
+    cargo run --package metastable-sandbox --bin messages_robust --release production
+
 @test:
-    cargo test --package metastable-runtime-mem0 --test e2e -- tests::test_e2e --exact --show-output 
-# @sandbox-reset-db:
-#     cargo run --package metastable-sandbox --bin reset_db --release
+    cargo test --package metastable-runtime-roleplay --test sandbox -- test::test_prettier_v0 --exact --show-output

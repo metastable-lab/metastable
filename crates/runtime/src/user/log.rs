@@ -1,48 +1,42 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sqlx::types::Uuid;
-use metastable_database::{SqlxObject, TextCodecEnum};
+use metastable_database::{SqlxObject, TextEnum};
 
 use crate::{Message, User, UserUsagePoints};
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogAddReason {
+    #[default]
     NA,
 
     DailyCheckin,
     Inviation,
     SystemReward,
     CreatorReward,
-
-    #[catch_all(no_prefix = true)]
-    Others(String),
+    Purchase,
+    DirectPurchase,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogDeductReason {
+    #[default]
     NA,
 
     ChatMessage,
     ChatRegeneration,
     CharacterCreation,
-
-    #[catch_all(no_prefix = true)]
-    Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, TextCodecEnum)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Default, TextEnum)]
 pub enum UserPointsLogRewardReason {
+    #[default]
     NA,
     CreatorReward,
     Inviation,
-    #[catch_all(no_prefix = true)]
-    Others(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, SqlxObject)]
+#[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
 #[table_name = "user_points_logs"]
 pub struct UserPointsLog {
     pub id: Uuid,
@@ -313,6 +307,72 @@ impl UserPointsLog {
             added_to_claimed: 0,
             added_to_purchased: 0,
             added_to_misc: amount,
+
+            reward_to: None,
+            reward_amount: 0,
+
+            disputed: false,
+            disputed_at: None,
+            resolved: false,
+            resolved_at: None,
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn from_purchase(user_id: &Uuid, amount: i64) -> Self {       
+        Self {
+            id: Uuid::new_v4(),
+
+            user: user_id.clone(),
+
+            add_reason: UserPointsLogAddReason::Purchase,
+            deduct_reason: UserPointsLogDeductReason::NA,
+            reward_reason: UserPointsLogRewardReason::NA,
+            
+            message: None,
+
+            deducted_from_claimed: 0,
+            deducted_from_purchased: 0,
+            deducted_from_misc: 0,
+            
+            added_to_claimed: 0,
+            added_to_purchased: amount,
+            added_to_misc: 0,
+
+            reward_to: None,
+            reward_amount: 0,
+
+            disputed: false,
+            disputed_at: None,
+            resolved: false,
+            resolved_at: None,
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    pub fn from_direct_purchase(user_id: &Uuid, amount: i64) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+
+            user: user_id.clone(),
+
+            add_reason: UserPointsLogAddReason::DirectPurchase,
+            deduct_reason: UserPointsLogDeductReason::NA,
+            reward_reason: UserPointsLogRewardReason::NA,
+            
+            message: None,
+
+            deducted_from_claimed: 0,
+            deducted_from_purchased: 0,
+            deducted_from_misc: 0,
+            
+            added_to_claimed: 0,
+            added_to_purchased: amount,
+            added_to_misc: 0,
 
             reward_to: None,
             reward_amount: 0,

@@ -1,26 +1,22 @@
-use darling::{FromDeriveInput, FromField};
-use syn::{DeriveInput, Ident, Type};
+use darling::{ast, FromDeriveInput, FromField};
+use syn::{DeriveInput, Type};
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(attributes(llm_tool), forward_attrs(doc))]
+#[darling(attributes(llm_tool))]
 pub struct LlmTool {
-    pub ident: Ident,
-    #[darling(default)]
+    pub ident: syn::Ident,
+    pub data: ast::Data<darling::util::Ignored, LlmToolField>,
     pub name: Option<String>,
-    #[darling(default)]
     pub description: Option<String>,
-    pub data: darling::ast::Data<darling::util::Ignored, LlmToolField>,
+    pub enum_lang: Option<String>,
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(llm_tool), forward_attrs(doc))]
+#[darling(attributes(llm_tool))]
 pub struct LlmToolField {
-    pub ident: Option<Ident>,
+    pub ident: Option<syn::Ident>,
     pub ty: Type,
-    #[darling(default)]
     pub description: Option<String>,
-    #[darling(default)]
-    pub enum_lang: Option<String>,
     #[darling(default)]
     pub is_enum: bool,
 }

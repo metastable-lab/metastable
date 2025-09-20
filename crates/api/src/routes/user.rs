@@ -1,5 +1,7 @@
 use anyhow::anyhow;
+use async_openai::types::FunctionCall;
 use axum::extract::Path;
+use metastable_runtime_roleplay::agents::SendMessage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use axum::{
@@ -13,9 +15,7 @@ use metastable_common::{get_current_timestamp, ModuleClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 
 use metastable_runtime::{
-    UserReferral, UserUrl, User, UserFollow, 
-    Character, CharacterFeature, 
-    CharacterHistory, CharacterStatus, CharacterSub
+    BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserNotification, UserReferral, UserRole, UserUrl
 };
 use crate::{
     ensure_account, 
@@ -30,6 +30,11 @@ pub fn user_routes() -> Router<GlobalState> {
             post(register)
         )
 
+        .route("/user/checkin",
+            post(daily_checkin)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
         .route("/user/referral/buy",
             post(buy_referral)
             .route_layer(middleware::from_fn(authenticate))
@@ -42,10 +47,12 @@ pub fn user_routes() -> Router<GlobalState> {
             post(follow)
             .route_layer(middleware::from_fn(authenticate))
         )
-        .route("/user/character/review/{character_id}", 
-            post(review_character)
+
+        .route("/user/character/new",
+            post(new_character)
             .route_layer(middleware::from_fn(authenticate))
         )
+
         .route("/user/update_character/{character_id}",
             post(update_character)
             .route_layer(middleware::from_fn(authenticate))
@@ -53,6 +60,21 @@ pub fn user_routes() -> Router<GlobalState> {
 
         .route("/user/character/sub/{character_id}",
             post(create_character_sub)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/post",
+            post(create_post)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/post/comment/{post_id}",
+            post(create_post_comment)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/character/review/{character_id}",
+            post(create_character_review)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -98,14 +120,17 @@ async fn register(
     user.provider = payload.provider.clone();
 
     let mut user = user.create(&mut *tx).await?;
-    let claimed_log = user.try_claim_free_balance(50).expect("user MUST be able to claim on account creation"); // infallable
-    let invitaion_log = user.invitation_reward(&referer.id, 100, 50);
-    let invitation_reward_log = referer.invitation_reward(&user.id, 50, 100);
+    let claimed_log = user.daily_checkin().expect("user MUST be able to claim on account creation"); // infallable
+    let invitaion_log = user.invitation_reward(&referer.id, 200, 100);
+    let invitation_reward_log = referer.invitation_reward(&user.id, 100, 200);
 
     referral_code.used_by = Some(user.id);
     referral_code.used_at = Some(get_current_timestamp());
+    let notify = UserNotification::referral_used(referer.id.clone(), user.id.clone());
+    notify.create(&mut *tx).await?;
     referral_code.update(&mut *tx).await?;
     referer.update(&mut *tx).await?;
+    user.update(&mut *tx).await?;
 
     claimed_log.create(&mut *tx).await?;
     invitaion_log.create(&mut *tx).await?;
@@ -191,36 +216,12 @@ async fn follow(
     }
 
     let follow = UserFollow::new(follower.id, following.id);
+    let notify = UserNotification::new_follower(follower.id, following.id);
+    notify.create(&mut *tx).await?;
     follow.create(&mut *tx).await?;
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Followed successfully", json!(())))
-}
-
-async fn review_character(
-    State(state): State<GlobalState>,
-    Extension(user_id_str): Extension<String>,
-    Path(character_id): Path<Uuid>,
-) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
-        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[review_character] User not found")))?;
-
-    let mut tx = state.db.get_client().begin().await?;
-    let mut character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", character_id),
-        &mut *tx
-    ).await?
-        .ok_or(anyhow::anyhow!("[review_character] Character not found"))?;
-    
-    if character.creator != user.id {
-        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[review_character] user not authorized to make changes")));
-    }
-    
-    character.status = CharacterStatus::Reviewing;
-    character.update(&mut *tx).await?;
-    tx.commit().await?;
-
-    Ok(AppSuccess::new(StatusCode::OK, "Character reviewed successfully", json!(())))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,17 +232,19 @@ pub struct UpdateCharacterRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     
-    pub gender: Option<String>,
-    pub language: Option<String>,
-    
+    pub orientation: Option<CharacterOrientation>,
+    pub language: Option<CharacterLanguage>,
+ 
     pub prompts_scenario: Option<String>,
     pub prompts_personality: Option<String>,
     pub prompts_example_dialogue: Option<String>,
-    pub prompts_first_message: Option<String>,
-    pub prompts_background_stories: Option<Vec<String>>,
-    pub prompts_behavior_traits: Option<Vec<String>>,
-    pub prompts_relationships: Option<Vec<String>>,
-    pub prompts_skills_and_interests: Option<Vec<String>>,
+    pub prompts_first_message: Option<FunctionCall>,
+
+    pub prompts_additional_example_dialogue: Option<Vec<String>>,
+    pub prompts_background_stories: Option<Vec<BackgroundStories>>,
+    pub prompts_behavior_traits: Option<Vec<BehaviorTraits>>,
+    pub prompts_relationships: Option<Vec<Relationships>>,
+    pub prompts_skills_and_interests: Option<Vec<SkillsAndInterests>>,
     pub prompts_additional_info: Option<Vec<String>>,
 
     pub creator_notes: Option<String>,
@@ -272,37 +275,33 @@ async fn update_character(
     let character_history = CharacterHistory::new(old_character.clone());
     character_history.create(&mut *tx).await?;
 
+    let maybe_send_message= SendMessage::try_from_tool_call(
+        &payload.prompts_first_message.unwrap_or(
+            old_character.prompts_first_message.0.ok_or(anyhow!("[update_character] Invalid first message"))?
+        )
+    )?;
+    let first_message = maybe_send_message.into_tool_call()?;
+
     old_character.name = payload.name.unwrap_or(old_character.name);
     old_character.description = payload.description.unwrap_or(old_character.description);
-    if let Some(gender_str) = payload.gender {
-        old_character.gender = gender_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    if let Some(language_str) = payload.language {
-        old_character.language = language_str.parse().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
+    old_character.orientation = payload.orientation.unwrap_or(old_character.orientation);
+    old_character.language = payload.language.unwrap_or(old_character.language);
     old_character.prompts_scenario = payload.prompts_scenario.unwrap_or(old_character.prompts_scenario);
     old_character.prompts_personality = payload.prompts_personality.unwrap_or(old_character.prompts_personality);
     old_character.prompts_example_dialogue = payload.prompts_example_dialogue.unwrap_or(old_character.prompts_example_dialogue);
-    old_character.prompts_first_message = payload.prompts_first_message.unwrap_or(old_character.prompts_first_message);
-    if let Some(background_stories_str) = payload.prompts_background_stories {
-        old_character.prompts_background_stories = background_stories_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    if let Some(behavior_traits_str) = payload.prompts_behavior_traits {
-        old_character.prompts_behavior_traits = behavior_traits_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    if let Some(relationships_str) = payload.prompts_relationships {
-        old_character.prompts_relationships = relationships_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    if let Some(skills_and_interests_str) = payload.prompts_skills_and_interests {
-        old_character.prompts_skills_and_interests = skills_and_interests_str.into_iter().map(|s| s.parse()).collect::<Result<Vec<_>, _>>().map_err(|e: anyhow::Error| AppError::new(StatusCode::BAD_REQUEST, e))?;
-    }
-    old_character.prompts_additional_info = payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info);
-    old_character.creator_notes = payload.creator_notes;
+    old_character.prompts_first_message = sqlx::types::Json(Some(first_message));
+    old_character.prompts_background_stories = sqlx::types::Json(payload.prompts_background_stories.unwrap_or(old_character.prompts_background_stories.0));
+    old_character.prompts_behavior_traits = sqlx::types::Json(payload.prompts_behavior_traits.unwrap_or(old_character.prompts_behavior_traits.0));
+    old_character.prompts_relationships = sqlx::types::Json(payload.prompts_relationships.unwrap_or(old_character.prompts_relationships.0));
+    old_character.prompts_skills_and_interests = sqlx::types::Json(payload.prompts_skills_and_interests.unwrap_or(old_character.prompts_skills_and_interests.0));
+    old_character.prompts_additional_info = sqlx::types::Json(payload.prompts_additional_info.unwrap_or(old_character.prompts_additional_info.0));
+    old_character.prompts_additional_example_dialogue = sqlx::types::Json(payload.prompts_additional_example_dialogue.unwrap_or(old_character.prompts_additional_example_dialogue.0));
+    old_character.creator_notes = payload.creator_notes.or(old_character.creator_notes);
     old_character.tags = payload.tags.unwrap_or(old_character.tags);
 
     if let Some(avatar_url) = payload.avatar_url {
         let mut found = false;
-        for feature in &mut old_character.features {
+        for feature in &mut old_character.features.0 {
             if let CharacterFeature::AvatarImage(ref mut url) = feature {
                 *url = avatar_url.clone();
                 found = true;
@@ -315,7 +314,7 @@ async fn update_character(
     }
     if let Some(background_url) = payload.background_url {
         let mut found = false;
-        for feature in &mut old_character.features {
+        for feature in &mut old_character.features.0 {
             if let CharacterFeature::BackgroundImage(ref mut url) = feature {
                 *url = background_url.clone();
                 found = true;
@@ -339,6 +338,65 @@ async fn update_character(
     
 }
 
+async fn new_character(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<UpdateCharacterRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[new_character] User not found")))?;
+
+    let mut features = vec![CharacterFeature::Roleplay];
+    if let Some(avatar_url) = payload.avatar_url {
+        features.push(CharacterFeature::AvatarImage(avatar_url));
+    }
+    if let Some(background_url) = payload.background_url {
+        features.push(CharacterFeature::BackgroundImage(background_url));
+    }
+
+    let first_message = {
+        let tc = payload.prompts_first_message
+            .ok_or(anyhow!("[new_character] Invalid first message"))?;
+        SendMessage::try_from_tool_call(&tc)?.into_tool_call()?
+    };
+
+    let character = Character {
+        id: Uuid::default(),
+        name: payload.name.unwrap_or("Unknown".to_string()),
+        description: payload.description.unwrap_or("Unknown".to_string()),
+        creator: user.id,
+        creation_message: None,
+        creation_session: None,
+        version: 1,
+        status: CharacterStatus::Draft,
+
+        orientation: payload.orientation.unwrap_or_default(),
+        language: payload.language.unwrap_or(CharacterLanguage::English),
+        features: sqlx::types::Json(features),
+        prompts_scenario: payload.prompts_scenario.unwrap_or("Unknown".to_string()),
+        prompts_personality: payload.prompts_personality.unwrap_or("Unknown".to_string()),
+        prompts_example_dialogue: payload.prompts_example_dialogue.unwrap_or("Unknown".to_string()),
+        prompts_first_message: sqlx::types::Json(Some(first_message)),
+        prompts_background_stories: sqlx::types::Json(payload.prompts_background_stories.unwrap_or(vec![BackgroundStories::default()])),
+        prompts_behavior_traits: sqlx::types::Json(payload.prompts_behavior_traits.unwrap_or(vec![BehaviorTraits::default()])),
+        prompts_additional_example_dialogue: sqlx::types::Json(payload.prompts_additional_example_dialogue.unwrap_or(vec![String::default()])),
+        prompts_relationships: sqlx::types::Json(payload.prompts_relationships.unwrap_or(vec![Relationships::default()])),
+        prompts_skills_and_interests: sqlx::types::Json(payload.prompts_skills_and_interests.unwrap_or(vec![SkillsAndInterests::default()])),
+        prompts_additional_info: sqlx::types::Json(payload.prompts_additional_info.unwrap_or(vec![String::default()])),
+        creator_notes: payload.creator_notes,
+        tags: payload.tags.unwrap_or(vec![]),
+        created_at: get_current_timestamp(),
+        updated_at: get_current_timestamp(),
+    };
+
+    let mut tx = state.db.get_client().begin().await?;
+    let _ = character.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character created successfully", json!(())))
+
+}
+
 async fn create_character_sub(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
@@ -359,8 +417,151 @@ async fn create_character_sub(
     }
 
     let character_sub = CharacterSub::new(user.id, character_id, vec![]);
+    let notify = UserNotification::new_character_favorite(user.id, character_id);
+    notify.create(&mut *tx).await?;
     character_sub.create(&mut *tx).await?;
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character sub created successfully", json!(())))
+}
+
+// Daily checkin handler function
+async fn daily_checkin(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+) -> Result<AppSuccess, AppError> {
+    let mut user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[daily_checkin] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let checkin_log = user.daily_checkin()?;  // 100 points per checkin    
+    checkin_log.create(&mut *tx).await?;
+    user.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Daily checkin successful", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePostRequest {
+    pub characters: Vec<Uuid>,
+    pub content: String,
+}
+async fn create_post(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Json(payload): Json<CreatePostRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    if payload.characters.len() < 1 || payload.characters.len() > 3 {
+        return Err(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[create_post] Invalid characters length")));
+    }
+
+    let mut post = CharacterPost::default();
+    let mut character_ids = vec![];
+    for character_id in payload.characters {
+        let character = Character::find_one_by_criteria(
+            QueryCriteria::new().add_valued_filter("id", "=", character_id),
+            &mut *tx
+        ).await?
+            .ok_or(anyhow::anyhow!("[create_post] Character not found"))?;
+
+        if character.creator != user.id {
+            return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_post] Character not found")));
+        }
+
+        character_ids.push(character_id);
+    }
+
+    for i in 0..3 {
+        if i < character_ids.len() {
+            match i {
+                0 => post.character_0 = Some(character_ids[i]),
+                1 => post.character_1 = Some(character_ids[i]),
+                2 => post.character_2 = Some(character_ids[i]),
+                _ => {}
+            }
+        }
+    }
+
+    post.user_id = user.id;
+    post.content = payload.content;
+    post.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Post created successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreatePostCommentRequest {
+    pub content: String,
+}
+async fn create_post_comment(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(post_id): Path<Uuid>,
+    Json(payload): Json<CreatePostCommentRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post_comment] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let post = CharacterPost::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", post_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[create_post_comment] Post not found"))?;
+
+    let mut post_comment = CharacterPostComments::default();
+    post_comment.post = post.id;
+    post_comment.user_id = user.id;
+    post_comment.content = payload.content.clone();
+    post_comment.create(&mut *tx).await?;
+    let notify = UserNotification::new_post_comment(user.id, post_id, payload.content);
+    notify.create(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Post comment created successfully", json!(())))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCharacterReviewRequest {
+    pub published: bool,
+    pub comments: String,
+}
+
+async fn create_character_review(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+    Json(payload): Json<CreateCharacterReviewRequest>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_review] User not found")))?;
+    if user.role != UserRole::Admin {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_character_review] User not authorized")));
+    }
+
+    let mut tx = state.db.get_client().begin().await?;
+    let mut character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[create_character_review] Character not found"))?;
+
+    let notify = if payload.published {
+        character.status = CharacterStatus::Published;
+        UserNotification::character_review_outcome_published(character.id.clone(), character_id, payload.comments)
+    } else {
+        character.status = CharacterStatus::Draft;
+        UserNotification::character_review_outcome_rejected(character.id.clone(), character_id, payload.comments)
+    };
+    notify.create(&mut *tx).await?;
+    character.update(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character review created successfully", json!(())))
 }

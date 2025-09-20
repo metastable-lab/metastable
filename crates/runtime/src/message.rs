@@ -1,31 +1,25 @@
 use anyhow::Result;
 use async_openai::types::{CompletionUsage, FunctionCall};
+use metastable_database::{SqlxObject, TextEnum};
 use serde::{Deserialize, Serialize};
-use metastable_database::{SqlxObject, TextCodecEnum};
 
 use sqlx::types::{Json, Uuid};
 use crate::{ChatSession, SystemConfig, User};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Default, TextEnum, PartialEq, Eq)]
 pub enum MessageRole {
     System,
-
     #[default]
     User,
-
     Assistant,
     ToolCall,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default, TextCodecEnum, PartialEq, Eq)]
-#[text_codec(format = "paren", storage_lang = "en")]
+#[derive(Debug, Clone, Default, TextEnum, PartialEq, Eq)]
 pub enum MessageType {
     #[default]
     Text,
-
-    Image(String),
-    Audio(String),
+    Image,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, SqlxObject)]
@@ -62,6 +56,8 @@ pub struct Message {
     pub is_stale: bool,
     pub is_memorizeable: bool,
     pub is_in_memory: bool,
+
+    pub is_migrated: bool,
 
     pub created_at: i64,
     pub updated_at: i64,

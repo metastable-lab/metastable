@@ -1,9 +1,8 @@
 use metastable_runtime::LlmTool;
-use metastable_database::TextCodecEnum;
-use serde::{Deserialize, Serialize};
+use metastable_database::TextEnum;
+use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, TextCodecEnum)]
-#[text_codec(format = "colon", storage_lang = "zh", colon_char = "：")]
+#[derive(Debug, Clone, Eq, PartialEq, TextEnum)]
 pub enum RoleplayMessageType {
     #[prefix(lang = "zh", content = "动作")]
     Action(String),
@@ -11,23 +10,23 @@ pub enum RoleplayMessageType {
     Scenario(String),
     #[prefix(lang = "zh", content = "内心独白")]
     InnerThoughts(String),
+    #[catch_all(include_prefix = true)]
     #[prefix(lang = "zh", content = "对话")]
     Chat(String),
-
-    #[catch_all(no_prefix = true)]
-    Text(String),
 }
 
-#[derive(LlmTool, Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, LlmTool)]
 #[llm_tool(
     name = "send_message",
-    description = "用于向用户发送结构化消息的唯一工具。你必须使用此工具来发送所有回应，包括对话、动作、场景描述和选项。"
+    description = "用于向用户发送结构化消息的唯一工具。你必须使用此工具来发送所有回应，包括对话、动作、场景描述和选项。",
+    enum_lang = "zh"
 )]
 pub struct SendMessage {
-    #[llm_tool(description = "一个包含多个消息片段的数组，按顺序组合成完整的回复。", is_enum = true, enum_lang = "zh")]
+    #[llm_tool(description = "一个包含多个消息片段的数组，按顺序组合成完整的回复。", is_enum = true)]
     pub messages: Vec<RoleplayMessageType>,
     #[llm_tool(description = "一个包含多个选项的数组，按顺序组合成完整的回复。")]
     pub options: Vec<String>,
+    #[llm_tool(description = "一个简短的总结，用于描述本次对话的要点。")]
     pub summary: String,
 }
 
@@ -36,9 +35,47 @@ mod tests {
 
     use async_openai::types::FunctionCall;
     use metastable_runtime::ToolCall;
+    use serde_json::json;
 
     use super::*;
 
+    #[test]
+    fn baseline() {
+        let schema = SendMessage::schema();
+        let expected_schema = json!({
+            "properties": {
+              "messages": {
+                "description": "一个包含多个消息片段的数组，按顺序组合成完整的回复。",
+                "items": {
+                  "properties": {
+                    "content": { "type": "string" },
+                    "type": {
+                      "enum": [ "动作", "场景", "内心独白", "对话" ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [ "type", "content" ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "options": {
+                "description": "一个包含多个选项的数组，按顺序组合成完整的回复。",
+                "items": { "type": "string" },
+                "type": "array"
+              },
+              "summary": {
+                "description": "一个简短的总结，用于描述本次对话的要点。",
+                "type": "string"
+              }
+            },
+            "required": [ "messages", "options", "summary" ],
+            "type": "object"
+          });
+        assert_eq!(schema, expected_schema);
+        println!("schema: {:?}", schema);
+    }
+ 
     #[test]
     fn fire() {
         let tool_call = SendMessage {
@@ -63,5 +100,7 @@ mod tests {
 
         let tool_call = SendMessage::try_from_tool_call(&function_call).unwrap();
         println!("tool_call: {:?}", tool_call);
+
+        println!("into {:?}", tool_call.into_tool_call());
     }
 }
