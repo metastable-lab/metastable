@@ -687,11 +687,8 @@ async fn verify_migration(db: &PgPool, _environment: &str) -> Result<()> {
 async fn main() -> Result<()> {
     // Initialize enhanced logging
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::INFO)
         .with_target(false)
-        .with_thread_ids(true)
-        .with_file(true)
-        .with_line_number(true)
         .finish();
     tracing::subscriber::set_global_default(subscriber)
         .context("Failed to set tracing subscriber")?;
@@ -842,16 +839,16 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Step 4: Online character migration
-    info!("Step 4: Running online character migration...");
-    match online_migrate_characters(&db, &environment).await {
-        Ok(_) => migration_results.push("✅ Online character migration"),
-        Err(e) => {
-            error!("Online character migration failed: {}", e);
-            migration_results.push("❌ Online character migration");
-            return Err(e);
-        }
-    }
+    // // Step 4: Online character migration
+    // info!("Step 4: Running online character migration...");
+    // match online_migrate_characters(&db, &environment).await {
+    //     Ok(_) => migration_results.push("✅ Online character migration"),
+    //     Err(e) => {
+    //         error!("Online character migration failed: {}", e);
+    //         migration_results.push("❌ Online character migration");
+    //         return Err(e);
+    //     }
+    // }
 
     // Step 5: Verification
     info!("Step 5: Verifying migration results...");

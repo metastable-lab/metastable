@@ -11,7 +11,7 @@ use sqlx::types::Json;
 
 pub use metastable_runtime::{
     Character as NewCharacter,
-    CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
+    CharacterLanguage, CharacterStatus, CharacterOrientation,
 };
 use metastable_runtime::ChatSession;
 
@@ -35,7 +35,6 @@ pub struct Character {
     pub version: i64,
 
     pub status: CharacterStatus,
-    pub gender: CharacterGender,
     pub orientation: CharacterOrientation,
     pub language: CharacterLanguage,
     pub features: Vec<String>,
@@ -77,7 +76,6 @@ impl Character {
 
             version: self.version,
             status: self.status.clone(),
-            gender: self.gender.clone(),
             orientation: self.orientation.clone(),
             language: self.language.clone(),
             features: self.migrate_features(),

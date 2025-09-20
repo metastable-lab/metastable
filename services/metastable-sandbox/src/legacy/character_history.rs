@@ -11,7 +11,7 @@ use async_openai::types::FunctionCall;
 use sqlx::types::Json;
 
 pub use metastable_runtime::{
-    CharacterHistory as NewCharacterHistory, CharacterGender, CharacterLanguage, CharacterStatus, CharacterOrientation,
+    CharacterHistory as NewCharacterHistory, CharacterLanguage, CharacterStatus, CharacterOrientation,
 };
 use super::Character;
 

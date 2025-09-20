@@ -6,10 +6,8 @@ pub enum CharacterStatus {
     #[default]
     Draft,
     Reviewing,
-    Rejected(String),
-
     Published,
-    Archived(String),
+    Archived,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Default, TextEnum)]

@@ -94,6 +94,13 @@ async fn create_checkout_session(
         _ => 0,
     };
 
+    // let vip_level_prod = match product_id.as_str() {
+    //     "price_1S90m9GokBlvEWxhYFl3v9m4" => 1,
+    //     "price_1S90m3GokBlvEWxhQhpPsFsT" => 2,
+    //     "price_1S90lzGokBlvEWxhmmCEOBwg" => 3,
+    //     _ => 0,
+    // };
+
     let items = session.line_items.unwrap_or_default().data;
     let user_payment = UserPayment {
         id: Uuid::default(),
