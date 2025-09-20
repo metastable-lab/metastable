@@ -589,10 +589,10 @@ async fn online_migrate_characters(db: &Arc<PgPool>, environment: &str) -> Resul
 
     // Run schema migrations
     info!("Running schema migrations...");
-    NewCharacter::migrate(&db).await
-        .context("Failed to migrate character schema")?;
-    NewCharacterHistory::migrate(&db).await
-        .context("Failed to migrate character history schema")?;
+    // NewCharacter::migrate(&db).await
+    //     .context("Failed to migrate character schema")?;
+    // NewCharacterHistory::migrate(&db).await
+    //     .context("Failed to migrate character history schema")?;
 
     // Update remaining character fields
     if !migrated_characters.is_empty() {
