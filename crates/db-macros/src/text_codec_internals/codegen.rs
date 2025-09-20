@@ -245,6 +245,17 @@ fn generate_deserialize_impl(enum_ident: &Ident, variants: &[TextEnumVariant]) -
         }
     };
 
+    let content_catch_all_arm = if let Some(catch_all) = variants.iter().find(|v| v.is_catch_all) {
+        let variant_ident = &catch_all.ident;
+        quote! {
+            _ => Ok(Self::#variant_ident(content.as_str().unwrap_or("").to_string())),
+        }
+    } else {
+        quote! {
+            _ => Err(anyhow::anyhow!("Unknown content variant type: {}", typ)),
+        }
+    };
+
     quote! {
         impl<'de> serde::Deserialize<'de> for #enum_ident {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -276,7 +287,7 @@ fn generate_deserialize_impl(enum_ident: &Ident, variants: &[TextEnumVariant]) -
                     #de_repr_ident::Content(#de_struct_ident { typ, content }) => {
                         match typ.as_str() {
                             #(#content_arms)*
-                            _ => Err(anyhow::anyhow!("Unknown content variant type: {}", typ)),
+                            #content_catch_all_arm
                         }
                     },
                 };
