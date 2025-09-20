@@ -283,6 +283,9 @@ impl RoleplayMessageType {
                     "场景" | "scenario" | "场景：" | "scenario:" => {
                         return Some(RoleplayMessageType::Scenario(content_val));
                     }
+                    "文本" | "text" | "文本：" | "text:" => {
+                        return Some(RoleplayMessageType::Chat(content_val));
+                    }
                     _ => {
                         // Unknown type, treat as text
                         return Some(RoleplayMessageType::Chat(content_val));
