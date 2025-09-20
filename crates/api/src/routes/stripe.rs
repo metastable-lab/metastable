@@ -87,19 +87,19 @@ async fn create_checkout_session(
     let url = session.url
         .ok_or_else(|| AppError::new(StatusCode::INTERNAL_SERVER_ERROR, anyhow!("Stripe error: no session url")))?;
 
-    let vip_level = match product_id.as_str() {
-        "price_1S7ciiK4f3Ep0fmJMAC6YvSR" => 1,
-        "price_1S7ckVK4f3Ep0fmJghyxiL0N" => 2,
-        "price_1S7cljK4f3Ep0fmJACVeWBXw" => 3,
-        _ => 0,
-    };
-
-    // let vip_level_prod = match product_id.as_str() {
-    //     "price_1S90m9GokBlvEWxhYFl3v9m4" => 1,
-    //     "price_1S90m3GokBlvEWxhQhpPsFsT" => 2,
-    //     "price_1S90lzGokBlvEWxhmmCEOBwg" => 3,
+    // let vip_level = match product_id.as_str() {
+    //     "price_1S7ciiK4f3Ep0fmJMAC6YvSR" => 1,
+    //     "price_1S7ckVK4f3Ep0fmJghyxiL0N" => 2,
+    //     "price_1S7cljK4f3Ep0fmJACVeWBXw" => 3,
     //     _ => 0,
     // };
+
+    let vip_level = match product_id.as_str() {
+        "price_1S90m9GokBlvEWxhYFl3v9m4" => 1,
+        "price_1S90m3GokBlvEWxhQhpPsFsT" => 2,
+        "price_1S90lzGokBlvEWxhmmCEOBwg" => 3,
+        _ => 0,
+    };
 
     let items = session.line_items.unwrap_or_default().data;
     let user_payment = UserPayment {

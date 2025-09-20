@@ -497,7 +497,7 @@ async fn online_migrate_characters(db: &Arc<PgPool>, environment: &str) -> Resul
         }
 
         if update_failures.is_empty() {
-            match tx.commit().await {
+            match tx.rollback().await {
                 Ok(_) => info!("✅ Character first_message updates committed successfully"),
                 Err(e) => {
                     error!("Failed to commit character first_message updates: {}", e);
@@ -839,16 +839,16 @@ async fn main() -> Result<()> {
         }
     }
 
-    // // Step 4: Online character migration
-    // info!("Step 4: Running online character migration...");
-    // match online_migrate_characters(&db, &environment).await {
-    //     Ok(_) => migration_results.push("✅ Online character migration"),
-    //     Err(e) => {
-    //         error!("Online character migration failed: {}", e);
-    //         migration_results.push("❌ Online character migration");
-    //         return Err(e);
-    //     }
-    // }
+    // Step 4: Online character migration
+    info!("Step 4: Running online character migration...");
+    match online_migrate_characters(&db, &environment).await {
+        Ok(_) => migration_results.push("✅ Online character migration"),
+        Err(e) => {
+            error!("Online character migration failed: {}", e);
+            migration_results.push("❌ Online character migration");
+            return Err(e);
+        }
+    }
 
     // Step 5: Verification
     info!("Step 5: Verifying migration results...");
