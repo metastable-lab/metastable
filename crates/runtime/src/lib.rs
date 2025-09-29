@@ -3,6 +3,8 @@ mod user;
 mod cards;
 mod system_config;
 mod llm;
+mod llm_request;
+mod image;
 mod prompt;
 mod character;
 mod session;
@@ -21,6 +23,8 @@ pub use character::{Character, CharacterSub, CharacterHistory, CharacterMask,
 pub use session::ChatSession;
 
 pub use llm::{Agent, ToolCall};
+pub use llm_request::{ReasoningConfig, ExtendedChatCompletionRequest, make_extended_request};
+pub use image::{ImageAgent, GenerateImageResult, ImageResponse};
 
 pub use metastable_llm_macros::LlmTool;
 

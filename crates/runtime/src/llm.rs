@@ -9,7 +9,7 @@ use sqlx::types::{Json, Uuid};
 use metastable_clients::{LlmClient, PostgresClient};
 use metastable_common::ModuleClient;
 
-use crate::{Message, MessageType, Prompt, SystemConfig};
+use crate::{Message, MessageType, Prompt, SystemConfig, llm_request::{ExtendedChatCompletionRequest, ReasoningConfig, make_extended_request}};
 
 // implemented inside the llm-macros crate
 pub trait ToolCall: std::fmt::Debug + Sized + Clone + Send + Sync + 'static {
@@ -30,6 +30,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
     fn model() -> &'static str { "google/gemini-2.5-flash" }
     fn temperature() -> f32 { 0.7 }
     fn max_tokens() -> i32 { 20000 }
+    fn reasoning_effort() -> Option<&'static str> { Some("minimal") }
 
     fn llm_client(&self) -> &LlmClient;
     fn db_client(&self) -> &PostgresClient;
@@ -118,7 +119,7 @@ pub trait Agent: Clone + Send + Sync + Sized {
                 .expect("[Agent::call] Tool should build")
         ];
 
-        let request = CreateChatCompletionRequestArgs::default()
+        let base_request = CreateChatCompletionRequestArgs::default()
             .model(Self::model())
             .messages(llm_messages)
             .tools(tools)
@@ -126,7 +127,16 @@ pub trait Agent: Clone + Send + Sync + Sized {
             .max_tokens(Self::max_tokens() as u32)
             .build()?;
 
-        let response = self.llm_client().get_client().chat().create(request).await?;
+        let extended_request = ExtendedChatCompletionRequest {
+            base: base_request,
+            reasoning: Self::reasoning_effort().map(|effort| ReasoningConfig {
+                effort: effort.to_string(),
+            }),
+            modalities: None, // Will be overridden by ImageGenerationAgent
+        };
+
+        let config = self.llm_client().get_client().config();
+        let response = make_extended_request(&extended_request, config).await?;
         let choice = response.choices.first()
             .ok_or(anyhow!("[Agent::call] No response from AI inference server for model {}", Self::model()))?;
 
