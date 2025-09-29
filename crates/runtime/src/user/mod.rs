@@ -193,6 +193,11 @@ impl User {
         Ok(UserPointsLog::from_chat_message(&self.id, usage, message, character_creator, reward_amount))
     }
 
+    pub fn pay_for_voice_generation(&mut self, amount: i64, message: Uuid) -> Result<UserPointsLog> {
+        let usage = self.pay(amount)?;
+        Ok(UserPointsLog::from_voice_generation(&self.id, usage, message))
+    }
+
     fn pay(&mut self, amount: i64) -> Result<UserUsagePoints> {
         let mut remaining = amount;
         let self_clone = self.clone();

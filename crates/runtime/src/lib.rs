@@ -9,6 +9,7 @@ mod prompt;
 mod character;
 mod session;
 mod agents;
+mod multimodel;
 
 pub use user::{UserRole, User, UserUrl, UserReferral, UserBadge, UserFollow, UserUsagePoints, UserPointsLog, UserPayment, UserPaymentStatus, UserNotification};
 pub use system_config::SystemConfig;
@@ -21,7 +22,7 @@ pub use character::{Character, CharacterSub, CharacterHistory, CharacterMask,
     AuditLog, CharacterPost, CharacterPostComments,
 };
 pub use session::ChatSession;
-
+pub use multimodel::{MultimodelMessageType, MultimodelMessage};
 pub use llm::{Agent, ToolCall};
 pub use llm_request::{ReasoningConfig, ExtendedChatCompletionRequest, make_extended_request};
 pub use image::{ImageAgent, GenerateImageResult, ImageResponse};

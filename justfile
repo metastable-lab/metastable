@@ -56,4 +56,5 @@ export R2_PUBLIC_DOMAIN := env("R2_PUBLIC_DOMAIN")
     cargo run --package metastable-sandbox --bin messages_robust --release production
 
 @test:
-    cargo test --package metastable-runtime --test image_generation_test -- test_simple_image_generation --exact --show-output
+    cargo test --package metastable-clients --lib -- fish_audio::tests::test_fish_audio_chinese_ancient_style --exact --show-output 
+# cargo test --package metastable-runtime --test image_generation_test -- test_simple_image_generation --exact --show-output
