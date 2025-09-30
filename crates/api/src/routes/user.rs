@@ -487,10 +487,6 @@ async fn create_post(
         ).await?
             .ok_or(anyhow::anyhow!("[create_post] Character not found"))?;
 
-        if character.creator != user.id {
-            return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_post] Character not found")));
-        }
-
         character_ids.push(character_id);
     }
 
