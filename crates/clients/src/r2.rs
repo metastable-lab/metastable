@@ -133,7 +133,7 @@ impl R2Client {
     }
 
     pub fn public_url(&self, key: &str) -> String {
-        format!("https://{}/{}/{}", self.public_domain(), self.bucket_name(), key)
+        format!("https://{}/{}", self.public_domain(), key)
     }
 
     /// Upload image with clean, simple interface

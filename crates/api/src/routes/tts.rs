@@ -8,7 +8,7 @@ use sqlx::types::Uuid;
 use metastable_common::ModuleClient;
 use metastable_database::{QueryCriteria, SqlxFilterQuery, SqlxCrud};
 use metastable_runtime::{CharacterFeature, Message, MultimodelMessage, MultimodelMessageType, ToolCall};
-use metastable_runtime_roleplay::agents::SendMessage;
+use metastable_runtime_roleplay::agents::{RoleplayMessageType, SendMessage};
 use metastable_clients::{TTSConfig, AudioFormat};
 
 use crate::{
@@ -62,7 +62,16 @@ async fn tts(
     let toolcall = message.assistant_message_tool_call.0.as_ref()
         .ok_or(AppError::new(StatusCode::BAD_REQUEST, anyhow!("[/tts] Tool call not found")))?;
     let chat_mesasges_toolcall = SendMessage::try_from_tool_call(&toolcall)?;
-    let text = chat_mesasges_toolcall.messages.iter().map(|message| message.to_string()).collect::<Vec<String>>().join("\n");
+    let text = chat_mesasges_toolcall.messages.iter()
+        .filter_map(|message| {
+            if let RoleplayMessageType::Chat(content) = message {
+                if !content.is_empty() { Some(content) } 
+                else { None }
+            } else { None }
+        })
+        .cloned()
+        .collect::<Vec<String>>()
+        .join("\n");
 
     // Create TTS configuration
     let tts_config = TTSConfig {
