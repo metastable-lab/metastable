@@ -1,8 +1,9 @@
 use anyhow::anyhow;
 use axum::{
     extract::{Extension, Path, State},
-    http::StatusCode, middleware, response::IntoResponse, routing::post, Json, Router
+    http::StatusCode, middleware, response::IntoResponse, routing::post, Router
 };
+use serde_json::json;
 use sqlx::types::Uuid;
 
 use metastable_common::ModuleClient;
@@ -12,9 +13,7 @@ use metastable_runtime_roleplay::agents::{RoleplayMessageType, SendMessage};
 use metastable_clients::{TTSConfig, AudioFormat};
 
 use crate::{
-    ensure_account,
-    middleware::authenticate,
-    GlobalState
+    ensure_account, middleware::authenticate, AppSuccess, GlobalState
 };
 use crate::response::AppError;
 
@@ -106,7 +105,7 @@ async fn tts(
     tx.commit().await?;
 
     // Return the audio URL as JSON
-    Ok(Json(serde_json::json!({
+    Ok(AppSuccess::new(StatusCode::OK, "Webhook received", json!({
         "audio_url": audio_url
     })))
 }
