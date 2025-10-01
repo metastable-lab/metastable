@@ -1,5 +1,5 @@
 {
-  "resource_version": 35,
+  "resource_version": 121,
   "metadata": {
     "version": 3,
     "sources": [
@@ -198,6 +198,7 @@
                 "permission": {
                   "columns": [
                     "public",
+                    "hidden",
                     "use_character_memory"
                   ],
                   "filter": {
@@ -274,6 +275,18 @@
               }
             ],
             "array_relationships": [
+              {
+                "name": "multimodel_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "message_id",
+                    "table": {
+                      "name": "multimodel_messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
               {
                 "name": "user_points_logs",
                 "using": {
@@ -358,6 +371,56 @@
                     }
                   }
                 }
+              }
+            ]
+          },
+          {
+            "table": {
+              "name": "multimodel_messages",
+              "schema": "public"
+            },
+            "object_relationships": [
+              {
+                "name": "message",
+                "using": {
+                  "foreign_key_constraint_on": "message_id"
+                }
+              },
+              {
+                "name": "roleplay_character",
+                "using": {
+                  "foreign_key_constraint_on": "character_id"
+                }
+              },
+              {
+                "name": "user",
+                "using": {
+                  "foreign_key_constraint_on": "owner"
+                }
+              }
+            ],
+            "select_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "message_type",
+                    "r2_url",
+                    "character_id",
+                    "id",
+                    "message_id",
+                    "owner"
+                  ],
+                  "filter": {
+                    "owner": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "allow_aggregations": true
+                },
+                "comment": ""
               }
             ]
           },
@@ -490,8 +553,7 @@
                 "role": "user",
                 "permission": {
                   "columns": [
-                    "content",
-                    "reaction"
+                    "hidden"
                   ],
                   "filter": {
                     "user_id": {
@@ -599,6 +661,31 @@
                 },
                 "comment": ""
               }
+            ],
+            "update_permissions": [
+              {
+                "role": "user",
+                "permission": {
+                  "columns": [
+                    "created_at",
+                    "updated_at",
+                    "hidden",
+                    "content",
+                    "character_0",
+                    "character_1",
+                    "character_2",
+                    "id",
+                    "user_id"
+                  ],
+                  "filter": {
+                    "user_id": {
+                      "_eq": "X-Hasura-User-Id"
+                    }
+                  },
+                  "check": null
+                },
+                "comment": ""
+              }
             ]
           },
           {
@@ -685,6 +772,18 @@
                     "column": "character",
                     "table": {
                       "name": "chat_sessions",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "multimodel_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "character_id",
+                    "table": {
+                      "name": "multimodel_messages",
                       "schema": "public"
                     }
                   }
@@ -1719,6 +1818,18 @@
                     "column": "owner",
                     "table": {
                       "name": "messages",
+                      "schema": "public"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "multimodel_messages",
+                "using": {
+                  "foreign_key_constraint_on": {
+                    "column": "owner",
+                    "table": {
+                      "name": "multimodel_messages",
                       "schema": "public"
                     }
                   }

@@ -481,7 +481,7 @@ async fn create_post(
     let mut post = CharacterPost::default();
     let mut character_ids = vec![];
     for character_id in payload.characters {
-        let character = Character::find_one_by_criteria(
+        let _ = Character::find_one_by_criteria(
             QueryCriteria::new().add_valued_filter("id", "=", character_id),
             &mut *tx
         ).await?
