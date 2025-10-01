@@ -23,6 +23,12 @@ export EMBEDDING_API_KEY := env("EMBEDDING_API_KEY")
 export EMBEDDING_BASE_URL := env("EMBEDDING_BASE_URL")
 export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
 
+export R2_ACCOUNT_ID := env("R2_ACCOUNT_ID")
+export R2_ACCESS_KEY_ID := env("R2_ACCESS_KEY_ID")
+export R2_SECRET_ACCESS_KEY := env("R2_SECRET_ACCESS_KEY")
+export R2_BUCKET_NAME := env("R2_BUCKET_NAME")
+export R2_PUBLIC_DOMAIN := env("R2_PUBLIC_DOMAIN")
+
 
 
 @api:
@@ -50,4 +56,5 @@ export EMBEDDING_EMBEDDING_MODEL := env("EMBEDDING_EMBEDDING_MODEL")
     cargo run --package metastable-sandbox --bin messages_robust --release production
 
 @test:
-    cargo test --package metastable-runtime-roleplay --test sandbox -- test::test_prettier_v0 --exact --show-output
+    cargo test --package metastable-clients --lib -- fish_audio::tests::test_fish_audio_chinese_ancient_style --exact --show-output 
+# cargo test --package metastable-runtime --test image_generation_test -- test_simple_image_generation --exact --show-output

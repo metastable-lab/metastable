@@ -17,9 +17,15 @@ async-trait.workspace = true
 sqlx.workspace = true
 
 async-openai = { workspace = true, optional = true}
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+uuid.workspace = true
 
 [features]
-default = ["llm", "embeder", "postgres"]
+default = ["llm", "embeder", "postgres", "r2", "fish_audio"]
 llm = ["dep:async-openai"]
 embeder = ["dep:async-openai"]
 postgres = ["embeder"]
+r2 = ["dep:aws-sdk-s3", "dep:aws-config", "dep:base64"]
+fish_audio = []

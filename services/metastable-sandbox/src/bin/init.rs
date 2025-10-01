@@ -31,6 +31,8 @@ init_databases!(
         metastable_runtime::CharacterPost,
         metastable_runtime::CharacterPostComments,
         metastable_runtime::AuditLog,
+
+        metastable_runtime::MultimodelMessage,
     ],
     pgvector: [ 
         metastable_clients::EmbeddingMessage

@@ -17,6 +17,7 @@ futures.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde_json.workspace = true
+reqwest.workspace = true
 sqlx = { workspace = true }
 uuid.workspace = true
 rand.workspace = true
@@ -26,3 +27,5 @@ chrono = { version = "0.4", features = ["serde"] }
 sqlx = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 hex.workspace = true
+serde_json.workspace = true
+uuid.workspace = true

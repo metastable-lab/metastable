@@ -1,6 +1,6 @@
 use anyhow::Result;
 use stripe::Client as StripeClient;
-use metastable_clients::PostgresClient;
+use metastable_clients::{PostgresClient, R2Client, FishAudioClient};
 use metastable_common::ModuleClient;
 use metastable_database::{QueryCriteria, SqlxFilterQuery};
 use reqwest::Client;
@@ -27,6 +27,8 @@ pub struct GlobalState {
     pub http_client: Client,
     pub memory_update_tx: mpsc::Sender<Uuid>,
     pub stripe_client: StripeClient,
+    pub r2_client: R2Client,
+    pub fish_audio_client: FishAudioClient,
 }
 
 impl GlobalState {
@@ -35,6 +37,8 @@ impl GlobalState {
         let agents_router = AgentsRouter::new().await?;
         let http_client = Client::new();
         let stripe_client = StripeClient::new(&std::env::var("STRIPE_SECRET_KEY").unwrap());
+        let r2_client = R2Client::setup_connection().await;
+        let fish_audio_client = FishAudioClient::setup_connection().await;
         let (memory_update_tx, memory_update_rx) = mpsc::channel(50);
 
         let mut tx = db.get_client().begin().await?;
@@ -54,6 +58,8 @@ impl GlobalState {
                 http_client,
                 memory_update_tx,
                 stripe_client,
+                r2_client,
+                fish_audio_client,
             },
             memory_update_rx,
         ))

@@ -26,6 +26,7 @@ pub enum UserPointsLogDeductReason {
     ChatMessage,
     ChatRegeneration,
     CharacterCreation,
+    VoiceGeneration,
 }
 
 #[derive(Debug, Clone, Default, TextEnum)]
@@ -386,4 +387,38 @@ impl UserPointsLog {
             updated_at: 0,
         }
     }
+
+    pub fn from_voice_generation(
+        user_id: &Uuid, usage: UserUsagePoints, message: Uuid,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            user: user_id.clone(),
+
+            add_reason: UserPointsLogAddReason::NA,
+            deduct_reason: UserPointsLogDeductReason::VoiceGeneration,
+            reward_reason: UserPointsLogRewardReason::NA,
+
+            message: Some(message),
+            deducted_from_claimed: usage.points_consumed_claimed,
+            deducted_from_purchased: usage.points_consumed_purchased,
+            deducted_from_misc: usage.points_consumed_misc,
+
+            added_to_claimed: 0,
+            added_to_purchased: 0,
+            added_to_misc: 0,
+
+            reward_to: None,
+            reward_amount: 0,
+
+            disputed: false,
+            disputed_at: None,
+            resolved: false,
+            resolved_at: None,
+
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
 }

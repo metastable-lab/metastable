@@ -497,7 +497,7 @@ async fn online_migrate_characters(db: &Arc<PgPool>, environment: &str) -> Resul
         }
 
         if update_failures.is_empty() {
-            match tx.rollback().await {
+            match tx.commit().await {
                 Ok(_) => info!("✅ Character first_message updates committed successfully"),
                 Err(e) => {
                     error!("Failed to commit character first_message updates: {}", e);

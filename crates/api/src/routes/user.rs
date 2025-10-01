@@ -228,6 +228,7 @@ async fn follow(
 pub struct UpdateCharacterRequest {
     pub avatar_url: Option<String>,
     pub background_url: Option<String>,
+    pub voice_model_id: Option<String>,
 
     pub name: Option<String>,
     pub description: Option<String>,
@@ -299,6 +300,20 @@ async fn update_character(
     old_character.creator_notes = payload.creator_notes.or(old_character.creator_notes);
     old_character.tags = payload.tags.unwrap_or(old_character.tags);
 
+    if let Some(voice_model_id) = payload.voice_model_id {
+        let mut found = false;
+        for feature in &mut old_character.features.0 {
+            if let CharacterFeature::Voice(ref mut id) = feature {
+                *id = voice_model_id.clone();
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            old_character.features.push(CharacterFeature::Voice(voice_model_id));
+        }
+    }
+
     if let Some(avatar_url) = payload.avatar_url {
         let mut found = false;
         for feature in &mut old_character.features.0 {
@@ -352,6 +367,9 @@ async fn new_character(
     }
     if let Some(background_url) = payload.background_url {
         features.push(CharacterFeature::BackgroundImage(background_url));
+    }
+    if let Some(voice_model_id) = payload.voice_model_id {
+        features.push(CharacterFeature::Voice(voice_model_id));
     }
 
     let first_message = {
@@ -463,15 +481,11 @@ async fn create_post(
     let mut post = CharacterPost::default();
     let mut character_ids = vec![];
     for character_id in payload.characters {
-        let character = Character::find_one_by_criteria(
+        let _ = Character::find_one_by_criteria(
             QueryCriteria::new().add_valued_filter("id", "=", character_id),
             &mut *tx
         ).await?
             .ok_or(anyhow::anyhow!("[create_post] Character not found"))?;
-
-        if character.creator != user.id {
-            return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_post] Character not found")));
-        }
 
         character_ids.push(character_id);
     }

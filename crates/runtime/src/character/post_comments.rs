@@ -18,6 +18,8 @@ pub struct CharacterPostComments {
     pub content: String,
     pub reaction: String,
 
+    pub hidden: bool,
+
     pub created_at: i64,
     pub updated_at: i64
 }
