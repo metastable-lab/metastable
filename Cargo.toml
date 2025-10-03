@@ -65,3 +65,4 @@ sqlx = { version = "0.8.6", default-features = false, features = [
 uuid = { version = "1.8.0", features = ["serde", "v4"] }
 aws-sdk-s3 = { version = "1.0", features = ["rustls"] }
 aws-config = { version = "1.0", features = ["rustls"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "aio"] }

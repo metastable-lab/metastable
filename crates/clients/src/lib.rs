@@ -10,6 +10,8 @@ mod postgres;
 mod r2;
 #[cfg(feature = "fish_audio")]
 mod fish_audio;
+#[cfg(feature = "redis_cache")]
+mod redis_client;
 
 #[cfg(feature = "embeder")]
 pub use embeder::EmbederClient;
@@ -21,6 +23,8 @@ pub use postgres::{PostgresClient, PgvectorClient};
 pub use r2::{R2Client, ImageFolder, ImageUpload};
 #[cfg(feature = "fish_audio")]
 pub use fish_audio::{FishAudioClient, TTSConfig, AudioFormat, Latency, ProsodyControl, ReferenceAudio, AudioFolder, AudioUpload};
+#[cfg(feature = "redis_cache")]
+pub use redis_client::{RedisClient, CacheStats};
 
 mod vector;
 pub use vector::{EmbeddingMessage, MemoryEvent, MemoryUpdateEntry, BatchUpdateSummary, Mem0Filter};

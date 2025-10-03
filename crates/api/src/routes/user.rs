@@ -18,8 +18,9 @@ use metastable_runtime::{
     BackgroundStories, BehaviorTraits, Character, CharacterFeature, CharacterHistory, CharacterLanguage, CharacterOrientation, CharacterPost, CharacterPostComments, CharacterStatus, CharacterSub, Relationships, SkillsAndInterests, ToolCall, User, UserFollow, UserNotification, UserReferral, UserRole, UserUrl
 };
 use crate::{
-    ensure_account, 
-    middleware::authenticate, 
+    ensure_account,
+    cache_helpers::{invalidate_user_cache, invalidate_character_cache},
+    middleware::authenticate,
     response::{AppError, AppSuccess},
     GlobalState
 };
@@ -151,7 +152,7 @@ async fn buy_referral(
     Json(payload): Json<BuyReferralRequest>,
 ) -> Result<AppSuccess, AppError> {
     let count = payload.count.unwrap_or(1);
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let mut user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[buy_referral] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -177,7 +178,7 @@ async fn create_url(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<CreateUrlRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_url] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -195,7 +196,7 @@ async fn follow(
     Extension(user_id_str): Extension<String>,
     Path(following_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
-    let follower = ensure_account(&state.db, &user_id_str).await?
+    let follower = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[follow] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -258,7 +259,7 @@ async fn update_character(
     Path(character_id): Path<Uuid>,
     Json(payload): Json<UpdateCharacterRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[update_character] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -349,8 +350,11 @@ async fn update_character(
     old_character.update(&mut *tx).await?;
     tx.commit().await?;
 
+    // Invalidate character cache
+    invalidate_character_cache(&state.redis, &character_id).await;
+
     Ok(AppSuccess::new(StatusCode::OK, "Character updated successfully", json!(())))
-    
+
 }
 
 async fn new_character(
@@ -358,7 +362,7 @@ async fn new_character(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<UpdateCharacterRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[new_character] User not found")))?;
 
     let mut features = vec![CharacterFeature::Roleplay];
@@ -420,7 +424,7 @@ async fn create_character_sub(
     Extension(user_id_str): Extension<String>,
     Path(character_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_sub] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -448,14 +452,17 @@ async fn daily_checkin(
     State(state): State<GlobalState>,
     Extension(user_id_str): Extension<String>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let mut user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[daily_checkin] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
-    let checkin_log = user.daily_checkin()?;  // 100 points per checkin    
+    let checkin_log = user.daily_checkin()?;  // 100 points per checkin
     checkin_log.create(&mut *tx).await?;
     user.update(&mut *tx).await?;
     tx.commit().await?;
+
+    // Invalidate user cache
+    invalidate_user_cache(&state.redis, &user_id_str).await;
 
     Ok(AppSuccess::new(StatusCode::OK, "Daily checkin successful", json!(())))
 }
@@ -470,7 +477,7 @@ async fn create_post(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<CreatePostRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -519,7 +526,7 @@ async fn create_post_comment(
     Path(post_id): Path<Uuid>,
     Json(payload): Json<CreatePostCommentRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_post_comment] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
@@ -553,7 +560,7 @@ async fn create_character_review(
     Path(character_id): Path<Uuid>,
     Json(payload): Json<CreateCharacterReviewRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_character_review] User not found")))?;
     if user.role != UserRole::Admin {
         return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[create_character_review] User not authorized")));

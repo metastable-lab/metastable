@@ -4,6 +4,7 @@ mod response;
 mod utils;
 mod routes;
 mod global_state;
+mod cache_helpers;
 
 pub use routes::{
     misc_routes,

@@ -36,7 +36,7 @@ async fn create_checkout_session(
     Path(product_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str)
+    let user = ensure_account(&state.db, &state.redis, &user_id_str)
         .await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_checkout_session] User not found")))?;
 

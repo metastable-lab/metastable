@@ -163,7 +163,7 @@ async fn bind_email(
     Json(payload): Json<BindEmailRequest>,
 ) -> Result<AppSuccess, AppError> {
     let env = ApiServerEnv::load();
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let mut user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[bind_email] User not found")))?;
     
     // Quick validation if raw_id is a valid email address

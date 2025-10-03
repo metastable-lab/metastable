@@ -1,6 +1,6 @@
 use anyhow::Result;
 use stripe::Client as StripeClient;
-use metastable_clients::{PostgresClient, R2Client, FishAudioClient};
+use metastable_clients::{PostgresClient, R2Client, FishAudioClient, RedisClient};
 use metastable_common::ModuleClient;
 use metastable_database::{QueryCriteria, SqlxFilterQuery};
 use reqwest::Client;
@@ -23,6 +23,7 @@ define_agent_router! {
 #[derive(Clone)]
 pub struct GlobalState {
     pub db: PostgresClient,
+    pub redis: RedisClient,
     pub agents_router: AgentsRouter,
     pub http_client: Client,
     pub memory_update_tx: mpsc::Sender<Uuid>,
@@ -34,6 +35,7 @@ pub struct GlobalState {
 impl GlobalState {
     pub async fn new() -> Result<(Self, mpsc::Receiver<Uuid>)> {
         let db = PostgresClient::setup_connection().await;
+        let redis = RedisClient::setup_connection().await;
         let agents_router = AgentsRouter::new().await?;
         let http_client = Client::new();
         let stripe_client = StripeClient::new(&std::env::var("STRIPE_SECRET_KEY").unwrap());
@@ -54,6 +56,7 @@ impl GlobalState {
         Ok((
             Self {
                 db,
+                redis,
                 agents_router,
                 http_client,
                 memory_update_tx,

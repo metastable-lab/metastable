@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use metastable_common::get_current_timestamp;
-use metastable_runtime::{AgentRouter, CardPool, Character, CharacterFeature, ChatSession, DrawHistory, DrawType, Prompt, User};
+use metastable_runtime::{AgentRouter, CardPool, CharacterFeature, ChatSession, DrawHistory, DrawType, Prompt, User};
 use metastable_runtime_roleplay::RoleplayInput;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -15,7 +15,12 @@ use metastable_database::{OrderDirection, QueryCriteria, SqlxCrud, SqlxFilterQue
 use metastable_common::ModuleClient;
 
 use crate::{
-    ensure_account, global_state::{AgentRouterInput, AgentRouterOutput}, middleware::authenticate, response::{AppError, AppSuccess}, GlobalState
+    ensure_account,
+    cache_helpers::{get_character_cached, get_session_cached},
+    global_state::{AgentRouterInput, AgentRouterOutput},
+    middleware::authenticate,
+    response::{AppError, AppSuccess},
+    GlobalState
 };
 
 pub fn runtime_routes() -> Router<GlobalState> {
@@ -55,7 +60,7 @@ async fn call_agent(
     Extension(user_id_str): Extension<String>,
     Json(payload): Json<RuntimeCallRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let mut user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent] User not found")))?;
 
     let price = match payload.call_type {
@@ -83,13 +88,10 @@ async fn call_agent(
             }
         }
         RuntimeCallType::RoleplayV1 | RuntimeCallType::RoleplayV1Regenerate => {
-            let session = ChatSession::find_one_by_criteria(
-                QueryCriteria::new().add_valued_filter("id", "=", payload.session_id),
-                &mut *tx
-            ).await?
+            let session = get_session_cached(&state.redis, &mut *tx, &payload.session_id).await?
                 .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Session not found")))?;
 
-            let character = session.fetch_character(&mut *tx).await?
+            let character = get_character_cached(&state.redis, &mut *tx, &session.character).await?
                 .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[call_agent::RoleplayV1] Character not found")))?;
 
             let is_pure_roleplay = character.features.contains(&CharacterFeature::Roleplay);
@@ -171,14 +173,11 @@ async fn create_session(
     Extension(user_id_str): Extension<String>,
     Path(character_id): Path<Uuid>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_session] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;
-    let character = Character::find_one_by_criteria(
-        QueryCriteria::new().add_valued_filter("id", "=", character_id),
-        &mut *tx
-    ).await?
+    let character = get_character_cached(&state.redis, &mut *tx, &character_id).await?
         .ok_or(AppError::new(StatusCode::NOT_FOUND, anyhow!("[create_session] Character not found")))?;
 
     let session = ChatSession::new(character_id, user.id, character.features.contains(&CharacterFeature::Roleplay));
@@ -199,7 +198,7 @@ async fn draw_card(
     Path(card_pool_id): Path<Uuid>,
     Json(payload): Json<DrawCardRequest>,
 ) -> Result<AppSuccess, AppError> {
-    let user = ensure_account(&state.db, &user_id_str).await?
+    let user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[draw_card] User not found")))?;
 
     let mut tx = state.db.get_client().begin().await?;

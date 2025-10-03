@@ -30,7 +30,7 @@ async fn tts(
     Extension(user_id_str): Extension<String>,
     Path(message_id): Path<Uuid>
 ) -> Result<impl IntoResponse, AppError> {
-    let mut user = ensure_account(&state.db, &user_id_str).await?
+    let mut user = ensure_account(&state.db, &state.redis, &user_id_str).await?
         .ok_or(AppError::new(StatusCode::FORBIDDEN, anyhow!("[/tts] user not found")))?;
 
     user.try_pay(6)?;

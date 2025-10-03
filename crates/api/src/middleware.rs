@@ -5,7 +5,7 @@ use axum::middleware::Next;
 
 use metastable_common::ModuleClient;
 use metastable_common::EnvVars;
-use metastable_clients::PostgresClient;
+use metastable_clients::{PostgresClient, RedisClient};
 use metastable_database::{QueryCriteria, SqlxFilterQuery};
 use metastable_runtime::User;
 
@@ -37,19 +37,35 @@ pub async fn authenticate(
 }
 
 pub async fn ensure_account(
-    db: &PostgresClient, user_id_str: &String
+    db: &PostgresClient,
+    redis: &RedisClient,
+    user_id_str: &String
 ) -> Result<Option<User>, AppError> {
 
     if user_id_str.is_empty() || user_id_str == "anonymous" {
         return Ok(None);
     }
 
+    // Try cache first
+    let cache_key = format!("user:session:{}", user_id_str);
+    if let Some(user) = redis.get_json::<User>(&cache_key).await {
+        redis.record_hit().await;
+        return Ok(Some(user));
+    }
+
+    // Cache miss - fetch from database
+    redis.record_miss().await;
     let mut tx = db.get_client().begin().await?;
     let maybe_user = User::find_one_by_criteria(
         QueryCriteria::new().add_valued_filter("user_id", "=", user_id_str.clone()),
         &mut *tx
     ).await?;
     tx.commit().await?;
+
+    // Store in cache if found
+    if let Some(ref user) = maybe_user {
+        let _ = redis.set_json(&cache_key, user, 1800).await; // 30 min TTL
+    }
 
     Ok(maybe_user)
 }
