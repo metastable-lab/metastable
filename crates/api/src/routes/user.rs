@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use async_openai::types::FunctionCall;
-use axum::extract::Path;
+use axum::{extract::Path, routing::get};
 use metastable_runtime_roleplay::agents::SendMessage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -75,6 +75,11 @@ pub fn user_routes() -> Router<GlobalState> {
 
         .route("/user/character/review/{character_id}",
             post(create_character_review)
+            .route_layer(middleware::from_fn(authenticate))
+        )
+
+        .route("/user/character/detail/{character_id}",
+            get(get_character_detail)
             .route_layer(middleware::from_fn(authenticate))
         )
 }
@@ -578,4 +583,26 @@ async fn create_character_review(
     tx.commit().await?;
 
     Ok(AppSuccess::new(StatusCode::OK, "Character review created successfully", json!(())))
+}
+
+async fn get_character_detail(
+    State(state): State<GlobalState>,
+    Extension(user_id_str): Extension<String>,
+    Path(character_id): Path<Uuid>,
+) -> Result<AppSuccess, AppError> {
+    let user = ensure_account(&state.db, &user_id_str).await?
+        .ok_or_else(|| AppError::new(StatusCode::NOT_FOUND, anyhow!("[get_character_detail] User not found")))?;
+
+    let mut tx = state.db.get_client().begin().await?;
+    let character = Character::find_one_by_criteria(
+        QueryCriteria::new().add_valued_filter("id", "=", character_id),
+        &mut *tx
+    ).await?
+        .ok_or(anyhow::anyhow!("[get_character_detail] Character not found"))?;
+
+    if character.creator != user.id {
+        return Err(AppError::new(StatusCode::FORBIDDEN, anyhow!("[get_character_detail] Character not found")));
+    }
+
+    Ok(AppSuccess::new(StatusCode::OK, "Character detail fetched successfully", json!(character)))
 }
